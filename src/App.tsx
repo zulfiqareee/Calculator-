@@ -22,12 +22,13 @@ import {
   Home,
   Grid,
   DollarSign,
-  Info,
   ShieldCheck,
   Sparkles,
   X,
   ChevronRight,
   WifiOff,
+  FlameKindling,
+  Smartphone,
 } from 'lucide-react';
 import { Language, ThemeMode, ToolCategory, ToolId, ToolItem } from './types';
 import {
@@ -76,7 +77,7 @@ export default function App() {
 
   const t = UI_TEXT[lang];
 
-  // Sync HTML language attribute and document title
+  // Sync HTML language attribute
   useEffect(() => {
     document.documentElement.lang = lang;
   }, [lang]);
@@ -101,7 +102,6 @@ export default function App() {
     } else if (theme === 'light') {
       root.classList.remove('dark');
     } else {
-      // System
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
       if (mediaQuery.matches) {
         root.classList.add('dark');
@@ -149,11 +149,9 @@ export default function App() {
   // Filter tools based on category & search query
   const filteredTools = useMemo(() => {
     return TOOLS_LIST.filter((tool) => {
-      // Category match
       if (selectedCategory !== 'all' && tool.category !== selectedCategory) {
         return false;
       }
-      // Search match
       if (searchQuery.trim() !== '') {
         const q = searchQuery.toLowerCase().trim();
         const matchTitle =
@@ -236,30 +234,32 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col antialiased selection:bg-emerald-500 selection:text-white">
       {/* Offline Toast Banner */}
       {!isOnline && (
-        <div className="bg-amber-600 text-white text-xs font-semibold px-4 py-2 text-center flex items-center justify-center gap-2 shadow-xs">
+        <div className="bg-amber-600 text-white text-xs font-semibold px-4 py-2 text-center flex items-center justify-center gap-2 shadow-sm">
           <WifiOff className="w-3.5 h-3.5" />
           <span>{lang === 'bn' ? 'অফলাইন মোড সক্রিয় — সকল টুল নির্বিঘ্নে চলবে।' : 'Offline Mode Active — All tools operate locally.'}</span>
         </div>
       )}
 
       {/* Top Header Bar */}
-      <header className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800 px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
+      <header className="sticky top-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 px-4 sm:px-6 h-15 flex items-center justify-between gap-3 shadow-xs">
         {/* Brand / Logo */}
         <div
           onClick={() => {
             closeTool();
             setActiveTab('home');
           }}
-          className="flex items-center gap-2.5 cursor-pointer shrink-0 select-none"
+          className="flex items-center gap-2.5 cursor-pointer shrink-0 select-none group"
         >
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center shadow-xs text-white">
-            <Sparkles className="w-4 h-4" />
+          <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-emerald-600 via-emerald-500 to-teal-400 p-0.5 shadow-md shadow-emerald-500/20 flex items-center justify-center transition-transform group-hover:scale-105">
+            <div className="w-full h-full bg-slate-950/40 rounded-[14px] flex items-center justify-center text-white">
+              <Sparkles className="w-4 h-4" />
+            </div>
           </div>
           <div className="flex flex-col">
-            <span className="font-bold text-sm tracking-tight text-slate-900 dark:text-white leading-tight">
+            <span className="font-extrabold text-sm sm:text-base tracking-tight text-slate-900 dark:text-white leading-tight">
               {lang === 'bn' ? 'স্মার্ট টুলস' : 'Smart Tools'}
             </span>
-            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium leading-none">
+            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold tracking-wide uppercase leading-none mt-0.5">
               {lang === 'bn' ? 'বাংলা ও English' : 'Bengali & English'}
             </span>
           </div>
@@ -273,7 +273,7 @@ export default function App() {
           {/* Language Switcher */}
           <button
             onClick={toggleLanguage}
-            className="h-8 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100/70 dark:bg-slate-800/70 text-slate-700 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 text-xs font-bold transition active:scale-95 flex items-center justify-center"
+            className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 hover:border-emerald-500/50 hover:text-emerald-600 dark:hover:text-emerald-400 text-xs font-bold transition shadow-xs active:scale-95 flex items-center justify-center"
             title="Switch Language / ভাষা পরিবর্তন"
           >
             {lang === 'en' ? 'বাংলা' : 'English'}
@@ -282,36 +282,36 @@ export default function App() {
           {/* Theme Switcher */}
           <button
             onClick={toggleTheme}
-            className="w-8 h-8 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100/70 dark:bg-slate-800/70 text-slate-700 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 flex items-center justify-center transition active:scale-95"
+            className="w-9 h-9 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 flex items-center justify-center transition shadow-xs active:scale-95"
             title="Toggle Light/Dark Theme"
           >
-            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
           </button>
         </div>
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 py-4 pb-28">
+      <main className="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 py-5 pb-32">
         {/* TOOL SCREEN VIEW */}
         {activeToolId && currentTool ? (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-5">
             {/* Tool Nav Bar */}
-            <div className="flex items-center justify-between py-1">
+            <div className="flex items-center justify-between">
               <button
                 onClick={closeTool}
-                className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-emerald-600 transition px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs active:scale-95"
+                className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:text-emerald-600 dark:hover:text-emerald-400 transition px-3.5 py-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs active:scale-95"
               >
                 <ArrowLeft className="w-4 h-4" />
                 <span>{t.actions.back}</span>
               </button>
 
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+                <span className="text-[11px] font-bold px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/80">
                   {lang === 'bn' ? currentTool.badgeBn : currentTool.badgeEn}
                 </span>
                 <button
                   onClick={(e) => toggleFavorite(currentTool.id, e)}
-                  className="p-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-rose-500 shadow-xs transition active:scale-95"
+                  className="p-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-rose-500 shadow-xs transition active:scale-95"
                   title="Toggle Favorite"
                 >
                   <Heart
@@ -325,14 +325,21 @@ export default function App() {
               </div>
             </div>
 
-            {/* Tool Heading */}
-            <div className="mb-1 text-center sm:text-left">
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                {lang === 'bn' ? currentTool.titleBn : currentTool.titleEn}
-              </h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xl">
-                {lang === 'bn' ? currentTool.descBn : currentTool.descEn}
-              </p>
+            {/* Tool Header Card with Gradient Accent */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800/80 rounded-3xl p-5 shadow-xs flex items-center gap-4">
+              <div
+                className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${currentTool.gradient} text-white flex items-center justify-center shrink-0 shadow-md`}
+              >
+                {renderToolIcon(currentTool.iconName, 'w-7 h-7')}
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight truncate">
+                  {lang === 'bn' ? currentTool.titleBn : currentTool.titleEn}
+                </h1>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                  {lang === 'bn' ? currentTool.descBn : currentTool.descEn}
+                </p>
+              </div>
             </div>
 
             {/* Render Tool Body */}
@@ -343,25 +350,51 @@ export default function App() {
           <>
             {/* TAB: HOME */}
             {activeTab === 'home' && (
-              <div className="flex flex-col gap-5">
-                {/* Search Bar */}
-                <div className="relative">
-                  <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder={t.searchPlaceholder}
-                    className="w-full h-12 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl pl-11 pr-10 text-xs sm:text-sm font-medium text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 shadow-xs"
-                  />
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery('')}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
+              <div className="flex flex-col gap-6">
+                {/* Hero Showcase Card */}
+                <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950 border border-slate-800 rounded-3xl p-5 sm:p-7 shadow-xl text-white">
+                  <div className="absolute top-0 right-0 -mt-10 -mr-10 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+                  
+                  <div className="relative z-10 flex flex-col gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase font-extrabold tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        {lang === 'bn' ? '১০০% অফলাইন টুলবক্স' : '100% Offline Toolkit'}
+                      </span>
+                      <span className="text-xs text-slate-400 hidden sm:inline">·</span>
+                      <span className="text-xs text-slate-400 hidden sm:inline">
+                        {lang === 'bn' ? 'কোনো সার্ভার বা ইন্টারনেটের প্রয়োজন নেই' : 'Zero Server Costs & Instant Calculations'}
+                      </span>
+                    </div>
+
+                    <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white leading-tight">
+                      {lang === 'bn' ? 'স্মার্ট ইউটিলিটি টুলস' : 'Smart Utility Tools'}
+                    </h1>
+                    <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
+                      {lang === 'bn'
+                        ? 'বিদ্যুৎ বিল, শতকরা ও ডিসকাউন্ট, জমি ও ইউনিট রূপান্তর, বয়স এবং ইলেকট্রিক্যাল হিসাবের নির্ভরযোগ্য সমাধান।'
+                        : 'Accurate local estimators for electricity bills, discounts, area conversion, exact age, and electrical engineering.'}
+                    </p>
+
+                    {/* Integrated Search Box */}
+                    <div className="relative mt-2">
+                      <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder={t.searchPlaceholder}
+                        className="w-full h-13 bg-slate-950/80 border border-slate-700/80 rounded-2xl pl-11 pr-10 text-xs sm:text-sm font-medium text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 shadow-inner"
+                      />
+                      {searchQuery && (
+                        <button
+                          onClick={() => setSearchQuery('')}
+                          className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-white"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Category Filter Tabs */}
@@ -370,10 +403,10 @@ export default function App() {
                     <button
                       key={cat}
                       onClick={() => setSelectedCategory(cat)}
-                      className={`whitespace-nowrap px-4 py-2 rounded-xl text-xs font-semibold transition shrink-0 ${
+                      className={`whitespace-nowrap px-4 py-2.5 rounded-2xl text-xs font-bold transition shrink-0 ${
                         selectedCategory === cat
-                          ? 'bg-emerald-600 text-white shadow-xs'
-                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200/80 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
+                          ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
+                          : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200/90 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
                       }`}
                     >
                       {t.categories[cat]}
@@ -381,14 +414,14 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* Favourites Tray (if present and no search) */}
+                {/* Favourites Strip (if any favorited) */}
                 {!searchQuery && selectedCategory === 'all' && favoriteTools.length > 0 && (
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-2.5">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
-                      <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
+                      <Heart className="w-4 h-4 text-rose-500 fill-rose-500" />
                       <span>{t.favorites}</span>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                       {favoriteTools.map((tool) => (
                         <div
                           key={`fav-${tool.id}`}
@@ -396,25 +429,27 @@ export default function App() {
                           className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 hover:border-emerald-500/60 rounded-2xl p-3.5 shadow-xs flex items-center justify-between cursor-pointer transition active:scale-98"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                            <div
+                              className={`w-9 h-9 rounded-xl bg-gradient-to-br ${tool.gradient} text-white flex items-center justify-center shrink-0 shadow-xs`}
+                            >
                               {renderToolIcon(tool.iconName, 'w-4 h-4')}
                             </div>
                             <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
                               {lang === 'bn' ? tool.titleBn : tool.titleEn}
                             </span>
                           </div>
-                          <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1" />
+                          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0 ml-1" />
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {/* Recently Used Tray (if present and no search) */}
+                {/* Recently Used Tray */}
                 {!searchQuery && selectedCategory === 'all' && recentTools.length > 0 && (
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-2.5">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
-                      <Clock className="w-3.5 h-3.5 text-slate-500" />
+                      <Clock className="w-4 h-4 text-slate-500" />
                       <span>{t.recents}</span>
                     </div>
                     <div className="flex overflow-x-auto gap-2.5 no-scrollbar pb-1">
@@ -422,12 +457,14 @@ export default function App() {
                         <button
                           key={`recent-${tool.id}`}
                           onClick={() => openTool(tool.id)}
-                          className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl px-3 py-2 flex items-center gap-2 shrink-0 hover:border-slate-300 dark:hover:border-slate-700 transition active:scale-98"
+                          className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 shrink-0 hover:border-emerald-500/50 transition active:scale-98 shadow-xs"
                         >
-                          <div className="text-emerald-600 dark:text-emerald-400">
+                          <div
+                            className={`w-7 h-7 rounded-lg bg-gradient-to-br ${tool.gradient} text-white flex items-center justify-center`}
+                          >
                             {renderToolIcon(tool.iconName, 'w-3.5 h-3.5')}
                           </div>
-                          <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                          <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
                             {lang === 'bn' ? tool.titleBn : tool.titleEn}
                           </span>
                         </button>
@@ -437,9 +474,9 @@ export default function App() {
                 )}
 
                 {/* Primary Tools Catalog Grid */}
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-3.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                       {selectedCategory === 'all'
                         ? t.allTools
                         : t.categories[selectedCategory]}{' '}
@@ -448,24 +485,26 @@ export default function App() {
                   </div>
 
                   {filteredTools.length === 0 ? (
-                    <div className="p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl text-center text-xs text-slate-500">
+                    <div className="p-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl text-center text-xs text-slate-500">
                       {lang === 'bn' ? 'কোনো টুল পাওয়া যায়নি।' : 'No matching tools found.'}
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                       {filteredTools.map((tool) => {
                         const isFav = favorites.includes(tool.id);
                         return (
                           <div
                             key={tool.id}
                             onClick={() => openTool(tool.id)}
-                            className="group bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 hover:border-emerald-500/70 dark:hover:border-emerald-500/50 rounded-3xl p-4 shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between relative active:scale-98"
+                            className="group bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 hover:border-emerald-500/70 dark:hover:border-emerald-500/50 rounded-3xl p-5 shadow-xs hover:shadow-lg transition-all duration-200 cursor-pointer flex flex-col justify-between relative active:scale-98"
                           >
                             <div>
-                              {/* Card Top: Icon & Favorite Toggle */}
-                              <div className="flex items-center justify-between mb-3">
-                                <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center transition-transform group-hover:scale-105">
-                                  {renderToolIcon(tool.iconName, 'w-5 h-5')}
+                              {/* Card Top: Gradient Squircle Icon & Favorite Toggle */}
+                              <div className="flex items-center justify-between mb-4">
+                                <div
+                                  className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${tool.gradient} text-white flex items-center justify-center shadow-md transition-transform group-hover:scale-105`}
+                                >
+                                  {renderToolIcon(tool.iconName, 'w-6 h-6')}
                                 </div>
                                 <button
                                   onClick={(e) => toggleFavorite(tool.id, e)}
@@ -481,21 +520,21 @@ export default function App() {
                               </div>
 
                               {/* Title & Desc */}
-                              <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                              <h3 className="font-extrabold text-base text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors leading-snug">
                                 {lang === 'bn' ? tool.titleBn : tool.titleEn}
                               </h3>
-                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 line-clamp-2 leading-relaxed">
                                 {lang === 'bn' ? tool.descBn : tool.descEn}
                               </p>
                             </div>
 
-                            {/* Card Footer: Tag & Arrow */}
-                            <div className="pt-3 mt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px]">
-                              <span className="font-semibold text-slate-400">
+                            {/* Card Footer */}
+                            <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
+                              <span className="font-semibold text-slate-400 text-[11px]">
                                 {lang === 'bn' ? tool.badgeBn : tool.badgeEn}
                               </span>
-                              <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
-                                <span>{lang === 'bn' ? 'ব্যবহার' : 'Open'}</span>
+                              <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                                <span>{lang === 'bn' ? 'ব্যবহার করুন' : 'Open'}</span>
                                 <ChevronRight className="w-3.5 h-3.5" />
                               </span>
                             </div>
@@ -516,27 +555,29 @@ export default function App() {
                   return (
                     <div key={catKey} className="flex flex-col gap-3">
                       <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                         <h2 className="text-base font-bold text-slate-900 dark:text-white">
                           {t.categories[catKey]}
                         </h2>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                         {toolsInCat.map((tool) => (
                           <div
                             key={tool.id}
                             onClick={() => openTool(tool.id)}
-                            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs flex items-center justify-between cursor-pointer hover:border-emerald-500/50 transition active:scale-98"
+                            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-xs flex items-center justify-between cursor-pointer hover:border-emerald-500/50 transition active:scale-98"
                           >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                                {renderToolIcon(tool.iconName, 'w-5 h-5')}
+                            <div className="flex items-center gap-3.5 min-w-0">
+                              <div
+                                className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${tool.gradient} text-white flex items-center justify-center shrink-0 shadow-sm`}
+                              >
+                                {renderToolIcon(tool.iconName, 'w-6 h-6')}
                               </div>
                               <div className="flex flex-col min-w-0">
-                                <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                                <span className="text-sm font-bold text-slate-900 dark:text-white truncate">
                                   {lang === 'bn' ? tool.titleBn : tool.titleEn}
                                 </span>
-                                <span className="text-[11px] text-slate-500 truncate">
+                                <span className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
                                   {lang === 'bn' ? tool.descBn : tool.descEn}
                                 </span>
                               </div>
@@ -577,23 +618,27 @@ export default function App() {
       </div>
 
       {/* Fixed Bottom Tab Navigation Bar (Thumb Zone) */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 h-16 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200/90 dark:border-slate-800 grid grid-cols-5 items-center px-1 pb-safe shadow-lg">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 h-16 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200/90 dark:border-slate-800/90 grid grid-cols-5 items-center px-1 pb-safe shadow-lg">
         {/* Tab 1: Home */}
         <button
           onClick={() => {
             closeTool();
             setActiveTab('home');
           }}
-          className={`flex flex-col items-center justify-center h-full transition ${
-            activeTab === 'home' && !activeToolId
-              ? 'text-emerald-600 dark:text-emerald-400'
-              : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
-          }`}
+          className="flex flex-col items-center justify-center h-full transition py-1"
         >
-          <Home className="w-5 h-5" />
-          <span className="text-[10px] font-semibold mt-1 tracking-tight">
-            {t.tabs.home}
-          </span>
+          <div
+            className={`flex flex-col items-center px-3 py-1 rounded-xl transition ${
+              activeTab === 'home' && !activeToolId
+                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
+            }`}
+          >
+            <Home className="w-4.5 h-4.5" />
+            <span className="text-[10px] mt-0.5 tracking-tight">
+              {t.tabs.home}
+            </span>
+          </div>
         </button>
 
         {/* Tab 2: Categories */}
@@ -602,16 +647,20 @@ export default function App() {
             closeTool();
             setActiveTab('categories');
           }}
-          className={`flex flex-col items-center justify-center h-full transition ${
-            activeTab === 'categories' && !activeToolId
-              ? 'text-emerald-600 dark:text-emerald-400'
-              : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
-          }`}
+          className="flex flex-col items-center justify-center h-full transition py-1"
         >
-          <Grid className="w-5 h-5" />
-          <span className="text-[10px] font-semibold mt-1 tracking-tight">
-            {t.tabs.categories}
-          </span>
+          <div
+            className={`flex flex-col items-center px-3 py-1 rounded-xl transition ${
+              activeTab === 'categories' && !activeToolId
+                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
+            }`}
+          >
+            <Grid className="w-4.5 h-4.5" />
+            <span className="text-[10px] mt-0.5 tracking-tight">
+              {t.tabs.categories}
+            </span>
+          </div>
         </button>
 
         {/* Tab 3: History */}
@@ -620,16 +669,20 @@ export default function App() {
             closeTool();
             setActiveTab('history');
           }}
-          className={`flex flex-col items-center justify-center h-full transition ${
-            activeTab === 'history' && !activeToolId
-              ? 'text-emerald-600 dark:text-emerald-400'
-              : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
-          }`}
+          className="flex flex-col items-center justify-center h-full transition py-1"
         >
-          <Clock className="w-5 h-5" />
-          <span className="text-[10px] font-semibold mt-1 tracking-tight">
-            {t.tabs.history}
-          </span>
+          <div
+            className={`flex flex-col items-center px-3 py-1 rounded-xl transition ${
+              activeTab === 'history' && !activeToolId
+                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
+            }`}
+          >
+            <Clock className="w-4.5 h-4.5" />
+            <span className="text-[10px] mt-0.5 tracking-tight">
+              {t.tabs.history}
+            </span>
+          </div>
         </button>
 
         {/* Tab 4: AdMob & Settings */}
@@ -638,16 +691,20 @@ export default function App() {
             closeTool();
             setActiveTab('admob');
           }}
-          className={`flex flex-col items-center justify-center h-full transition ${
-            activeTab === 'admob' && !activeToolId
-              ? 'text-emerald-600 dark:text-emerald-400'
-              : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
-          }`}
+          className="flex flex-col items-center justify-center h-full transition py-1"
         >
-          <DollarSign className="w-5 h-5" />
-          <span className="text-[10px] font-semibold mt-1 tracking-tight">
-            {t.tabs.admob}
-          </span>
+          <div
+            className={`flex flex-col items-center px-3 py-1 rounded-xl transition ${
+              activeTab === 'admob' && !activeToolId
+                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
+            }`}
+          >
+            <DollarSign className="w-4.5 h-4.5" />
+            <span className="text-[10px] mt-0.5 tracking-tight">
+              {t.tabs.admob}
+            </span>
+          </div>
         </button>
 
         {/* Tab 5: About & Policy */}
@@ -656,16 +713,20 @@ export default function App() {
             closeTool();
             setActiveTab('about');
           }}
-          className={`flex flex-col items-center justify-center h-full transition ${
-            activeTab === 'about' && !activeToolId
-              ? 'text-emerald-600 dark:text-emerald-400'
-              : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
-          }`}
+          className="flex flex-col items-center justify-center h-full transition py-1"
         >
-          <ShieldCheck className="w-5 h-5" />
-          <span className="text-[10px] font-semibold mt-1 tracking-tight">
-            {t.tabs.about}
-          </span>
+          <div
+            className={`flex flex-col items-center px-3 py-1 rounded-xl transition ${
+              activeTab === 'about' && !activeToolId
+                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
+            }`}
+          >
+            <ShieldCheck className="w-4.5 h-4.5" />
+            <span className="text-[10px] mt-0.5 tracking-tight">
+              {t.tabs.about}
+            </span>
+          </div>
         </button>
       </nav>
     </div>

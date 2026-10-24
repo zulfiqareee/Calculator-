@@ -23,6 +23,8 @@ export interface ToolItem {
   badgeEn: string;
   badgeBn: string;
   iconName: string;
+  gradient: string;
+  accentColor: string;
 }
 
 export interface CalculationRecord {
