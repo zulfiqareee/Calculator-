@@ -3,6 +3,7 @@ import { Zap, AlertTriangle, Copy, Check, RotateCcw, HelpCircle } from 'lucide-r
 import { Language } from '../../types';
 import { UI_TEXT, formatNumber } from '../../i18n/translations';
 import { addStoredHistory } from '../../utils/storage';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface Props {
   lang: Language;
@@ -80,7 +81,7 @@ export const ElectricityBillEstimator: React.FC<Props> = ({ lang }) => {
     setVatPercent('5');
   };
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     const summary = `${lang === 'bn' ? 'বিদ্যুৎ বিল হিসাব' : 'Electricity Bill Estimate'}:
 ${lang === 'bn' ? 'ব্যবহৃত ইউনিট' : 'Total Units'}: ${units} kWh
 ${lang === 'bn' ? 'বিদ্যুৎ চার্জ' : 'Energy Charge'}: ${currencySymbol} ${energyCharge.toFixed(2)}
@@ -90,9 +91,11 @@ VAT (${vatPercent}%): ${currencySymbol} ${vatAmount.toFixed(2)}
 ----------------------------
 ${lang === 'bn' ? 'সর্বমোট আনুমানিক বিল' : 'Total Estimated Bill'}: ${currencySymbol} ${totalEstimatedBill.toFixed(2)}`;
 
-    navigator.clipboard.writeText(summary);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const ok = await copyToClipboard(summary);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
 
     // Save calculation to history
     addStoredHistory({

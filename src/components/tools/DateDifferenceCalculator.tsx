@@ -3,6 +3,7 @@ import { CalendarRange, Copy, Check, RotateCcw, ArrowRight, CalendarDays, Briefc
 import { Language } from '../../types';
 import { UI_TEXT, formatNumber } from '../../i18n/translations';
 import { addStoredHistory } from '../../utils/storage';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface Props {
   lang: Language;
@@ -102,7 +103,7 @@ export const DateDifferenceCalculator: React.FC<Props> = ({ lang }) => {
 
   const diff = calculateDiff();
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!diff) return;
     const text = `Date Difference from ${startDate} to ${endDate}:
 Total Days: ${diff.totalDays} days
@@ -110,9 +111,11 @@ Breakdown: ${diff.years} years, ${diff.months} months, ${diff.days} days
 Weeks: ${diff.weeks} weeks and ${diff.remDays} days
 Business Days (Mon-Fri): ${diff.businessDays} days, Weekends: ${diff.weekendDays} days`;
 
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const ok = await copyToClipboard(text);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
 
     addStoredHistory({
       toolId: 'date-diff',

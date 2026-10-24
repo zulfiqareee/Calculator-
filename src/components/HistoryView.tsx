@@ -4,6 +4,8 @@ import { Language, CalculationRecord, ToolId } from '../types';
 import { UI_TEXT, formatNumber } from '../i18n/translations';
 import { getStoredHistory, clearStoredHistory } from '../utils/storage';
 
+import { copyToClipboard } from '../utils/clipboard';
+
 interface Props {
   lang: Language;
   onSelectTool: (toolId: ToolId) => void;
@@ -12,20 +14,22 @@ interface Props {
 export const HistoryView: React.FC<Props> = ({ lang, onSelectTool }) => {
   const [history, setHistory] = useState<CalculationRecord[]>(getStoredHistory());
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showConfirmClear, setShowConfirmClear] = useState<boolean>(false);
 
   const t = UI_TEXT[lang];
 
   const handleClear = () => {
-    if (confirm(lang === 'bn' ? 'আপনি কি নিশ্চিত যে সকল হিসাবের ইতিহাস মুছে ফেলতে চান?' : 'Clear all calculation history?')) {
-      clearStoredHistory();
-      setHistory([]);
-    }
+    clearStoredHistory();
+    setHistory([]);
+    setShowConfirmClear(false);
   };
 
-  const handleCopy = (id: string, text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+  const handleCopy = async (id: string, text: string) => {
+    const success = await copyToClipboard(text);
+    if (success) {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    }
   };
 
   const formatTimestamp = (ts: number): string => {
@@ -42,14 +46,33 @@ export const HistoryView: React.FC<Props> = ({ lang, onSelectTool }) => {
             {t.history}
           </h2>
         </div>
-        {history.length > 0 && (
+        {history.length > 0 && !showConfirmClear && (
           <button
-            onClick={handleClear}
+            onClick={() => setShowConfirmClear(true)}
             className="flex items-center gap-1 text-xs text-rose-500 hover:text-rose-600 px-2.5 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 font-medium transition"
           >
             <Trash2 className="w-3.5 h-3.5" />
             <span>{t.clearHistory}</span>
           </button>
+        )}
+        {showConfirmClear && (
+          <div className="flex items-center gap-1.5 bg-rose-50 dark:bg-rose-950/50 p-1.5 rounded-xl border border-rose-200 dark:border-rose-900 text-xs">
+            <span className="text-[11px] font-medium text-rose-700 dark:text-rose-300 px-1">
+              {lang === 'bn' ? 'মুছবেন?' : 'Confirm?'}
+            </span>
+            <button
+              onClick={handleClear}
+              className="px-2 py-1 bg-rose-600 text-white rounded-lg font-bold text-[11px] hover:bg-rose-500 transition"
+            >
+              {lang === 'bn' ? 'হ্যাঁ' : 'Yes'}
+            </button>
+            <button
+              onClick={() => setShowConfirmClear(false)}
+              className="px-2 py-1 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg font-bold text-[11px] transition"
+            >
+              {lang === 'bn' ? 'না' : 'Cancel'}
+            </button>
+          </div>
         )}
       </div>
 

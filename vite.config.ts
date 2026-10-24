@@ -41,13 +41,13 @@ export default defineConfig(() => {
           globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
         },
         devOptions: {
-          enabled: true
+          enabled: false
         }
       })
     ],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve('.'),
       },
     },
     server: {

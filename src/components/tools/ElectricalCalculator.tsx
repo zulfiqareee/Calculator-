@@ -3,6 +3,7 @@ import { Cpu, ShieldAlert, Copy, Check, RotateCcw, Info } from 'lucide-react';
 import { Language } from '../../types';
 import { UI_TEXT, formatNumber } from '../../i18n/translations';
 import { addStoredHistory } from '../../utils/storage';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface Props {
   lang: Language;
@@ -103,7 +104,7 @@ export const ElectricalCalculator: React.FC<Props> = ({ lang }) => {
     setError(null);
   };
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (solved.status !== 'success') return;
     const summary = `Ohm's Law Calculation:
 Voltage (V): ${solved.v.toFixed(2)} V
@@ -112,9 +113,11 @@ Resistance (R): ${solved.r.toFixed(2)} Ω
 Power (P): ${solved.p.toFixed(2)} W
 Formulas: ${solved.formula}`;
 
-    navigator.clipboard.writeText(summary);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const ok = await copyToClipboard(summary);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
 
     addStoredHistory({
       toolId: 'electrical',

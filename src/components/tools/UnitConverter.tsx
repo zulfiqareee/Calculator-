@@ -3,6 +3,7 @@ import { ArrowRightLeft, Copy, Check, Layers } from 'lucide-react';
 import { Language } from '../../types';
 import { UI_TEXT, formatNumber } from '../../i18n/translations';
 import { addStoredHistory } from '../../utils/storage';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface Props {
   lang: Language;
@@ -126,13 +127,15 @@ export const UnitConverter: React.FC<Props> = ({ lang }) => {
     setToUnitId(newUnits[1] ? newUnits[1].id : newUnits[0].id);
   };
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     const fromName = lang === 'bn' ? fromUnit.nameBn : fromUnit.nameEn;
     const toName = lang === 'bn' ? toUnit.nameBn : toUnit.nameEn;
     const text = `${inputValue} ${fromName} (${fromUnit.symbol}) = ${formattedResult} ${toName} (${toUnit.symbol})`;
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const ok = await copyToClipboard(text);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
 
     addStoredHistory({
       toolId: 'converter',

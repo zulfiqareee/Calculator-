@@ -3,6 +3,7 @@ import { Flame, Copy, Check, RotateCcw, Lightbulb, HelpCircle } from 'lucide-rea
 import { Language } from '../../types';
 import { UI_TEXT, formatNumber } from '../../i18n/translations';
 import { addStoredHistory } from '../../utils/storage';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface Props {
   lang: Language;
@@ -67,7 +68,7 @@ export const EnergyConsumptionCalculator: React.FC<Props> = ({ lang }) => {
   const monthlyCost = monthlyKwh * numRate;
   const yearlyCost = yearlyKwh * numRate;
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     const summary = `${applianceName} Energy Consumption:
 Appliance: ${applianceName} (${numWatt}W x ${numQty})
 Daily Usage: ${numHours} hours/day
@@ -75,9 +76,11 @@ Daily Energy: ${dailyKwh.toFixed(3)} kWh (${currencySymbol} ${dailyCost.toFixed(
 Monthly Energy: ${monthlyKwh.toFixed(2)} kWh (${currencySymbol} ${monthlyCost.toFixed(2)})
 Yearly Cost: ${currencySymbol} ${yearlyCost.toFixed(2)}`;
 
-    navigator.clipboard.writeText(summary);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const ok = await copyToClipboard(summary);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
 
     addStoredHistory({
       toolId: 'energy',

@@ -3,6 +3,7 @@ import { Delete, RotateCcw, Copy, Check, History } from 'lucide-react';
 import { Language } from '../../types';
 import { UI_TEXT, formatNumber } from '../../i18n/translations';
 import { addStoredHistory } from '../../utils/storage';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface Props {
   lang: Language;
@@ -129,10 +130,12 @@ export const BasicCalculator: React.FC<Props> = ({ lang }) => {
     }
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(expression);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    const ok = await copyToClipboard(expression);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   // Preview live evaluation if expression contains operators

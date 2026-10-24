@@ -3,6 +3,7 @@ import { CalendarClock, Cake, Copy, Check, RotateCcw, Clock, Sparkles } from 'lu
 import { Language } from '../../types';
 import { UI_TEXT, formatNumber } from '../../i18n/translations';
 import { addStoredHistory } from '../../utils/storage';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface Props {
   lang: Language;
@@ -99,12 +100,14 @@ export const AgeCalculator: React.FC<Props> = ({ lang }) => {
 
   const ageData = calculateAge();
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!ageData || 'error' in ageData) return;
     const text = `${lang === 'bn' ? 'বয়স' : 'Age'}: ${ageData.years} ${lang === 'bn' ? 'বছর' : 'years'}, ${ageData.months} ${lang === 'bn' ? 'মাস' : 'months'}, ${ageData.days} ${lang === 'bn' ? 'দিন' : 'days'}. ${lang === 'bn' ? 'পরবর্তী জন্মদিন' : 'Next birthday in'}: ${ageData.nextBdayDays} ${lang === 'bn' ? 'দিন পর' : 'days'}.`;
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const ok = await copyToClipboard(text);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
 
     addStoredHistory({
       toolId: 'age',

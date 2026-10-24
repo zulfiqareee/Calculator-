@@ -3,6 +3,7 @@ import { Percent, Copy, Check, RotateCcw, ArrowRight } from 'lucide-react';
 import { Language } from '../../types';
 import { UI_TEXT, formatNumber } from '../../i18n/translations';
 import { addStoredHistory } from '../../utils/storage';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface Props {
   lang: Language;
@@ -67,10 +68,12 @@ export const PercentageCalculator: React.FC<Props> = ({ lang }) => {
   const isIncrease = changeDiff >= 0;
   const percentChange = numInit !== 0 ? (Math.abs(changeDiff) / Math.abs(numInit)) * 100 : null;
 
-  const handleCopy = (textToCopy: string, expr: string, res: string) => {
-    navigator.clipboard.writeText(textToCopy);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async (textToCopy: string, expr: string, res: string) => {
+    const ok = await copyToClipboard(textToCopy);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
 
     addStoredHistory({
       toolId: 'percentage',
