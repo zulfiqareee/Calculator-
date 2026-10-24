@@ -1,0 +1,6 @@
+{
+  "name": "Smart Utility Tools — বাংলা ও English",
+  "description": "An offline-first Android utility toolkit featuring 8 essential calculators, unit converters, energy estimators, AdMob monetization setup, and bilingual Bengali/English support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

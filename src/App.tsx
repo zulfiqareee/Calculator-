@@ -1,0 +1,673 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Calculator,
+  Zap,
+  Percent,
+  ArrowRightLeft,
+  CalendarClock,
+  Cpu,
+  Flame,
+  CalendarRange,
+  Search,
+  Heart,
+  Clock,
+  Moon,
+  Sun,
+  ArrowLeft,
+  Home,
+  Grid,
+  DollarSign,
+  Info,
+  ShieldCheck,
+  Sparkles,
+  X,
+  ChevronRight,
+  WifiOff,
+} from 'lucide-react';
+import { Language, ThemeMode, ToolCategory, ToolId, ToolItem } from './types';
+import {
+  getStoredLanguage,
+  setStoredLanguage,
+  getStoredTheme,
+  setStoredTheme,
+  getStoredFavorites,
+  setStoredFavorites,
+  getStoredRecents,
+  addStoredRecent,
+} from './utils/storage';
+import { TOOLS_LIST, UI_TEXT, formatNumber } from './i18n/translations';
+
+// Tools
+import { BasicCalculator } from './components/tools/BasicCalculator';
+import { ElectricityBillEstimator } from './components/tools/ElectricityBillEstimator';
+import { PercentageCalculator } from './components/tools/PercentageCalculator';
+import { UnitConverter } from './components/tools/UnitConverter';
+import { AgeCalculator } from './components/tools/AgeCalculator';
+import { ElectricalCalculator } from './components/tools/ElectricalCalculator';
+import { EnergyConsumptionCalculator } from './components/tools/EnergyConsumptionCalculator';
+import { DateDifferenceCalculator } from './components/tools/DateDifferenceCalculator';
+
+// Auxiliary views
+import { AdMobBanner } from './components/admob/AdMobBanner';
+import { AdMobManager } from './components/admob/AdMobManager';
+import { HistoryView } from './components/HistoryView';
+import { AboutPolicy } from './components/AboutPolicy';
+import { PWAInstallButton } from './components/PWAInstallButton';
+
+type ActiveTab = 'home' | 'categories' | 'history' | 'admob' | 'about';
+
+export default function App() {
+  const [lang, setLang] = useState<Language>(getStoredLanguage());
+  const [theme, setTheme] = useState<ThemeMode>(getStoredTheme());
+  const [activeTab, setActiveTab] = useState<ActiveTab>('home');
+  const [activeToolId, setActiveToolId] = useState<ToolId | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState<ToolCategory>('all');
+  const [favorites, setFavorites] = useState<string[]>(getStoredFavorites());
+  const [recents, setRecents] = useState<string[]>(getStoredRecents());
+  const [isOnline, setIsOnline] = useState<boolean>(
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+
+  const t = UI_TEXT[lang];
+
+  // Sync HTML language attribute and document title
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
+
+  // Handle Online/Offline Detection
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Handle Theme
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else if (theme === 'light') {
+      root.classList.remove('dark');
+    } else {
+      // System
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      if (mediaQuery.matches) {
+        root.classList.add('dark');
+      } else {
+        root.classList.remove('dark');
+      }
+    }
+  }, [theme]);
+
+  const toggleLanguage = () => {
+    const nextLang: Language = lang === 'en' ? 'bn' : 'en';
+    setLang(nextLang);
+    setStoredLanguage(nextLang);
+  };
+
+  const toggleTheme = () => {
+    const nextTheme: ThemeMode = theme === 'dark' ? 'light' : 'dark';
+    setTheme(nextTheme);
+    setStoredTheme(nextTheme);
+  };
+
+  const toggleFavorite = (toolId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    let updated: string[];
+    if (favorites.includes(toolId)) {
+      updated = favorites.filter((id) => id !== toolId);
+    } else {
+      updated = [...favorites, toolId];
+    }
+    setFavorites(updated);
+    setStoredFavorites(updated);
+  };
+
+  const openTool = (id: ToolId) => {
+    setActiveToolId(id);
+    addStoredRecent(id);
+    setRecents(getStoredRecents());
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const closeTool = () => {
+    setActiveToolId(null);
+  };
+
+  // Filter tools based on category & search query
+  const filteredTools = useMemo(() => {
+    return TOOLS_LIST.filter((tool) => {
+      // Category match
+      if (selectedCategory !== 'all' && tool.category !== selectedCategory) {
+        return false;
+      }
+      // Search match
+      if (searchQuery.trim() !== '') {
+        const q = searchQuery.toLowerCase().trim();
+        const matchTitle =
+          tool.titleEn.toLowerCase().includes(q) || tool.titleBn.toLowerCase().includes(q);
+        const matchDesc =
+          tool.descEn.toLowerCase().includes(q) || tool.descBn.toLowerCase().includes(q);
+        const matchBadge =
+          tool.badgeEn.toLowerCase().includes(q) || tool.badgeBn.toLowerCase().includes(q);
+        return matchTitle || matchDesc || matchBadge;
+      }
+      return true;
+    });
+  }, [selectedCategory, searchQuery]);
+
+  // Favorite tools
+  const favoriteTools = useMemo(() => {
+    return TOOLS_LIST.filter((tool) => favorites.includes(tool.id));
+  }, [favorites]);
+
+  // Recent tools
+  const recentTools = useMemo(() => {
+    return recents
+      .map((id) => TOOLS_LIST.find((t) => t.id === id))
+      .filter((t): t is ToolItem => Boolean(t));
+  }, [recents]);
+
+  // Icon Resolver
+  const renderToolIcon = (iconName: string, className = 'w-5 h-5') => {
+    switch (iconName) {
+      case 'Calculator':
+        return <Calculator className={className} />;
+      case 'Zap':
+        return <Zap className={className} />;
+      case 'Percent':
+        return <Percent className={className} />;
+      case 'ArrowRightLeft':
+        return <ArrowRightLeft className={className} />;
+      case 'CalendarClock':
+        return <CalendarClock className={className} />;
+      case 'Cpu':
+        return <Cpu className={className} />;
+      case 'Flame':
+        return <Flame className={className} />;
+      case 'CalendarRange':
+        return <CalendarRange className={className} />;
+      default:
+        return <Sparkles className={className} />;
+    }
+  };
+
+  // Render Tool Component
+  const renderActiveToolComponent = () => {
+    switch (activeToolId) {
+      case 'calculator':
+        return <BasicCalculator lang={lang} />;
+      case 'electricity':
+        return <ElectricityBillEstimator lang={lang} />;
+      case 'percentage':
+        return <PercentageCalculator lang={lang} />;
+      case 'converter':
+        return <UnitConverter lang={lang} />;
+      case 'age':
+        return <AgeCalculator lang={lang} />;
+      case 'electrical':
+        return <ElectricalCalculator lang={lang} />;
+      case 'energy':
+        return <EnergyConsumptionCalculator lang={lang} />;
+      case 'date-diff':
+        return <DateDifferenceCalculator lang={lang} />;
+      default:
+        return null;
+    }
+  };
+
+  const currentTool = activeToolId
+    ? TOOLS_LIST.find((t) => t.id === activeToolId)
+    : null;
+
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col antialiased selection:bg-emerald-500 selection:text-white">
+      {/* Offline Toast Banner */}
+      {!isOnline && (
+        <div className="bg-amber-600 text-white text-xs font-semibold px-4 py-2 text-center flex items-center justify-center gap-2 shadow-xs">
+          <WifiOff className="w-3.5 h-3.5" />
+          <span>{lang === 'bn' ? 'অফলাইন মোড সক্রিয় — সকল টুল নির্বিঘ্নে চলবে।' : 'Offline Mode Active — All tools operate locally.'}</span>
+        </div>
+      )}
+
+      {/* Top Header Bar */}
+      <header className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800 px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
+        {/* Brand / Logo */}
+        <div
+          onClick={() => {
+            closeTool();
+            setActiveTab('home');
+          }}
+          className="flex items-center gap-2.5 cursor-pointer shrink-0 select-none"
+        >
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center shadow-xs text-white">
+            <Sparkles className="w-4 h-4" />
+          </div>
+          <div className="flex flex-col">
+            <span className="font-bold text-sm tracking-tight text-slate-900 dark:text-white leading-tight">
+              {lang === 'bn' ? 'স্মার্ট টুলস' : 'Smart Tools'}
+            </span>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium leading-none">
+              {lang === 'bn' ? 'বাংলা ও English' : 'Bengali & English'}
+            </span>
+          </div>
+        </div>
+
+        {/* Right Top Actions */}
+        <div className="flex items-center gap-2">
+          {/* PWA Install Button */}
+          <PWAInstallButton lang={lang} />
+
+          {/* Language Switcher */}
+          <button
+            onClick={toggleLanguage}
+            className="h-8 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100/70 dark:bg-slate-800/70 text-slate-700 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 text-xs font-bold transition active:scale-95 flex items-center justify-center"
+            title="Switch Language / ভাষা পরিবর্তন"
+          >
+            {lang === 'en' ? 'বাংলা' : 'English'}
+          </button>
+
+          {/* Theme Switcher */}
+          <button
+            onClick={toggleTheme}
+            className="w-8 h-8 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100/70 dark:bg-slate-800/70 text-slate-700 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 flex items-center justify-center transition active:scale-95"
+            title="Toggle Light/Dark Theme"
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+        </div>
+      </header>
+
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 py-4 pb-28">
+        {/* TOOL SCREEN VIEW */}
+        {activeToolId && currentTool ? (
+          <div className="flex flex-col gap-4">
+            {/* Tool Nav Bar */}
+            <div className="flex items-center justify-between py-1">
+              <button
+                onClick={closeTool}
+                className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-emerald-600 transition px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs active:scale-95"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>{t.actions.back}</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+                  {lang === 'bn' ? currentTool.badgeBn : currentTool.badgeEn}
+                </span>
+                <button
+                  onClick={(e) => toggleFavorite(currentTool.id, e)}
+                  className="p-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-rose-500 shadow-xs transition active:scale-95"
+                  title="Toggle Favorite"
+                >
+                  <Heart
+                    className={`w-4 h-4 ${
+                      favorites.includes(currentTool.id)
+                        ? 'fill-rose-500 text-rose-500'
+                        : ''
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* Tool Heading */}
+            <div className="mb-1 text-center sm:text-left">
+              <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                {lang === 'bn' ? currentTool.titleBn : currentTool.titleEn}
+              </h1>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xl">
+                {lang === 'bn' ? currentTool.descBn : currentTool.descEn}
+              </p>
+            </div>
+
+            {/* Render Tool Body */}
+            {renderActiveToolComponent()}
+          </div>
+        ) : (
+          /* TAB SCREENS */
+          <>
+            {/* TAB: HOME */}
+            {activeTab === 'home' && (
+              <div className="flex flex-col gap-5">
+                {/* Search Bar */}
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={t.searchPlaceholder}
+                    className="w-full h-12 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl pl-11 pr-10 text-xs sm:text-sm font-medium text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 shadow-xs"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Category Filter Tabs */}
+                <div className="flex overflow-x-auto gap-2 no-scrollbar py-0.5">
+                  {(['all', 'daily', 'finance', 'utility'] as ToolCategory[]).map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => setSelectedCategory(cat)}
+                      className={`whitespace-nowrap px-4 py-2 rounded-xl text-xs font-semibold transition shrink-0 ${
+                        selectedCategory === cat
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200/80 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      {t.categories[cat]}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Favourites Tray (if present and no search) */}
+                {!searchQuery && selectedCategory === 'all' && favoriteTools.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                      <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
+                      <span>{t.favorites}</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                      {favoriteTools.map((tool) => (
+                        <div
+                          key={`fav-${tool.id}`}
+                          onClick={() => openTool(tool.id)}
+                          className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 hover:border-emerald-500/60 rounded-2xl p-3.5 shadow-xs flex items-center justify-between cursor-pointer transition active:scale-98"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                              {renderToolIcon(tool.iconName, 'w-4 h-4')}
+                            </div>
+                            <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                              {lang === 'bn' ? tool.titleBn : tool.titleEn}
+                            </span>
+                          </div>
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Recently Used Tray (if present and no search) */}
+                {!searchQuery && selectedCategory === 'all' && recentTools.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                      <Clock className="w-3.5 h-3.5 text-slate-500" />
+                      <span>{t.recents}</span>
+                    </div>
+                    <div className="flex overflow-x-auto gap-2.5 no-scrollbar pb-1">
+                      {recentTools.map((tool) => (
+                        <button
+                          key={`recent-${tool.id}`}
+                          onClick={() => openTool(tool.id)}
+                          className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl px-3 py-2 flex items-center gap-2 shrink-0 hover:border-slate-300 dark:hover:border-slate-700 transition active:scale-98"
+                        >
+                          <div className="text-emerald-600 dark:text-emerald-400">
+                            {renderToolIcon(tool.iconName, 'w-3.5 h-3.5')}
+                          </div>
+                          <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                            {lang === 'bn' ? tool.titleBn : tool.titleEn}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Primary Tools Catalog Grid */}
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      {selectedCategory === 'all'
+                        ? t.allTools
+                        : t.categories[selectedCategory]}{' '}
+                      ({formatNumber(filteredTools.length, lang)})
+                    </span>
+                  </div>
+
+                  {filteredTools.length === 0 ? (
+                    <div className="p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl text-center text-xs text-slate-500">
+                      {lang === 'bn' ? 'কোনো টুল পাওয়া যায়নি।' : 'No matching tools found.'}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                      {filteredTools.map((tool) => {
+                        const isFav = favorites.includes(tool.id);
+                        return (
+                          <div
+                            key={tool.id}
+                            onClick={() => openTool(tool.id)}
+                            className="group bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 hover:border-emerald-500/70 dark:hover:border-emerald-500/50 rounded-3xl p-4 shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between relative active:scale-98"
+                          >
+                            <div>
+                              {/* Card Top: Icon & Favorite Toggle */}
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center transition-transform group-hover:scale-105">
+                                  {renderToolIcon(tool.iconName, 'w-5 h-5')}
+                                </div>
+                                <button
+                                  onClick={(e) => toggleFavorite(tool.id, e)}
+                                  className="p-2 text-slate-400 hover:text-rose-500 transition active:scale-90"
+                                  title="Add to Favorites"
+                                >
+                                  <Heart
+                                    className={`w-4 h-4 ${
+                                      isFav ? 'fill-rose-500 text-rose-500' : ''
+                                    }`}
+                                  />
+                                </button>
+                              </div>
+
+                              {/* Title & Desc */}
+                              <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                                {lang === 'bn' ? tool.titleBn : tool.titleEn}
+                              </h3>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                                {lang === 'bn' ? tool.descBn : tool.descEn}
+                              </p>
+                            </div>
+
+                            {/* Card Footer: Tag & Arrow */}
+                            <div className="pt-3 mt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px]">
+                              <span className="font-semibold text-slate-400">
+                                {lang === 'bn' ? tool.badgeBn : tool.badgeEn}
+                              </span>
+                              <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
+                                <span>{lang === 'bn' ? 'ব্যবহার' : 'Open'}</span>
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* TAB: CATEGORIES */}
+            {activeTab === 'categories' && (
+              <div className="flex flex-col gap-6">
+                {(['daily', 'finance', 'utility'] as const).map((catKey) => {
+                  const toolsInCat = TOOLS_LIST.filter((t) => t.category === catKey);
+                  return (
+                    <div key={catKey} className="flex flex-col gap-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                        <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                          {t.categories[catKey]}
+                        </h2>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {toolsInCat.map((tool) => (
+                          <div
+                            key={tool.id}
+                            onClick={() => openTool(tool.id)}
+                            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs flex items-center justify-between cursor-pointer hover:border-emerald-500/50 transition active:scale-98"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                                {renderToolIcon(tool.iconName, 'w-5 h-5')}
+                              </div>
+                              <div className="flex flex-col min-w-0">
+                                <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                                  {lang === 'bn' ? tool.titleBn : tool.titleEn}
+                                </span>
+                                <span className="text-[11px] text-slate-500 truncate">
+                                  {lang === 'bn' ? tool.descBn : tool.descEn}
+                                </span>
+                              </div>
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-slate-400 shrink-0 ml-2" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* TAB: HISTORY */}
+            {activeTab === 'history' && (
+              <HistoryView lang={lang} onSelectTool={openTool} />
+            )}
+
+            {/* TAB: ADMOB */}
+            {activeTab === 'admob' && <AdMobManager lang={lang} />}
+
+            {/* TAB: ABOUT & POLICY */}
+            {activeTab === 'about' && <AboutPolicy lang={lang} />}
+          </>
+        )}
+      </main>
+
+      {/* Persistent AdMob Banner at Bottom (Non-intrusive) */}
+      <div className="fixed bottom-16 left-0 right-0 z-30 shadow-md">
+        <AdMobBanner
+          lang={lang}
+          onOpenGuide={() => {
+            closeTool();
+            setActiveTab('admob');
+          }}
+        />
+      </div>
+
+      {/* Fixed Bottom Tab Navigation Bar (Thumb Zone) */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 h-16 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200/90 dark:border-slate-800 grid grid-cols-5 items-center px-1 pb-safe shadow-lg">
+        {/* Tab 1: Home */}
+        <button
+          onClick={() => {
+            closeTool();
+            setActiveTab('home');
+          }}
+          className={`flex flex-col items-center justify-center h-full transition ${
+            activeTab === 'home' && !activeToolId
+              ? 'text-emerald-600 dark:text-emerald-400'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
+          }`}
+        >
+          <Home className="w-5 h-5" />
+          <span className="text-[10px] font-semibold mt-1 tracking-tight">
+            {t.tabs.home}
+          </span>
+        </button>
+
+        {/* Tab 2: Categories */}
+        <button
+          onClick={() => {
+            closeTool();
+            setActiveTab('categories');
+          }}
+          className={`flex flex-col items-center justify-center h-full transition ${
+            activeTab === 'categories' && !activeToolId
+              ? 'text-emerald-600 dark:text-emerald-400'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
+          }`}
+        >
+          <Grid className="w-5 h-5" />
+          <span className="text-[10px] font-semibold mt-1 tracking-tight">
+            {t.tabs.categories}
+          </span>
+        </button>
+
+        {/* Tab 3: History */}
+        <button
+          onClick={() => {
+            closeTool();
+            setActiveTab('history');
+          }}
+          className={`flex flex-col items-center justify-center h-full transition ${
+            activeTab === 'history' && !activeToolId
+              ? 'text-emerald-600 dark:text-emerald-400'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
+          }`}
+        >
+          <Clock className="w-5 h-5" />
+          <span className="text-[10px] font-semibold mt-1 tracking-tight">
+            {t.tabs.history}
+          </span>
+        </button>
+
+        {/* Tab 4: AdMob & Settings */}
+        <button
+          onClick={() => {
+            closeTool();
+            setActiveTab('admob');
+          }}
+          className={`flex flex-col items-center justify-center h-full transition ${
+            activeTab === 'admob' && !activeToolId
+              ? 'text-emerald-600 dark:text-emerald-400'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
+          }`}
+        >
+          <DollarSign className="w-5 h-5" />
+          <span className="text-[10px] font-semibold mt-1 tracking-tight">
+            {t.tabs.admob}
+          </span>
+        </button>
+
+        {/* Tab 5: About & Policy */}
+        <button
+          onClick={() => {
+            closeTool();
+            setActiveTab('about');
+          }}
+          className={`flex flex-col items-center justify-center h-full transition ${
+            activeTab === 'about' && !activeToolId
+              ? 'text-emerald-600 dark:text-emerald-400'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
+          }`}
+        >
+          <ShieldCheck className="w-5 h-5" />
+          <span className="text-[10px] font-semibold mt-1 tracking-tight">
+            {t.tabs.about}
+          </span>
+        </button>
+      </nav>
+    </div>
+  );
+}

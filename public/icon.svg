@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="50%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- Background squircle -->
+  <rect width="512" height="512" rx="128" fill="url(#bg)"/>
+
+  <!-- Subtle grid texture pattern -->
+  <g opacity="0.08" stroke="#ffffff" stroke-width="2">
+    <line x1="64" y1="0" x2="64" y2="512"/>
+    <line x1="128" y1="0" x2="128" y2="512"/>
+    <line x1="192" y1="0" x2="192" y2="512"/>
+    <line x1="256" y1="0" x2="256" y2="512"/>
+    <line x1="320" y1="0" x2="320" y2="512"/>
+    <line x1="384" y1="0" x2="384" y2="512"/>
+    <line x1="448" y1="0" x2="448" y2="512"/>
+    <line x1="0" y1="64" x2="512" y2="64"/>
+    <line x1="0" y1="128" x2="512" y2="128"/>
+    <line x1="0" y1="192" x2="512" y2="192"/>
+    <line x1="0" y1="256" x2="512" y2="256"/>
+    <line x1="0" y1="320" x2="512" y2="320"/>
+    <line x1="0" y1="384" x2="512" y2="384"/>
+    <line x1="0" y1="448" x2="512" y2="448"/>
+  </g>
+
+  <!-- Main Calculator / Tool Frame -->
+  <g filter="url(#shadow)">
+    <rect x="116" y="96" width="280" height="320" rx="40" fill="#ffffff" fill-opacity="0.95"/>
+    
+    <!-- Screen Display -->
+    <rect x="144" y="128" width="224" height="68" rx="16" fill="#0f172a"/>
+    <!-- Screen content: Digital readout -->
+    <text x="352" y="174" fill="#34d399" font-family="monospace" font-size="32" font-weight="bold" text-anchor="end">3.14159</text>
+    
+    <!-- Calculator buttons -->
+    <rect x="144" y="220" width="46" height="42" rx="12" fill="#e2e8f0"/>
+    <text x="167" y="248" fill="#1e293b" font-family="sans-serif" font-size="20" font-weight="bold" text-anchor="middle">7</text>
+    
+    <rect x="202" y="220" width="46" height="42" rx="12" fill="#e2e8f0"/>
+    <text x="225" y="248" fill="#1e293b" font-family="sans-serif" font-size="20" font-weight="bold" text-anchor="middle">8</text>
+    
+    <rect x="260" y="220" width="46" height="42" rx="12" fill="#e2e8f0"/>
+    <text x="283" y="248" fill="#1e293b" font-family="sans-serif" font-size="20" font-weight="bold" text-anchor="middle">9</text>
+
+    <rect x="320" y="220" width="48" height="42" rx="12" fill="#f1f5f9"/>
+    <text x="344" y="248" fill="#059669" font-family="sans-serif" font-size="22" font-weight="bold" text-anchor="middle">÷</text>
+
+    <rect x="144" y="274" width="46" height="42" rx="12" fill="#e2e8f0"/>
+    <text x="167" y="302" fill="#1e293b" font-family="sans-serif" font-size="20" font-weight="bold" text-anchor="middle">4</text>
+    
+    <rect x="202" y="274" width="46" height="42" rx="12" fill="#e2e8f0"/>
+    <text x="225" y="302" fill="#1e293b" font-family="sans-serif" font-size="20" font-weight="bold" text-anchor="middle">5</text>
+    
+    <rect x="260" y="274" width="46" height="42" rx="12" fill="#e2e8f0"/>
+    <text x="283" y="302" fill="#1e293b" font-family="sans-serif" font-size="20" font-weight="bold" text-anchor="middle">6</text>
+
+    <rect x="320" y="274" width="48" height="42" rx="12" fill="#f1f5f9"/>
+    <text x="344" y="302" fill="#059669" font-family="sans-serif" font-size="22" font-weight="bold" text-anchor="middle">×</text>
+
+    <rect x="144" y="328" width="46" height="42" rx="12" fill="#e2e8f0"/>
+    <text x="167" y="356" fill="#1e293b" font-family="sans-serif" font-size="20" font-weight="bold" text-anchor="middle">1</text>
+    
+    <rect x="202" y="328" width="46" height="42" rx="12" fill="#e2e8f0"/>
+    <text x="225" y="356" fill="#1e293b" font-family="sans-serif" font-size="20" font-weight="bold" text-anchor="middle">2</text>
+    
+    <rect x="260" y="328" width="46" height="42" rx="12" fill="#e2e8f0"/>
+    <text x="283" y="356" fill="#1e293b" font-family="sans-serif" font-size="20" font-weight="bold" text-anchor="middle">3</text>
+
+    <rect x="320" y="328" width="48" height="42" rx="12" fill="#059669"/>
+    <text x="344" y="356" fill="#ffffff" font-family="sans-serif" font-size="22" font-weight="bold" text-anchor="middle">=</text>
+  </g>
+
+  <!-- Energy / Lightning Badge -->
+  <g filter="url(#shadow)" transform="translate(320, 310)">
+    <circle cx="50" cy="50" r="44" fill="url(#accent)"/>
+    <path d="M52 22 L32 50 L48 50 L44 76 L68 46 L52 46 Z" fill="#ffffff"/>
+  </g>
+</svg>

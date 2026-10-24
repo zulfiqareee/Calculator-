@@ -1,0 +1,27 @@
+{
+  "id": "/",
+  "name": "Smart Utility Tools — বাংলা ও English",
+  "short_name": "SmartTools",
+  "description": "Essential offline utility tools: Calculator, Electricity, Percentage, Units, Age, Electrical, Energy, and Date Difference.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#10b981",
+  "orientation": "portrait",
+  "categories": ["utilities", "productivity", "tools"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
