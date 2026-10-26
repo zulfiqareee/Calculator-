@@ -1,4 +1,4 @@
-name: Android Build (APK & AAB)
+name: Android Play Store (AAB) & Debug (APK) Build
 
 on:
   push:
@@ -9,6 +9,7 @@ on:
 
 jobs:
   build:
+    name: Build Play Store AAB & Test APK
     runs-on: ubuntu-latest
 
     steps:
@@ -41,16 +42,55 @@ jobs:
           npx cap sync android
           chmod +x android/gradlew
 
-      - name: Build Android Debug APK
+      - name: Build Android AAB (Play Store) and APK (Test)
         working-directory: ./android
         run: |
-          ./gradlew assembleDebug --stacktrace
-          echo "Verifying generated APK:"
-          ls -la app/build/outputs/apk/debug/ || find app/build/outputs -type f
+          echo "Building Release App Bundle (AAB) and Debug APK..."
+          ./gradlew bundleRelease assembleDebug --stacktrace
 
-      - name: Upload Debug APK
+          echo "Generating Google Play upload signing keystore..."
+          keytool -genkeypair -v \
+            -keystore ../smarttools-upload-keystore.jks \
+            -alias smarttools \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass "smarttools2026" \
+            -keypass "smarttools2026" \
+            -dname "CN=Smart Utility Tools, OU=Mobile, O=Smart Utility Tools, L=Dhaka, ST=Dhaka, C=BD"
+
+          AAB_FILE=$(find app/build/outputs/bundle/release/ -name "*.aab" | head -n 1)
+          if [ -n "$AAB_FILE" ]; then
+            echo "Signing Google Play Store AAB: $AAB_FILE"
+            jarsigner -sigalg SHA256withRSA -digestalg SHA-256 \
+              -keystore ../smarttools-upload-keystore.jks \
+              -storepass "smarttools2026" \
+              -keypass "smarttools2026" \
+              "$AAB_FILE" smarttools
+            echo "AAB successfully signed for Google Play Store upload!"
+          fi
+
+          echo "Saved files summary:"
+          ls -lh app/build/outputs/bundle/release/*.aab || true
+          ls -lh app/build/outputs/apk/debug/*.apk || true
+
+      - name: Upload Google Play Store AAB (App Bundle)
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
-          path: android/app/build/outputs/apk/**/*.apk
+          name: google-play-bundle-aab
+          path: android/app/build/outputs/bundle/release/*.aab
           if-no-files-found: error
+
+      - name: Upload Test APK (Direct Phone Install)
+        uses: actions/upload-artifact@v4
+        with:
+          name: phone-test-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Upload Play Store Keystore (Save for future updates)
+        uses: actions/upload-artifact@v4
+        with:
+          name: play-store-upload-keystore
+          path: smarttools-upload-keystore.jks
+          if-no-files-found: warn
