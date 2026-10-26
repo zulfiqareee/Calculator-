@@ -34,6 +34,10 @@ import {
   FileText,
   Mail,
   Lock,
+  BatteryCharging,
+  CloudSun,
+  Compass,
+  MapPin,
 } from 'lucide-react';
 import { Language, ThemeMode, ToolCategory, ToolId, ToolItem, CustomTool } from './types';
 import {
@@ -60,6 +64,12 @@ import { ElectricalCalculator } from './components/tools/ElectricalCalculator';
 import { EnergyConsumptionCalculator } from './components/tools/EnergyConsumptionCalculator';
 import { DateDifferenceCalculator } from './components/tools/DateDifferenceCalculator';
 import { CustomToolRunner } from './components/tools/CustomToolRunner';
+import { LoanEmiCalculator } from './components/tools/LoanEmiCalculator';
+import { LandMeasurementCalculator } from './components/tools/LandMeasurementCalculator';
+import { BmiCalorieCalculator } from './components/tools/BmiCalorieCalculator';
+import { BatteryIpsCalculator } from './components/tools/BatteryIpsCalculator';
+import { LiveWeatherView } from './components/tools/LiveWeatherView';
+import { PrayerTimesView } from './components/tools/PrayerTimesView';
 
 // Hero Banner & Views
 import { ScenicHeroBanner } from './components/ScenicHeroBanner';
@@ -225,6 +235,18 @@ export default function App() {
         return <Plug className={className} />;
       case 'CalendarRange':
         return <CalendarRange className={className} />;
+      case 'DollarSign':
+        return <DollarSign className={className} />;
+      case 'MapPin':
+        return <MapPin className={className} />;
+      case 'Heart':
+        return <Heart className={className} />;
+      case 'BatteryCharging':
+        return <BatteryCharging className={className} />;
+      case 'CloudSun':
+        return <CloudSun className={className} />;
+      case 'Compass':
+        return <Compass className={className} />;
       default:
         return <Sparkles className={className} />;
     }
@@ -268,6 +290,18 @@ export default function App() {
         return <EnergyConsumptionCalculator lang={lang} />;
       case 'date-diff':
         return <DateDifferenceCalculator lang={lang} />;
+      case 'emi':
+        return <LoanEmiCalculator lang={lang} />;
+      case 'land':
+        return <LandMeasurementCalculator lang={lang} />;
+      case 'bmi-calorie':
+        return <BmiCalorieCalculator lang={lang} />;
+      case 'battery-ips':
+        return <BatteryIpsCalculator lang={lang} />;
+      case 'weather':
+        return <LiveWeatherView lang={lang} />;
+      case 'prayer-times':
+        return <PrayerTimesView lang={lang} />;
       default:
         return null;
     }

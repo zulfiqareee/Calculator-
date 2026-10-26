@@ -12,6 +12,12 @@ export type ToolId =
   | 'electrical'
   | 'energy'
   | 'date-diff'
+  | 'emi'
+  | 'land'
+  | 'bmi-calorie'
+  | 'battery-ips'
+  | 'weather'
+  | 'prayer-times'
   | string;
 
 export interface ToolItem {
