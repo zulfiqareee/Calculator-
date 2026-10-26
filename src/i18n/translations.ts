@@ -120,15 +120,17 @@ export const UI_TEXT = {
     noHistory: 'No recent calculations yet. Use any tool to record history.',
     categories: {
       all: 'All',
+      electrical: 'Electrical Suite',
+      utility: 'Utility & Energy',
       finance: 'Finance & Math',
-      utility: 'Electrical & Utility',
       daily: 'Daily Life',
     },
     tabs: {
       home: 'Home',
       categories: 'Categories',
       history: 'History',
-      admob: 'AdMob & App',
+      admin: 'Admin Studio',
+      admob: 'AdMob',
       about: 'About & Policy',
     },
     actions: {
@@ -198,15 +200,17 @@ export const UI_TEXT = {
     noHistory: 'এখনো কোনো হিসাবের ইতিহাস নেই। যেকোনো টুল ব্যবহার করলে এখানে সংরক্ষিত হবে।',
     categories: {
       all: 'সকল',
-      finance: 'আর্থিক ও গণিত',
+      electrical: 'ইলেকট্রিক্যাল ইঞ্জিনিয়ারিং',
       utility: 'বিদ্যুৎ ও প্রযুক্তি',
+      finance: 'আর্থিক ও গণিত',
       daily: 'দৈনন্দিন জীবন',
     },
     tabs: {
       home: 'হোম',
       categories: 'ক্যাটাগরি',
       history: 'ইতিহাস',
-      admob: 'অ্যাডমব ও অ্যাপ',
+      admin: 'অ্যাডমিন স্টুডিও',
+      admob: 'অ্যাডমব',
       about: 'পলিসি ও পরিচিতি',
     },
     actions: {

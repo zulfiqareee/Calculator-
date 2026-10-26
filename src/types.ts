@@ -1,7 +1,7 @@
 export type Language = 'en' | 'bn';
 export type ThemeMode = 'light' | 'dark' | 'system';
 
-export type ToolCategory = 'all' | 'finance' | 'utility' | 'daily';
+export type ToolCategory = 'all' | 'finance' | 'utility' | 'daily' | 'electrical';
 
 export type ToolId =
   | 'calculator'
@@ -11,11 +11,12 @@ export type ToolId =
   | 'age'
   | 'electrical'
   | 'energy'
-  | 'date-diff';
+  | 'date-diff'
+  | string;
 
 export interface ToolItem {
   id: ToolId;
-  category: 'finance' | 'utility' | 'daily';
+  category: 'finance' | 'utility' | 'daily' | 'electrical';
   titleEn: string;
   titleBn: string;
   descEn: string;
@@ -25,6 +26,39 @@ export interface ToolItem {
   iconName: string;
   gradient: string;
   accentColor: string;
+  isCustom?: boolean;
+}
+
+export interface CustomToolInput {
+  id: string;
+  labelEn: string;
+  labelBn: string;
+  variable: string; // e.g. "x", "v", "amps"
+  defaultValue: number;
+  unit: string;
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+export interface CustomTool {
+  id: string;
+  titleEn: string;
+  titleBn: string;
+  descEn: string;
+  descBn: string;
+  category: 'finance' | 'utility' | 'daily' | 'electrical';
+  badgeEn: string;
+  badgeBn: string;
+  iconName: string;
+  gradient: string;
+  inputs: CustomToolInput[];
+  formula: string; // e.g. "v * i * 0.8" or "p / (v * Math.sqrt(3))"
+  outputLabelEn: string;
+  outputLabelBn: string;
+  outputUnit: string;
+  formulaDesc?: string;
+  createdAt: number;
 }
 
 export interface CalculationRecord {
