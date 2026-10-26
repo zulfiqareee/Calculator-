@@ -5,13 +5,13 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {
+  Menu,
   Calculator,
   Zap,
   Percent,
   ArrowRightLeft,
   CalendarClock,
   Cpu,
-  Flame,
   CalendarRange,
   Search,
   Heart,
@@ -20,16 +20,16 @@ import {
   Sun,
   ArrowLeft,
   Home,
-  Grid,
-  DollarSign,
+  Settings,
   ShieldCheck,
   Sparkles,
   X,
   ChevronRight,
   WifiOff,
   Sliders,
-  Settings,
-  BatteryCharging,
+  DollarSign,
+  Plug,
+  Share2,
 } from 'lucide-react';
 import { Language, ThemeMode, ToolCategory, ToolId, ToolItem, CustomTool } from './types';
 import {
@@ -56,33 +56,34 @@ import { EnergyConsumptionCalculator } from './components/tools/EnergyConsumptio
 import { DateDifferenceCalculator } from './components/tools/DateDifferenceCalculator';
 import { CustomToolRunner } from './components/tools/CustomToolRunner';
 
-// Auxiliary views & Admin
+// Hero Banner & Views
+import { ScenicHeroBanner } from './components/ScenicHeroBanner';
 import { AdminPanel } from './components/admin/AdminPanel';
 import { AdMobBanner } from './components/admob/AdMobBanner';
 import { AdMobManager } from './components/admob/AdMobManager';
 import { HistoryView } from './components/HistoryView';
 import { AboutPolicy } from './components/AboutPolicy';
-import { PWAInstallButton } from './components/PWAInstallButton';
 
-type ActiveTab = 'home' | 'categories' | 'history' | 'admin' | 'about';
+type BottomTab = 'home' | 'favorites' | 'recents' | 'settings';
 
 export default function App() {
   const [lang, setLang] = useState<Language>(getStoredLanguage());
   const [theme, setTheme] = useState<ThemeMode>(getStoredTheme());
-  const [activeTab, setActiveTab] = useState<ActiveTab>('home');
+  const [activeTab, setActiveTab] = useState<BottomTab>('home');
   const [activeToolId, setActiveToolId] = useState<ToolId | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedCategory, setSelectedCategory] = useState<ToolCategory>('all');
   const [favorites, setFavorites] = useState<string[]>(getStoredFavorites());
   const [recents, setRecents] = useState<string[]>(getStoredRecents());
   const [customTools, setCustomTools] = useState<CustomTool[]>(getStoredCustomTools());
+  const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
+  const [settingsSubView, setSettingsSubView] = useState<'main' | 'admin' | 'admob' | 'about'>('main');
   const [isOnline, setIsOnline] = useState<boolean>(
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
 
   const t = UI_TEXT[lang];
 
-  // Refresh custom tools list
+  // Refresh custom tools
   const refreshCustomTools = () => {
     setCustomTools(getStoredCustomTools());
   };
@@ -92,7 +93,7 @@ export default function App() {
     document.documentElement.lang = lang;
   }, [lang]);
 
-  // Handle Online/Offline Detection
+  // Online / Offline Detection
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -104,7 +105,7 @@ export default function App() {
     };
   }, []);
 
-  // Handle Theme
+  // Theme Sync
   useEffect(() => {
     const root = document.documentElement;
     if (theme === 'dark') {
@@ -121,7 +122,7 @@ export default function App() {
     }
   }, [theme]);
 
-  // Combined built-in and dynamic custom tools
+  // Combined built-in tools + dynamic custom tools
   const allTools: ToolItem[] = useMemo(() => {
     const mappedCustom: ToolItem[] = customTools.map((ct) => ({
       id: ct.id,
@@ -140,10 +141,9 @@ export default function App() {
     return [...TOOLS_LIST, ...mappedCustom];
   }, [customTools]);
 
-  const toggleLanguage = () => {
-    const nextLang: Language = lang === 'en' ? 'bn' : 'en';
-    setLang(nextLang);
-    setStoredLanguage(nextLang);
+  const switchLanguage = (newLang: Language) => {
+    setLang(newLang);
+    setStoredLanguage(newLang);
   };
 
   const toggleTheme = () => {
@@ -168,6 +168,7 @@ export default function App() {
     setActiveToolId(id);
     addStoredRecent(id);
     setRecents(getStoredRecents());
+    setIsDrawerOpen(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -175,32 +176,20 @@ export default function App() {
     setActiveToolId(null);
   };
 
-  // Filter tools based on category & search query
+  // Filter tools based on search query
   const filteredTools = useMemo(() => {
+    if (searchQuery.trim() === '') return allTools;
+    const q = searchQuery.toLowerCase().trim();
     return allTools.filter((tool) => {
-      if (selectedCategory !== 'all') {
-        if (selectedCategory === 'electrical') {
-          // Include electrical tools and custom electrical tools
-          if (tool.id !== 'electrical' && tool.id !== 'electricity' && tool.category !== 'electrical') {
-            return false;
-          }
-        } else if (tool.category !== selectedCategory) {
-          return false;
-        }
-      }
-      if (searchQuery.trim() !== '') {
-        const q = searchQuery.toLowerCase().trim();
-        const matchTitle =
-          tool.titleEn.toLowerCase().includes(q) || tool.titleBn.toLowerCase().includes(q);
-        const matchDesc =
-          tool.descEn.toLowerCase().includes(q) || tool.descBn.toLowerCase().includes(q);
-        const matchBadge =
-          tool.badgeEn.toLowerCase().includes(q) || tool.badgeBn.toLowerCase().includes(q);
-        return matchTitle || matchDesc || matchBadge;
-      }
-      return true;
+      const matchTitle =
+        tool.titleEn.toLowerCase().includes(q) || tool.titleBn.toLowerCase().includes(q);
+      const matchDesc =
+        tool.descEn.toLowerCase().includes(q) || tool.descBn.toLowerCase().includes(q);
+      const matchBadge =
+        tool.badgeEn.toLowerCase().includes(q) || tool.badgeBn.toLowerCase().includes(q);
+      return matchTitle || matchDesc || matchBadge;
     });
-  }, [allTools, selectedCategory, searchQuery]);
+  }, [allTools, searchQuery]);
 
   // Favorite tools
   const favoriteTools = useMemo(() => {
@@ -229,20 +218,31 @@ export default function App() {
         return <CalendarClock className={className} />;
       case 'Cpu':
         return <Cpu className={className} />;
-      case 'Flame':
-        return <Flame className={className} />;
+      case 'Plug':
+        return <Plug className={className} />;
       case 'CalendarRange':
         return <CalendarRange className={className} />;
-      case 'BatteryCharging':
-        return <BatteryCharging className={className} />;
       default:
         return <Sparkles className={className} />;
     }
   };
 
+  // Format 2-line title in Bengali
+  const renderTitleFormatted = (title: string) => {
+    const parts = title.split(' ');
+    if (parts.length >= 2) {
+      return (
+        <span className="flex flex-col leading-tight">
+          <span>{parts[0]}</span>
+          <span>{parts.slice(1).join(' ')}</span>
+        </span>
+      );
+    }
+    return <span>{title}</span>;
+  };
+
   // Render Tool Component
   const renderActiveToolComponent = () => {
-    // Check if it's a dynamic custom tool
     const customTool = customTools.find((ct) => ct.id === activeToolId);
     if (customTool) {
       return <CustomToolRunner lang={lang} tool={customTool} />;
@@ -275,101 +275,93 @@ export default function App() {
     : null;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col antialiased selection:bg-emerald-500 selection:text-white">
+    <div className="min-h-screen bg-[#F4F7FD] dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col justify-between max-w-md mx-auto shadow-2xl relative overflow-x-hidden antialiased">
       {/* Offline Toast Banner */}
       {!isOnline && (
-        <div className="bg-amber-600 text-white text-xs font-semibold px-4 py-2 text-center flex items-center justify-center gap-2 shadow-sm">
-          <WifiOff className="w-3.5 h-3.5" />
-          <span>{lang === 'bn' ? 'অফলাইন মোড সক্রিয় — সকল টুল নির্বিঘ্নে চলবে।' : 'Offline Mode Active — All tools operate locally.'}</span>
+        <div className="bg-amber-600 text-white text-[11px] font-semibold px-4 py-1.5 text-center flex items-center justify-center gap-1.5 shadow-xs z-50">
+          <WifiOff className="w-3 h-3" />
+          <span>{lang === 'bn' ? 'অফলাইন মোড সক্রিয়' : 'Offline Mode Active'}</span>
         </div>
       )}
 
-      {/* Top Header Bar */}
-      <header className="sticky top-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 px-4 sm:px-6 h-15 flex items-center justify-between gap-3 shadow-xs">
-        {/* Brand / Logo */}
+      {/* =========================================================================
+          TOP ROYAL BLUE HEADER BAR (Matches User Screenshot)
+         ========================================================================= */}
+      <header className="bg-[#0B63F6] text-white px-4 pt-3 pb-3.5 shadow-md flex items-center justify-between sticky top-0 z-40">
+        {/* Left: Hamburger Menu Button */}
+        <button
+          onClick={() => setIsDrawerOpen(true)}
+          className="p-1.5 -ml-1 text-white hover:bg-white/10 rounded-xl transition active:scale-90"
+          title="Open Menu"
+        >
+          <Menu className="w-6 h-6 stroke-[2.4]" />
+        </button>
+
+        {/* Center: Title & Subtitle */}
         <div
           onClick={() => {
             closeTool();
             setActiveTab('home');
           }}
-          className="flex items-center gap-2.5 cursor-pointer shrink-0 select-none group"
+          className="flex flex-col text-left cursor-pointer flex-1 ml-3 select-none"
         >
-          <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-emerald-600 via-emerald-500 to-teal-400 p-0.5 shadow-md shadow-emerald-500/20 flex items-center justify-center transition-transform group-hover:scale-105">
-            <div className="w-full h-full bg-slate-950/40 rounded-[14px] flex items-center justify-center text-white">
-              <Sparkles className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="flex flex-col">
-            <span className="font-extrabold text-sm sm:text-base tracking-tight text-slate-900 dark:text-white leading-tight">
-              {lang === 'bn' ? 'স্মার্ট টুলস ও ইলেকট্রিক্যাল' : 'Smart Tools & Electrical'}
-            </span>
-            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold tracking-wide uppercase leading-none mt-0.5">
-              {lang === 'bn' ? 'বাংলা ও English' : 'Bengali & English'}
-            </span>
-          </div>
+          <h1 className="font-extrabold text-[17px] tracking-tight text-white leading-tight">
+            Smart Utility Tools
+          </h1>
+          <span className="text-[11px] text-blue-100/90 font-medium tracking-wide leading-none mt-0.5">
+            Simple · Fast · Useful
+          </span>
         </div>
 
-        {/* Right Top Actions */}
-        <div className="flex items-center gap-2">
-          {/* Admin Studio Quick Launch Button */}
+        {/* Right: Bilingual Pill Switcher (Matches User Screenshot) */}
+        <div className="bg-[#0047C7]/60 border border-white/60 p-0.5 rounded-full flex items-center shrink-0 shadow-inner">
           <button
-            onClick={() => {
-              closeTool();
-              setActiveTab('admin');
-            }}
-            className="h-9 px-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
-            title="Admin Studio (নতুন টুল যোগ করুন)"
+            onClick={() => switchLanguage('bn')}
+            className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+              lang === 'bn'
+                ? 'bg-white text-emerald-600 shadow-sm'
+                : 'text-white/90 hover:text-white'
+            }`}
           >
-            <Sliders className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{lang === 'bn' ? 'অ্যাডমিন স্টুডিও' : 'Admin'}</span>
+            বাংলা
           </button>
-
-          {/* PWA Install Button */}
-          <PWAInstallButton lang={lang} />
-
-          {/* Language Switcher */}
           <button
-            onClick={toggleLanguage}
-            className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 hover:border-emerald-500/50 hover:text-emerald-600 dark:hover:text-emerald-400 text-xs font-bold transition shadow-xs active:scale-95 flex items-center justify-center"
-            title="Switch Language / ভাষা পরিবর্তন"
+            onClick={() => switchLanguage('en')}
+            className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+              lang === 'en'
+                ? 'bg-white text-[#0B63F6] shadow-sm'
+                : 'text-white/90 hover:text-white'
+            }`}
           >
-            {lang === 'en' ? 'বাংলা' : 'English'}
-          </button>
-
-          {/* Theme Switcher */}
-          <button
-            onClick={toggleTheme}
-            className="w-9 h-9 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 flex items-center justify-center transition shadow-xs active:scale-95"
-            title="Toggle Light/Dark Theme"
-          >
-            {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
+            EN
           </button>
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 py-5 pb-32">
-        {/* TOOL SCREEN VIEW */}
+      {/* =========================================================================
+          MAIN SCROLLABLE CONTENT AREA
+         ========================================================================= */}
+      <main className="flex-1 px-4 py-4 pb-28">
+        {/* ACTIVE TOOL VIEW */}
         {activeToolId && currentTool ? (
-          <div className="flex flex-col gap-5">
-            {/* Tool Nav Bar */}
+          <div className="flex flex-col gap-4">
+            {/* Top Bar for Tool Screen */}
             <div className="flex items-center justify-between">
               <button
                 onClick={closeTool}
-                className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:text-emerald-600 dark:hover:text-emerald-400 transition px-3.5 py-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs active:scale-95"
+                className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:text-[#0B63F6] transition px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs"
               >
                 <ArrowLeft className="w-4 h-4" />
                 <span>{t.actions.back}</span>
               </button>
 
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-bold px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/80">
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-blue-50 dark:bg-slate-800 text-[#0B63F6] dark:text-blue-400 border border-blue-200/60 dark:border-slate-700">
                   {lang === 'bn' ? currentTool.badgeBn : currentTool.badgeEn}
                 </span>
                 <button
                   onClick={(e) => toggleFavorite(currentTool.id, e)}
-                  className="p-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-rose-500 shadow-xs transition active:scale-95"
-                  title="Toggle Favorite"
+                  className="p-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-rose-500 shadow-xs transition"
                 >
                   <Heart
                     className={`w-4 h-4 ${
@@ -382,443 +374,521 @@ export default function App() {
               </div>
             </div>
 
-            {/* Tool Header Card with Gradient Accent */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800/80 rounded-3xl p-5 shadow-xs flex items-center gap-4">
+            {/* Tool Banner Title */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-4 shadow-xs flex items-center gap-3.5">
               <div
-                className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${currentTool.gradient} text-white flex items-center justify-center shrink-0 shadow-md`}
+                className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${currentTool.gradient} text-white flex items-center justify-center shrink-0 shadow-sm`}
               >
-                {renderToolIcon(currentTool.iconName, 'w-7 h-7')}
+                {renderToolIcon(currentTool.iconName, 'w-6 h-6')}
               </div>
               <div className="min-w-0">
-                <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight truncate">
+                <h1 className="text-base font-bold text-slate-900 dark:text-white truncate">
                   {lang === 'bn' ? currentTool.titleBn : currentTool.titleEn}
                 </h1>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">
                   {lang === 'bn' ? currentTool.descBn : currentTool.descEn}
                 </p>
               </div>
             </div>
 
-            {/* Render Tool Body */}
+            {/* Tool Body */}
             {renderActiveToolComponent()}
           </div>
         ) : (
-          /* TAB SCREENS */
+          /* TAB 1: HOME (Exact match to user's design) */
           <>
-            {/* TAB: HOME */}
             {activeTab === 'home' && (
-              <div className="flex flex-col gap-6">
-                {/* Hero Showcase Card */}
-                <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950 border border-slate-800 rounded-3xl p-5 sm:p-7 shadow-xl text-white">
-                  <div className="absolute top-0 right-0 -mt-10 -mr-10 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-                  
-                  <div className="relative z-10 flex flex-col gap-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] uppercase font-extrabold tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                        {lang === 'bn' ? '১০০% অফলাইন ইলেকট্রিক্যাল ও ইউটিলিটি টুলবক্স' : '100% Offline Electrical & Utility Toolkit'}
-                      </span>
-                    </div>
-
-                    <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white leading-tight">
-                      {lang === 'bn' ? 'ইলেকট্রিক্যাল ও স্মার্ট ইউটিলিটি টুলস' : 'Smart Electrical & Utility Tools'}
-                    </h1>
-                    <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-                      {lang === 'bn'
-                        ? 'ওহমস ল, ১-ফেজ/৩-ফেজ পাওয়ার, ভোল্টেজ ড্রপ ও তারের সাইজ, মোটর কারেন্ট, ক্যাপাসিটর ব্যাংক, ট্রান্সফরমার এবং কাস্টম অ্যাডমিন ফর্মুলা স্টুডিও।'
-                        : 'Ohm’s law, 3-phase power, cable voltage drop sizing, motor FLA, capacitor bank kVAR, transformers, and custom formula builder.'}
-                    </p>
-
-                    {/* Integrated Search Box */}
-                    <div className="relative mt-2">
-                      <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder={t.searchPlaceholder}
-                        className="w-full h-13 bg-slate-950/80 border border-slate-700/80 rounded-2xl pl-11 pr-10 text-xs sm:text-sm font-medium text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 shadow-inner"
-                      />
-                      {searchQuery && (
-                        <button
-                          onClick={() => setSearchQuery('')}
-                          className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-white"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Category Filter Tabs */}
-                <div className="flex overflow-x-auto gap-2 no-scrollbar py-0.5">
-                  {(['all', 'electrical', 'utility', 'finance', 'daily'] as ToolCategory[]).map((cat) => (
+              <div className="flex flex-col gap-4">
+                {/* Search Bar (Matches User Screenshot) */}
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={lang === 'bn' ? 'টুল খুঁজুন...' : 'Search tools...'}
+                    className="w-full h-11 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl pl-10 pr-9 text-xs sm:text-sm font-medium text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0B63F6] shadow-xs"
+                  />
+                  {searchQuery && (
                     <button
-                      key={cat}
-                      onClick={() => setSelectedCategory(cat)}
-                      className={`whitespace-nowrap px-4 py-2.5 rounded-2xl text-xs font-bold transition shrink-0 ${
-                        selectedCategory === cat
-                          ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
-                          : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200/90 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
-                      }`}
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
                     >
-                      {t.categories[cat]}
+                      <X className="w-3.5 h-3.5" />
                     </button>
-                  ))}
-                </div>
-
-                {/* Favourites Strip (if any favorited) */}
-                {!searchQuery && selectedCategory === 'all' && favoriteTools.length > 0 && (
-                  <div className="flex flex-col gap-2.5">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
-                      <Heart className="w-4 h-4 text-rose-500 fill-rose-500" />
-                      <span>{t.favorites}</span>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                      {favoriteTools.map((tool) => (
-                        <div
-                          key={`fav-${tool.id}`}
-                          onClick={() => openTool(tool.id)}
-                          className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 hover:border-emerald-500/60 rounded-2xl p-3.5 shadow-xs flex items-center justify-between cursor-pointer transition active:scale-98"
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div
-                              className={`w-9 h-9 rounded-xl bg-gradient-to-br ${tool.gradient} text-white flex items-center justify-center shrink-0 shadow-xs`}
-                            >
-                              {renderToolIcon(tool.iconName, 'w-4 h-4')}
-                            </div>
-                            <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                              {lang === 'bn' ? tool.titleBn : tool.titleEn}
-                            </span>
-                          </div>
-                          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0 ml-1" />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Recently Used Tray */}
-                {!searchQuery && selectedCategory === 'all' && recentTools.length > 0 && (
-                  <div className="flex flex-col gap-2.5">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
-                      <Clock className="w-4 h-4 text-slate-500" />
-                      <span>{t.recents}</span>
-                    </div>
-                    <div className="flex overflow-x-auto gap-2.5 no-scrollbar pb-1">
-                      {recentTools.map((tool) => (
-                        <button
-                          key={`recent-${tool.id}`}
-                          onClick={() => openTool(tool.id)}
-                          className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 shrink-0 hover:border-emerald-500/50 transition active:scale-98 shadow-xs"
-                        >
-                          <div
-                            className={`w-7 h-7 rounded-lg bg-gradient-to-br ${tool.gradient} text-white flex items-center justify-center`}
-                          >
-                            {renderToolIcon(tool.iconName, 'w-3.5 h-3.5')}
-                          </div>
-                          <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                            {lang === 'bn' ? tool.titleBn : tool.titleEn}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Primary Tools Catalog Grid */}
-                <div className="flex flex-col gap-3.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                      {selectedCategory === 'all'
-                        ? t.allTools
-                        : t.categories[selectedCategory]}{' '}
-                      ({formatNumber(filteredTools.length, lang)})
-                    </span>
-
-                    <button
-                      onClick={() => setActiveTab('admin')}
-                      className="text-xs text-emerald-600 dark:text-emerald-400 font-bold hover:underline flex items-center gap-1"
-                    >
-                      <Sliders className="w-3.5 h-3.5" />
-                      <span>{lang === 'bn' ? '+ কাস্টম টুল যোগ করুন' : '+ Add Custom Tool'}</span>
-                    </button>
-                  </div>
-
-                  {filteredTools.length === 0 ? (
-                    <div className="p-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl text-center text-xs text-slate-500">
-                      {lang === 'bn' ? 'কোনো টুল পাওয়া যায়নি।' : 'No matching tools found.'}
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                      {filteredTools.map((tool) => {
-                        const isFav = favorites.includes(tool.id);
-                        return (
-                          <div
-                            key={tool.id}
-                            onClick={() => openTool(tool.id)}
-                            className="group bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 hover:border-emerald-500/70 dark:hover:border-emerald-500/50 rounded-3xl p-5 shadow-xs hover:shadow-lg transition-all duration-200 cursor-pointer flex flex-col justify-between relative active:scale-98"
-                          >
-                            <div>
-                              {/* Card Top: Gradient Squircle Icon & Favorite Toggle */}
-                              <div className="flex items-center justify-between mb-4">
-                                <div
-                                  className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${tool.gradient} text-white flex items-center justify-center shadow-md transition-transform group-hover:scale-105`}
-                                >
-                                  {renderToolIcon(tool.iconName, 'w-6 h-6')}
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  {tool.isCustom && (
-                                    <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                                      Custom
-                                    </span>
-                                  )}
-                                  <button
-                                    onClick={(e) => toggleFavorite(tool.id, e)}
-                                    className="p-1.5 text-slate-400 hover:text-rose-500 transition active:scale-90"
-                                    title="Add to Favorites"
-                                  >
-                                    <Heart
-                                      className={`w-4 h-4 ${
-                                        isFav ? 'fill-rose-500 text-rose-500' : ''
-                                      }`}
-                                    />
-                                  </button>
-                                </div>
-                              </div>
-
-                              {/* Title & Desc */}
-                              <h3 className="font-extrabold text-base text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors leading-snug">
-                                {lang === 'bn' ? tool.titleBn : tool.titleEn}
-                              </h3>
-                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 line-clamp-2 leading-relaxed">
-                                {lang === 'bn' ? tool.descBn : tool.descEn}
-                              </p>
-                            </div>
-
-                            {/* Card Footer */}
-                            <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
-                              <span className="font-semibold text-slate-400 text-[11px]">
-                                {lang === 'bn' ? tool.badgeBn : tool.badgeEn}
-                              </span>
-                              <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
-                                <span>{lang === 'bn' ? 'ব্যবহার করুন' : 'Open'}</span>
-                                <ChevronRight className="w-3.5 h-3.5" />
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
                   )}
                 </div>
-              </div>
-            )}
 
-            {/* TAB: CATEGORIES */}
-            {activeTab === 'categories' && (
-              <div className="flex flex-col gap-6">
-                {(['electrical', 'utility', 'finance', 'daily'] as const).map((catKey) => {
-                  const toolsInCat = allTools.filter((t) => {
-                    if (catKey === 'electrical') {
-                      return t.id === 'electrical' || t.id === 'electricity' || t.category === 'electrical';
-                    }
-                    return t.category === catKey;
-                  });
-                  if (toolsInCat.length === 0) return null;
-                  return (
-                    <div key={catKey} className="flex flex-col gap-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                        <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                          {t.categories[catKey]}
-                        </h2>
+                {/* Scenic Landscape Hero Banner (Matches User Screenshot) */}
+                {!searchQuery && <ScenicHeroBanner lang={lang} />}
+
+                {/* Section Title: "টুলস সমূহ" */}
+                <div className="flex items-center justify-between pt-1">
+                  <h2 className="text-base font-bold text-[#0B3A82] dark:text-blue-300 tracking-tight">
+                    {lang === 'bn' ? 'টুলস সমূহ' : 'All Tools'}
+                  </h2>
+                  <span className="text-[11px] font-semibold text-slate-400">
+                    {formatNumber(filteredTools.length, lang)} {lang === 'bn' ? 'টি' : 'items'}
+                  </span>
+                </div>
+
+                {/* 2-Column Tools Grid (Exact match to User Screenshot) */}
+                <div className="grid grid-cols-2 gap-3">
+                  {filteredTools.map((tool) => (
+                    <div
+                      key={tool.id}
+                      onClick={() => openTool(tool.id)}
+                      className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/90 rounded-2xl p-3 flex items-center gap-2.5 shadow-xs hover:shadow-md transition active:scale-97 cursor-pointer select-none"
+                    >
+                      {/* Left Squircle Colored Icon */}
+                      <div
+                        className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br ${tool.gradient} text-white flex items-center justify-center shrink-0 shadow-sm`}
+                      >
+                        {renderToolIcon(tool.iconName, 'w-6 h-6')}
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                        {toolsInCat.map((tool) => (
-                          <div
-                            key={tool.id}
-                            onClick={() => openTool(tool.id)}
-                            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-xs flex items-center justify-between cursor-pointer hover:border-emerald-500/50 transition active:scale-98"
-                          >
-                            <div className="flex items-center gap-3.5 min-w-0">
-                              <div
-                                className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${tool.gradient} text-white flex items-center justify-center shrink-0 shadow-sm`}
-                              >
-                                {renderToolIcon(tool.iconName, 'w-6 h-6')}
-                              </div>
-                              <div className="flex flex-col min-w-0">
-                                <span className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                                  {lang === 'bn' ? tool.titleBn : tool.titleEn}
-                                </span>
-                                <span className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                                  {lang === 'bn' ? tool.descBn : tool.descEn}
-                                </span>
-                              </div>
-                            </div>
-                            <ChevronRight className="w-4 h-4 text-slate-400 shrink-0 ml-2" />
-                          </div>
-                        ))}
+
+                      {/* Right 2-line Label */}
+                      <div className="min-w-0 flex-1">
+                        <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 leading-tight block">
+                          {renderTitleFormatted(lang === 'bn' ? tool.titleBn : tool.titleEn)}
+                        </span>
                       </div>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
             )}
 
-            {/* TAB: HISTORY */}
-            {activeTab === 'history' && (
+            {/* TAB 2: FAVORITES */}
+            {activeTab === 'favorites' && (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <Heart className="w-5 h-5 text-rose-500 fill-rose-500" />
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                    {lang === 'bn' ? 'পছন্দের তালিকা' : 'Favorite Tools'}
+                  </h2>
+                </div>
+
+                {favoriteTools.length === 0 ? (
+                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center text-xs text-slate-400">
+                    {lang === 'bn' ? 'এখনো কোনো টুল ফেভারিটে যোগ করেননি।' : 'No favorite tools saved yet.'}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    {favoriteTools.map((tool) => (
+                      <div
+                        key={`fav-${tool.id}`}
+                        onClick={() => openTool(tool.id)}
+                        className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-3 flex items-center gap-2.5 shadow-xs hover:shadow-md transition active:scale-97 cursor-pointer"
+                      >
+                        <div
+                          className={`w-11 h-11 rounded-2xl bg-gradient-to-br ${tool.gradient} text-white flex items-center justify-center shrink-0 shadow-sm`}
+                        >
+                          {renderToolIcon(tool.iconName, 'w-6 h-6')}
+                        </div>
+                        <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 leading-tight">
+                          {renderTitleFormatted(lang === 'bn' ? tool.titleBn : tool.titleEn)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 3: RECENTS (সাম্প্রতিক) */}
+            {activeTab === 'recents' && (
               <HistoryView lang={lang} onSelectTool={openTool} />
             )}
 
-            {/* TAB: ADMIN STUDIO */}
-            {activeTab === 'admin' && (
-              <AdminPanel
-                lang={lang}
-                onOpenTool={openTool}
-                onRefreshTools={refreshCustomTools}
-              />
-            )}
+            {/* TAB 4: SETTINGS & ADMIN (সেটিংস) */}
+            {activeTab === 'settings' && (
+              <div className="flex flex-col gap-4">
+                {settingsSubView === 'main' && (
+                  <div className="flex flex-col gap-3">
+                    <h2 className="text-base font-bold text-slate-900 dark:text-white mb-1">
+                      {lang === 'bn' ? 'অ্যাপ সেটিংস ও নিয়ন্ত্রণ' : 'Settings & Control'}
+                    </h2>
 
-            {/* TAB: ABOUT & ADMOB */}
-            {activeTab === 'about' && (
-              <div className="flex flex-col gap-6">
-                <AboutPolicy lang={lang} />
-                <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
-                  <h2 className="text-base font-bold text-slate-900 dark:text-white mb-3">
-                    {lang === 'bn' ? 'অ্যাডমব মনিটাইজেশন কনফিগারেশন' : 'AdMob Monetization Settings'}
-                  </h2>
-                  <AdMobManager lang={lang} />
-                </div>
+                    {/* Admin Studio Navigation Card */}
+                    <button
+                      onClick={() => setSettingsSubView('admin')}
+                      className="bg-gradient-to-r from-[#0B63F6] to-blue-700 text-white p-4 rounded-2xl flex items-center justify-between shadow-md active:scale-98 transition text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-white">
+                          <Sliders className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <span className="font-bold text-sm block">
+                            {lang === 'bn' ? 'অ্যাডমিন ফর্মুলা স্টুডিও' : 'Admin Formula Studio'}
+                          </span>
+                          <span className="text-[11px] text-blue-100 block">
+                            {lang === 'bn' ? 'নতুন ক্যালকুলেটর ও সূত্র যুক্ত করুন' : 'Add custom calculators & formulas'}
+                          </span>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-white/80" />
+                    </button>
+
+                    {/* AdMob Settings Card */}
+                    <button
+                      onClick={() => setSettingsSubView('admob')}
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl flex items-center justify-between shadow-xs active:scale-98 transition text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
+                          <DollarSign className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white block">
+                            {lang === 'bn' ? 'গুগল অ্যাডমব মনিটাইজেশন' : 'Google AdMob Monetization'}
+                          </span>
+                          <span className="text-[11px] text-slate-400 block">
+                            {lang === 'bn' ? 'অ্যাপ আইডি ও ব্যানার ব্যানার কনফিগার' : 'App ID & Unit IDs inspector'}
+                          </span>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-400" />
+                    </button>
+
+                    {/* About & Policy */}
+                    <button
+                      onClick={() => setSettingsSubView('about')}
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl flex items-center justify-between shadow-xs active:scale-98 transition text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                          <ShieldCheck className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white block">
+                            {lang === 'bn' ? 'পলিসি ও পরিচিতি' : 'About & Privacy Policy'}
+                          </span>
+                          <span className="text-[11px] text-slate-400 block">
+                            {lang === 'bn' ? 'প্লে স্টোর টার্মস ও ভার্সন ১.০.০' : 'Play Store compliant policy'}
+                          </span>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-400" />
+                    </button>
+
+                    {/* Dark Mode Toggle */}
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl flex items-center justify-between shadow-xs">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-amber-400 flex items-center justify-center">
+                          {theme === 'dark' ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-slate-700" />}
+                        </div>
+                        <div>
+                          <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white block">
+                            {lang === 'bn' ? 'ডার্ক মোড' : 'Dark Mode'}
+                          </span>
+                          <span className="text-[11px] text-slate-400 block">
+                            {theme === 'dark' ? 'Dark theme active' : 'Light theme active'}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={toggleTheme}
+                        className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-xs font-bold rounded-xl text-slate-700 dark:text-slate-300"
+                      >
+                        {theme === 'dark' ? 'Light' : 'Dark'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Subview: Admin Studio */}
+                {settingsSubView === 'admin' && (
+                  <div className="flex flex-col gap-3">
+                    <button
+                      onClick={() => setSettingsSubView('main')}
+                      className="flex items-center gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-[#0B63F6] mb-1"
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                      <span>{lang === 'bn' ? 'সেটিংসে ফিরুন' : 'Back to Settings'}</span>
+                    </button>
+                    <AdminPanel
+                      lang={lang}
+                      onOpenTool={(toolId) => openTool(toolId)}
+                      onRefreshTools={refreshCustomTools}
+                    />
+                  </div>
+                )}
+
+                {/* Subview: AdMob Manager */}
+                {settingsSubView === 'admob' && (
+                  <div className="flex flex-col gap-3">
+                    <button
+                      onClick={() => setSettingsSubView('main')}
+                      className="flex items-center gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-[#0B63F6] mb-1"
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                      <span>{lang === 'bn' ? 'সেটিংসে ফিরুন' : 'Back to Settings'}</span>
+                    </button>
+                    <AdMobManager lang={lang} />
+                  </div>
+                )}
+
+                {/* Subview: About Policy */}
+                {settingsSubView === 'about' && (
+                  <div className="flex flex-col gap-3">
+                    <button
+                      onClick={() => setSettingsSubView('main')}
+                      className="flex items-center gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-[#0B63F6] mb-1"
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                      <span>{lang === 'bn' ? 'সেটিংসে ফিরুন' : 'Back to Settings'}</span>
+                    </button>
+                    <AboutPolicy lang={lang} />
+                  </div>
+                )}
               </div>
             )}
           </>
         )}
       </main>
 
-      {/* Persistent AdMob Banner at Bottom */}
-      <div className="fixed bottom-16 left-0 right-0 z-30 shadow-md">
+      {/* =========================================================================
+          PERSISTENT ADMOB BANNER AT BOTTOM
+         ========================================================================= */}
+      <div className="fixed bottom-16 left-0 right-0 max-w-md mx-auto z-30 shadow-md">
         <AdMobBanner
           lang={lang}
           onOpenGuide={() => {
             closeTool();
-            setActiveTab('about');
+            setActiveTab('settings');
+            setSettingsSubView('admob');
           }}
         />
       </div>
 
-      {/* Fixed Bottom Tab Navigation Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 h-16 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200/90 dark:border-slate-800/90 grid grid-cols-5 items-center px-1 pb-safe shadow-lg">
-        {/* Tab 1: Home */}
+      {/* =========================================================================
+          BOTTOM TAB NAVIGATION (Exact match to User Screenshot: হোম, পছন্দের, সাম্প্রতিক, সেটিংস)
+         ========================================================================= */}
+      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto z-40 h-16 bg-white dark:bg-slate-900 border-t border-slate-200/90 dark:border-slate-800 grid grid-cols-4 items-center px-2 pb-safe shadow-lg select-none">
+        {/* Tab 1: Home (হোম) */}
         <button
           onClick={() => {
             closeTool();
             setActiveTab('home');
           }}
-          className="flex flex-col items-center justify-center h-full transition py-1"
+          className="flex flex-col items-center justify-center h-full transition"
         >
-          <div
-            className={`flex flex-col items-center px-3 py-1 rounded-xl transition ${
+          <Home
+            className={`w-5 h-5 transition-transform ${
               activeTab === 'home' && !activeToolId
-                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
+                ? 'text-[#0B63F6] stroke-[2.4] scale-105'
+                : 'text-slate-400 hover:text-slate-600'
+            }`}
+          />
+          <span
+            className={`text-[10px] mt-1 font-bold ${
+              activeTab === 'home' && !activeToolId
+                ? 'text-[#0B63F6]'
+                : 'text-slate-400'
             }`}
           >
-            <Home className="w-4.5 h-4.5" />
-            <span className="text-[10px] mt-0.5 tracking-tight">
-              {t.tabs.home}
-            </span>
-          </div>
+            {lang === 'bn' ? 'হোম' : 'Home'}
+          </span>
         </button>
 
-        {/* Tab 2: Categories */}
+        {/* Tab 2: Favorites (পছন্দের) */}
         <button
           onClick={() => {
             closeTool();
-            setActiveTab('categories');
+            setActiveTab('favorites');
           }}
-          className="flex flex-col items-center justify-center h-full transition py-1"
+          className="flex flex-col items-center justify-center h-full transition"
         >
-          <div
-            className={`flex flex-col items-center px-3 py-1 rounded-xl transition ${
-              activeTab === 'categories' && !activeToolId
-                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
+          <Heart
+            className={`w-5 h-5 transition-transform ${
+              activeTab === 'favorites' && !activeToolId
+                ? 'text-[#0B63F6] stroke-[2.4] fill-[#0B63F6]/20 scale-105'
+                : 'text-slate-400 hover:text-slate-600'
+            }`}
+          />
+          <span
+            className={`text-[10px] mt-1 font-bold ${
+              activeTab === 'favorites' && !activeToolId
+                ? 'text-[#0B63F6]'
+                : 'text-slate-400'
             }`}
           >
-            <Grid className="w-4.5 h-4.5" />
-            <span className="text-[10px] mt-0.5 tracking-tight">
-              {t.tabs.categories}
-            </span>
-          </div>
+            {lang === 'bn' ? 'পছন্দের' : 'Favorites'}
+          </span>
         </button>
 
-        {/* Tab 3: History */}
+        {/* Tab 3: Recent (সাম্প্রতিক) */}
         <button
           onClick={() => {
             closeTool();
-            setActiveTab('history');
+            setActiveTab('recents');
           }}
-          className="flex flex-col items-center justify-center h-full transition py-1"
+          className="flex flex-col items-center justify-center h-full transition"
         >
-          <div
-            className={`flex flex-col items-center px-3 py-1 rounded-xl transition ${
-              activeTab === 'history' && !activeToolId
-                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
+          <Clock
+            className={`w-5 h-5 transition-transform ${
+              activeTab === 'recents' && !activeToolId
+                ? 'text-[#0B63F6] stroke-[2.4] scale-105'
+                : 'text-slate-400 hover:text-slate-600'
+            }`}
+          />
+          <span
+            className={`text-[10px] mt-1 font-bold ${
+              activeTab === 'recents' && !activeToolId
+                ? 'text-[#0B63F6]'
+                : 'text-slate-400'
             }`}
           >
-            <Clock className="w-4.5 h-4.5" />
-            <span className="text-[10px] mt-0.5 tracking-tight">
-              {t.tabs.history}
-            </span>
-          </div>
+            {lang === 'bn' ? 'সাম্প্রতিক' : 'Recent'}
+          </span>
         </button>
 
-        {/* Tab 4: Admin Studio */}
+        {/* Tab 4: Settings (সেটিংস) */}
         <button
           onClick={() => {
             closeTool();
-            setActiveTab('admin');
+            setActiveTab('settings');
+            setSettingsSubView('main');
           }}
-          className="flex flex-col items-center justify-center h-full transition py-1"
+          className="flex flex-col items-center justify-center h-full transition"
         >
-          <div
-            className={`flex flex-col items-center px-3 py-1 rounded-xl transition ${
-              activeTab === 'admin' && !activeToolId
-                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
+          <Settings
+            className={`w-5 h-5 transition-transform ${
+              activeTab === 'settings' && !activeToolId
+                ? 'text-[#0B63F6] stroke-[2.4] scale-105'
+                : 'text-slate-400 hover:text-slate-600'
+            }`}
+          />
+          <span
+            className={`text-[10px] mt-1 font-bold ${
+              activeTab === 'settings' && !activeToolId
+                ? 'text-[#0B63F6]'
+                : 'text-slate-400'
             }`}
           >
-            <Sliders className="w-4.5 h-4.5" />
-            <span className="text-[10px] mt-0.5 tracking-tight">
-              {t.tabs.admin}
-            </span>
-          </div>
-        </button>
-
-        {/* Tab 5: About & Policy */}
-        <button
-          onClick={() => {
-            closeTool();
-            setActiveTab('about');
-          }}
-          className="flex flex-col items-center justify-center h-full transition py-1"
-        >
-          <div
-            className={`flex flex-col items-center px-3 py-1 rounded-xl transition ${
-              activeTab === 'about' && !activeToolId
-                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
-            }`}
-          >
-            <ShieldCheck className="w-4.5 h-4.5" />
-            <span className="text-[10px] mt-0.5 tracking-tight">
-              {t.tabs.about}
-            </span>
-          </div>
+            {lang === 'bn' ? 'সেটিংস' : 'Settings'}
+          </span>
         </button>
       </nav>
+
+      {/* =========================================================================
+          SLIDE-OVER MOBILE DRAWER (Activated by Hamburger Menu)
+         ========================================================================= */}
+      {isDrawerOpen && (
+        <div className="fixed inset-0 z-50 flex">
+          {/* Backdrop */}
+          <div
+            onClick={() => setIsDrawerOpen(false)}
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity"
+          />
+
+          {/* Drawer Content */}
+          <div className="relative w-4/5 max-w-xs bg-white dark:bg-slate-900 h-full shadow-2xl flex flex-col justify-between p-5 z-10 animate-in slide-in-from-left duration-200">
+            <div className="flex flex-col gap-5">
+              {/* Drawer Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-[#0B63F6] text-white flex items-center justify-center font-bold">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-sm text-slate-900 dark:text-white block">
+                      Smart Utility Tools
+                    </span>
+                    <span className="text-[10px] text-emerald-600 font-semibold block">
+                      সংস্করণ ১.০.০ (অফলাইন)
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsDrawerOpen(false)}
+                  className="p-1 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Drawer Navigation Links */}
+              <div className="flex flex-col gap-1.5">
+                <button
+                  onClick={() => {
+                    closeTool();
+                    setActiveTab('home');
+                    setIsDrawerOpen(false);
+                  }}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-left"
+                >
+                  <Home className="w-4 h-4 text-[#0B63F6]" />
+                  <span>{lang === 'bn' ? 'হোম পেজ' : 'Home Screen'}</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    closeTool();
+                    setActiveTab('settings');
+                    setSettingsSubView('admin');
+                    setIsDrawerOpen(false);
+                  }}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-left"
+                >
+                  <Sliders className="w-4 h-4 text-emerald-600" />
+                  <span>{lang === 'bn' ? 'অ্যাডমিন স্টুডিও (কাস্টম টুল)' : 'Admin Studio'}</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    openTool('electrical');
+                    setIsDrawerOpen(false);
+                  }}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-left"
+                >
+                  <Zap className="w-4 h-4 text-amber-500" />
+                  <span>{lang === 'bn' ? '১০-ইন-১ ইলেকট্রিক্যাল স্যুট' : 'Electrical Master Suite'}</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    closeTool();
+                    setActiveTab('settings');
+                    setSettingsSubView('admob');
+                    setIsDrawerOpen(false);
+                  }}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-left"
+                >
+                  <DollarSign className="w-4 h-4 text-amber-500" />
+                  <span>{lang === 'bn' ? 'অ্যাডমব কনফিগারেশন' : 'AdMob Settings'}</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    closeTool();
+                    setActiveTab('settings');
+                    setSettingsSubView('about');
+                    setIsDrawerOpen(false);
+                  }}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-left"
+                >
+                  <ShieldCheck className="w-4 h-4 text-teal-600" />
+                  <span>{lang === 'bn' ? 'পলিসি ও পরিচিতি' : 'About & Privacy'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Drawer Footer */}
+            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
+              <span className="text-slate-400 text-[11px]">Dark Theme</span>
+              <button
+                onClick={toggleTheme}
+                className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-amber-400"
+              >
+                {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
