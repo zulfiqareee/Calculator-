@@ -71,6 +71,47 @@ export interface CalculationRecord {
   timestamp: number;
 }
 
+export interface BookChapter {
+  id: string;
+  titleBn: string;
+  titleEn: string;
+  content: string;
+}
+
+export interface BookItem {
+  id: string;
+  titleBn: string;
+  titleEn: string;
+  author: string;
+  category: string;
+  coverColor: string;
+  descriptionBn: string;
+  descriptionEn: string;
+  chapters: BookChapter[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface NoteFolder {
+  id: string;
+  nameBn: string;
+  nameEn: string;
+  color: string;
+  iconName?: string;
+}
+
+export interface NoteItem {
+  id: string;
+  folderId: string;
+  title: string;
+  formula?: string;
+  content: string;
+  tags: string[];
+  isPinned: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface AdMobConfig {
   appId: string;
   bannerAdUnitId: string;

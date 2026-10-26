@@ -29,7 +29,11 @@ import {
   Sliders,
   DollarSign,
   Plug,
-  Share2,
+  BookOpen,
+  Bookmark,
+  FileText,
+  Mail,
+  Lock,
 } from 'lucide-react';
 import { Language, ThemeMode, ToolCategory, ToolId, ToolItem, CustomTool } from './types';
 import {
@@ -43,6 +47,7 @@ import {
   addStoredRecent,
 } from './utils/storage';
 import { getStoredCustomTools } from './utils/customToolsStorage';
+import { AUTHORIZED_ADMIN_EMAIL } from './utils/adminAuth';
 import { TOOLS_LIST, UI_TEXT, formatNumber } from './i18n/translations';
 
 // Standard Tools
@@ -59,18 +64,22 @@ import { CustomToolRunner } from './components/tools/CustomToolRunner';
 // Hero Banner & Views
 import { ScenicHeroBanner } from './components/ScenicHeroBanner';
 import { AdminPanel } from './components/admin/AdminPanel';
+import { BookReaderView } from './components/books/BookReaderView';
+import { NotepadView } from './components/notes/NotepadView';
 import { AdMobBanner } from './components/admob/AdMobBanner';
 import { AdMobManager } from './components/admob/AdMobManager';
 import { HistoryView } from './components/HistoryView';
 import { AboutPolicy } from './components/AboutPolicy';
 
 type BottomTab = 'home' | 'favorites' | 'recents' | 'settings';
+type SpecialView = 'none' | 'books' | 'notes';
 
 export default function App() {
   const [lang, setLang] = useState<Language>(getStoredLanguage());
   const [theme, setTheme] = useState<ThemeMode>(getStoredTheme());
   const [activeTab, setActiveTab] = useState<BottomTab>('home');
   const [activeToolId, setActiveToolId] = useState<ToolId | null>(null);
+  const [specialView, setSpecialView] = useState<SpecialView>('none');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [favorites, setFavorites] = useState<string[]>(getStoredFavorites());
   const [recents, setRecents] = useState<string[]>(getStoredRecents());
@@ -166,6 +175,7 @@ export default function App() {
 
   const openTool = (id: ToolId) => {
     setActiveToolId(id);
+    setSpecialView('none');
     addStoredRecent(id);
     setRecents(getStoredRecents());
     setIsDrawerOpen(false);
@@ -195,13 +205,6 @@ export default function App() {
   const favoriteTools = useMemo(() => {
     return allTools.filter((tool) => favorites.includes(tool.id));
   }, [allTools, favorites]);
-
-  // Recent tools
-  const recentTools = useMemo(() => {
-    return recents
-      .map((id) => allTools.find((t) => t.id === id))
-      .filter((t): t is ToolItem => Boolean(t));
-  }, [allTools, recents]);
 
   // Icon Resolver
   const renderToolIcon = (iconName: string, className = 'w-5 h-5') => {
@@ -280,7 +283,7 @@ export default function App() {
       {!isOnline && (
         <div className="bg-amber-600 text-white text-[11px] font-semibold px-4 py-1.5 text-center flex items-center justify-center gap-1.5 shadow-xs z-50">
           <WifiOff className="w-3 h-3" />
-          <span>{lang === 'bn' ? 'অফলাইন মোড সক্রিয়' : 'Offline Mode Active'}</span>
+          <span>{lang === 'bn' ? 'অফলাইন মোড সক্রিয় — সকল ফিচার চলবে' : 'Offline Mode Active'}</span>
         </div>
       )}
 
@@ -301,6 +304,7 @@ export default function App() {
         <div
           onClick={() => {
             closeTool();
+            setSpecialView('none');
             setActiveTab('home');
           }}
           className="flex flex-col text-left cursor-pointer flex-1 ml-3 select-none"
@@ -313,7 +317,7 @@ export default function App() {
           </span>
         </div>
 
-        {/* Right: Bilingual Pill Switcher (Matches User Screenshot) */}
+        {/* Right: Bilingual Pill Switcher */}
         <div className="bg-[#0047C7]/60 border border-white/60 p-0.5 rounded-full flex items-center shrink-0 shadow-inner">
           <button
             onClick={() => switchLanguage('bn')}
@@ -342,10 +346,31 @@ export default function App() {
           MAIN SCROLLABLE CONTENT AREA
          ========================================================================= */}
       <main className="flex-1 px-4 py-4 pb-28">
-        {/* ACTIVE TOOL VIEW */}
-        {activeToolId && currentTool ? (
+        {/* 1. SPECIAL VIEW: BOOKS READER */}
+        {specialView === 'books' ? (
+          <BookReaderView
+            lang={lang}
+            onBack={() => setSpecialView('none')}
+            onOpenAdmin={() => {
+              setSpecialView('none');
+              setActiveTab('settings');
+              setSettingsSubView('admin');
+            }}
+          />
+        ) : specialView === 'notes' ? (
+          /* 2. SPECIAL VIEW: NOTEPAD & FORMULAS */
+          <NotepadView
+            lang={lang}
+            onBack={() => setSpecialView('none')}
+            onOpenAdmin={() => {
+              setSpecialView('none');
+              setActiveTab('settings');
+              setSettingsSubView('admin');
+            }}
+          />
+        ) : activeToolId && currentTool ? (
+          /* 3. ACTIVE TOOL VIEW */
           <div className="flex flex-col gap-4">
-            {/* Top Bar for Tool Screen */}
             <div className="flex items-center justify-between">
               <button
                 onClick={closeTool}
@@ -374,7 +399,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Tool Banner Title */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-4 shadow-xs flex items-center gap-3.5">
               <div
                 className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${currentTool.gradient} text-white flex items-center justify-center shrink-0 shadow-sm`}
@@ -391,15 +415,15 @@ export default function App() {
               </div>
             </div>
 
-            {/* Tool Body */}
             {renderActiveToolComponent()}
           </div>
         ) : (
-          /* TAB 1: HOME (Exact match to user's design) */
+          /* 4. BOTTOM TABS */
           <>
+            {/* TAB 1: HOME (Exact match to User Screenshot) */}
             {activeTab === 'home' && (
               <div className="flex flex-col gap-4">
-                {/* Search Bar (Matches User Screenshot) */}
+                {/* Search Bar */}
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
@@ -419,8 +443,47 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Scenic Landscape Hero Banner (Matches User Screenshot) */}
+                {/* Scenic Landscape Hero Banner */}
                 {!searchQuery && <ScenicHeroBanner lang={lang} />}
+
+                {/* Quick Shortcuts: Books & Notepad */}
+                {!searchQuery && (
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <button
+                      onClick={() => setSpecialView('books')}
+                      className="p-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-700 text-white flex items-center gap-2.5 shadow-sm active:scale-98 transition text-left"
+                    >
+                      <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                        <BookOpen className="w-4 h-4 text-white" />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="font-bold text-xs block truncate leading-tight">
+                          {lang === 'bn' ? 'বই ও হ্যান্ডবুক' : 'Books & Guides'}
+                        </span>
+                        <span className="text-[10px] text-blue-100 block truncate">
+                          {lang === 'bn' ? 'ইলেকট্রিক্যাল পাঠ' : 'Read guides'}
+                        </span>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => setSpecialView('notes')}
+                      className="p-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white flex items-center gap-2.5 shadow-sm active:scale-98 transition text-left"
+                    >
+                      <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                        <Bookmark className="w-4 h-4 text-white" />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="font-bold text-xs block truncate leading-tight">
+                          {lang === 'bn' ? 'নোট ও সূত্র ব্যাঙ্ক' : 'Formula Bank'}
+                        </span>
+                        <span className="text-[10px] text-emerald-100 block truncate">
+                          {lang === 'bn' ? 'কাজের সূত্র ও নোট' : 'Saved notes'}
+                        </span>
+                      </div>
+                    </button>
+                  </div>
+                )}
 
                 {/* Section Title: "টুলস সমূহ" */}
                 <div className="flex items-center justify-between pt-1">
@@ -440,14 +503,12 @@ export default function App() {
                       onClick={() => openTool(tool.id)}
                       className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/90 rounded-2xl p-3 flex items-center gap-2.5 shadow-xs hover:shadow-md transition active:scale-97 cursor-pointer select-none"
                     >
-                      {/* Left Squircle Colored Icon */}
                       <div
                         className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br ${tool.gradient} text-white flex items-center justify-center shrink-0 shadow-sm`}
                       >
                         {renderToolIcon(tool.iconName, 'w-6 h-6')}
                       </div>
 
-                      {/* Right 2-line Label */}
                       <div className="min-w-0 flex-1">
                         <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 leading-tight block">
                           {renderTitleFormatted(lang === 'bn' ? tool.titleBn : tool.titleEn)}
@@ -510,25 +571,72 @@ export default function App() {
                       {lang === 'bn' ? 'অ্যাপ সেটিংস ও নিয়ন্ত্রণ' : 'Settings & Control'}
                     </h2>
 
-                    {/* Admin Studio Navigation Card */}
+                    {/* Master Admin Panel (Locked to zulfiqar1hasan@gmail.com) */}
                     <button
                       onClick={() => setSettingsSubView('admin')}
                       className="bg-gradient-to-r from-[#0B63F6] to-blue-700 text-white p-4 rounded-2xl flex items-center justify-between shadow-md active:scale-98 transition text-left"
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-white">
-                          <Sliders className="w-5 h-5" />
+                          <Lock className="w-5 h-5" />
                         </div>
                         <div>
-                          <span className="font-bold text-sm block">
-                            {lang === 'bn' ? 'অ্যাডমিন ফর্মুলা স্টুডিও' : 'Admin Formula Studio'}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-sm block">
+                              {lang === 'bn' ? 'অ্যাডমিন প্যানেল' : 'Admin Panel'}
+                            </span>
+                            <span className="text-[10px] bg-white/20 px-1.5 py-0.2 rounded text-blue-100">
+                              Personal
+                            </span>
+                          </div>
                           <span className="text-[11px] text-blue-100 block">
-                            {lang === 'bn' ? 'নতুন ক্যালকুলেটর ও সূত্র যুক্ত করুন' : 'Add custom calculators & formulas'}
+                            বই লিখুন, নোট ও সূত্র তৈরি করুন (শুধুমাত্র জুলফিকার হাসান)
                           </span>
                         </div>
                       </div>
                       <ChevronRight className="w-5 h-5 text-white/80" />
+                    </button>
+
+                    {/* Books & Reference Guide Button */}
+                    <button
+                      onClick={() => setSpecialView('books')}
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl flex items-center justify-between shadow-xs active:scale-98 transition text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-[#0B63F6] flex items-center justify-center">
+                          <BookOpen className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white block">
+                            {lang === 'bn' ? 'বই ও রেফারেন্স হ্যান্ডবুক' : 'Books & Reference Guides'}
+                          </span>
+                          <span className="text-[11px] text-slate-400 block">
+                            {lang === 'bn' ? 'ওয়্যারিং ও ইলেকট্রিক্যাল নিয়ম পড়ুন' : 'Read electrical engineering handbooks'}
+                          </span>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-400" />
+                    </button>
+
+                    {/* Notepad & Formulas */}
+                    <button
+                      onClick={() => setSpecialView('notes')}
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl flex items-center justify-between shadow-xs active:scale-98 transition text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                          <FileText className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white block">
+                            {lang === 'bn' ? 'নোটপ্যাড ও সূত্র ব্যাঙ্ক' : 'Notepad & Formula Bank'}
+                          </span>
+                          <span className="text-[11px] text-slate-400 block">
+                            {lang === 'bn' ? 'কাজের সূত্র ও চেকলিস্ট সংরক্ষণ' : 'Saved formulas and checklists'}
+                          </span>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-400" />
                     </button>
 
                     {/* AdMob Settings Card */}
@@ -545,7 +653,7 @@ export default function App() {
                             {lang === 'bn' ? 'গুগল অ্যাডমব মনিটাইজেশন' : 'Google AdMob Monetization'}
                           </span>
                           <span className="text-[11px] text-slate-400 block">
-                            {lang === 'bn' ? 'অ্যাপ আইডি ও ব্যানার ব্যানার কনফিগার' : 'App ID & Unit IDs inspector'}
+                            {lang === 'bn' ? 'অ্যাপ আইডি ও ব্যানার আইডি কনফিগার' : 'App ID & Unit IDs inspector'}
                           </span>
                         </div>
                       </div>
@@ -558,7 +666,7 @@ export default function App() {
                       className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl flex items-center justify-between shadow-xs active:scale-98 transition text-left"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-xl bg-teal-500/10 text-teal-600 flex items-center justify-center">
                           <ShieldCheck className="w-5 h-5" />
                         </div>
                         <div>
@@ -566,7 +674,7 @@ export default function App() {
                             {lang === 'bn' ? 'পলিসি ও পরিচিতি' : 'About & Privacy Policy'}
                           </span>
                           <span className="text-[11px] text-slate-400 block">
-                            {lang === 'bn' ? 'প্লে স্টোর টার্মস ও ভার্সন ১.০.০' : 'Play Store compliant policy'}
+                            {lang === 'bn' ? 'প্লে স্টোর পলিসি ও ভার্সন ১.০.০' : 'Play Store compliant policy'}
                           </span>
                         </div>
                       </div>
@@ -657,6 +765,7 @@ export default function App() {
           lang={lang}
           onOpenGuide={() => {
             closeTool();
+            setSpecialView('none');
             setActiveTab('settings');
             setSettingsSubView('admob');
           }}
@@ -664,27 +773,28 @@ export default function App() {
       </div>
 
       {/* =========================================================================
-          BOTTOM TAB NAVIGATION (Exact match to User Screenshot: হোম, পছন্দের, সাম্প্রতিক, সেটিংস)
+          BOTTOM TAB NAVIGATION (হোম, পছন্দের, সাম্প্রতিক, সেটিংস)
          ========================================================================= */}
       <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto z-40 h-16 bg-white dark:bg-slate-900 border-t border-slate-200/90 dark:border-slate-800 grid grid-cols-4 items-center px-2 pb-safe shadow-lg select-none">
         {/* Tab 1: Home (হোম) */}
         <button
           onClick={() => {
             closeTool();
+            setSpecialView('none');
             setActiveTab('home');
           }}
           className="flex flex-col items-center justify-center h-full transition"
         >
           <Home
             className={`w-5 h-5 transition-transform ${
-              activeTab === 'home' && !activeToolId
+              activeTab === 'home' && !activeToolId && specialView === 'none'
                 ? 'text-[#0B63F6] stroke-[2.4] scale-105'
                 : 'text-slate-400 hover:text-slate-600'
             }`}
           />
           <span
             className={`text-[10px] mt-1 font-bold ${
-              activeTab === 'home' && !activeToolId
+              activeTab === 'home' && !activeToolId && specialView === 'none'
                 ? 'text-[#0B63F6]'
                 : 'text-slate-400'
             }`}
@@ -697,20 +807,21 @@ export default function App() {
         <button
           onClick={() => {
             closeTool();
+            setSpecialView('none');
             setActiveTab('favorites');
           }}
           className="flex flex-col items-center justify-center h-full transition"
         >
           <Heart
             className={`w-5 h-5 transition-transform ${
-              activeTab === 'favorites' && !activeToolId
+              activeTab === 'favorites' && !activeToolId && specialView === 'none'
                 ? 'text-[#0B63F6] stroke-[2.4] fill-[#0B63F6]/20 scale-105'
                 : 'text-slate-400 hover:text-slate-600'
             }`}
           />
           <span
             className={`text-[10px] mt-1 font-bold ${
-              activeTab === 'favorites' && !activeToolId
+              activeTab === 'favorites' && !activeToolId && specialView === 'none'
                 ? 'text-[#0B63F6]'
                 : 'text-slate-400'
             }`}
@@ -723,20 +834,21 @@ export default function App() {
         <button
           onClick={() => {
             closeTool();
+            setSpecialView('none');
             setActiveTab('recents');
           }}
           className="flex flex-col items-center justify-center h-full transition"
         >
           <Clock
             className={`w-5 h-5 transition-transform ${
-              activeTab === 'recents' && !activeToolId
+              activeTab === 'recents' && !activeToolId && specialView === 'none'
                 ? 'text-[#0B63F6] stroke-[2.4] scale-105'
                 : 'text-slate-400 hover:text-slate-600'
             }`}
           />
           <span
             className={`text-[10px] mt-1 font-bold ${
-              activeTab === 'recents' && !activeToolId
+              activeTab === 'recents' && !activeToolId && specialView === 'none'
                 ? 'text-[#0B63F6]'
                 : 'text-slate-400'
             }`}
@@ -749,6 +861,7 @@ export default function App() {
         <button
           onClick={() => {
             closeTool();
+            setSpecialView('none');
             setActiveTab('settings');
             setSettingsSubView('main');
           }}
@@ -756,14 +869,14 @@ export default function App() {
         >
           <Settings
             className={`w-5 h-5 transition-transform ${
-              activeTab === 'settings' && !activeToolId
+              activeTab === 'settings' && !activeToolId && specialView === 'none'
                 ? 'text-[#0B63F6] stroke-[2.4] scale-105'
                 : 'text-slate-400 hover:text-slate-600'
             }`}
           />
           <span
             className={`text-[10px] mt-1 font-bold ${
-              activeTab === 'settings' && !activeToolId
+              activeTab === 'settings' && !activeToolId && specialView === 'none'
                 ? 'text-[#0B63F6]'
                 : 'text-slate-400'
             }`}
@@ -778,16 +891,13 @@ export default function App() {
          ========================================================================= */}
       {isDrawerOpen && (
         <div className="fixed inset-0 z-50 flex">
-          {/* Backdrop */}
           <div
             onClick={() => setIsDrawerOpen(false)}
             className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity"
           />
 
-          {/* Drawer Content */}
           <div className="relative w-4/5 max-w-xs bg-white dark:bg-slate-900 h-full shadow-2xl flex flex-col justify-between p-5 z-10 animate-in slide-in-from-left duration-200">
             <div className="flex flex-col gap-5">
-              {/* Drawer Header */}
               <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-2.5">
                   <div className="w-9 h-9 rounded-xl bg-[#0B63F6] text-white flex items-center justify-center font-bold">
@@ -810,11 +920,12 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Drawer Navigation Links */}
+              {/* Drawer Links */}
               <div className="flex flex-col gap-1.5">
                 <button
                   onClick={() => {
                     closeTool();
+                    setSpecialView('none');
                     setActiveTab('home');
                     setIsDrawerOpen(false);
                   }}
@@ -827,14 +938,25 @@ export default function App() {
                 <button
                   onClick={() => {
                     closeTool();
-                    setActiveTab('settings');
-                    setSettingsSubView('admin');
+                    setSpecialView('books');
                     setIsDrawerOpen(false);
                   }}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-left"
                 >
-                  <Sliders className="w-4 h-4 text-emerald-600" />
-                  <span>{lang === 'bn' ? 'অ্যাডমিন স্টুডিও (কাস্টম টুল)' : 'Admin Studio'}</span>
+                  <BookOpen className="w-4 h-4 text-indigo-600" />
+                  <span>{lang === 'bn' ? 'বই ও রেফারেন্স হ্যান্ডবুক' : 'Books & Guides'}</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    closeTool();
+                    setSpecialView('notes');
+                    setIsDrawerOpen(false);
+                  }}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-left"
+                >
+                  <Bookmark className="w-4 h-4 text-emerald-600" />
+                  <span>{lang === 'bn' ? 'নোটপ্যাড ও সূত্র ব্যাঙ্ক' : 'Notepad & Formulas'}</span>
                 </button>
 
                 <button
@@ -848,37 +970,27 @@ export default function App() {
                   <span>{lang === 'bn' ? '১০-ইন-১ ইলেকট্রিক্যাল স্যুট' : 'Electrical Master Suite'}</span>
                 </button>
 
+                {/* Exclusive Admin Panel Link */}
                 <button
                   onClick={() => {
                     closeTool();
+                    setSpecialView('none');
                     setActiveTab('settings');
-                    setSettingsSubView('admob');
+                    setSettingsSubView('admin');
                     setIsDrawerOpen(false);
                   }}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-left"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold bg-blue-50 dark:bg-slate-800 text-[#0B63F6] border border-blue-200/60 dark:border-slate-700 transition text-left"
                 >
-                  <DollarSign className="w-4 h-4 text-amber-500" />
-                  <span>{lang === 'bn' ? 'অ্যাডমব কনফিগারেশন' : 'AdMob Settings'}</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    closeTool();
-                    setActiveTab('settings');
-                    setSettingsSubView('about');
-                    setIsDrawerOpen(false);
-                  }}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-left"
-                >
-                  <ShieldCheck className="w-4 h-4 text-teal-600" />
-                  <span>{lang === 'bn' ? 'পলিসি ও পরিচিতি' : 'About & Privacy'}</span>
+                  <Lock className="w-4 h-4 text-[#0B63F6]" />
+                  <span>{lang === 'bn' ? 'অ্যাডমিন প্যানেল (জুলফিকার)' : 'Admin Panel (Personal)'}</span>
                 </button>
               </div>
             </div>
 
-            {/* Drawer Footer */}
             <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
-              <span className="text-slate-400 text-[11px]">Dark Theme</span>
+              <span className="text-slate-400 text-[11px] truncate max-w-[170px]">
+                {AUTHORIZED_ADMIN_EMAIL}
+              </span>
               <button
                 onClick={toggleTheme}
                 className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-amber-400"
