@@ -26,6 +26,9 @@ import {
   ShieldAlert,
   Sliders,
   Bookmark,
+  Image as ImageIcon,
+  Link,
+  Upload,
 } from 'lucide-react';
 import { Language, CustomTool, CustomToolInput, BookItem, BookChapter, NoteFolder, NoteItem } from '../../types';
 import {
@@ -65,7 +68,7 @@ type AdminTab = 'books' | 'notes' | 'tools' | 'backup' | 'security';
 
 export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }) => {
   // Auth state
-  const [emailInput, setEmailInput] = useState<string>(AUTHORIZED_ADMIN_EMAIL);
+  const [emailInput, setEmailInput] = useState<string>('');
   const [passInput, setPassInput] = useState<string>('');
   const [session, setSession] = useState(getAdminSession());
   const [authError, setAuthError] = useState<string | null>(null);
@@ -174,6 +177,58 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }
     setBooks(getStoredBooks());
     setIsCreatingBook(false);
     setEditingBook(null);
+  };
+
+  // Insert image to chapter from device gallery or camera
+  const handleInsertImageFromFile = (chapterIndex: number, file: File) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const rawData = e.target?.result as string;
+      if (!rawData) return;
+
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_SIZE = 900;
+        let w = img.width;
+        let h = img.height;
+        if (w > MAX_SIZE || h > MAX_SIZE) {
+          if (w > h) {
+            h = Math.round((h * MAX_SIZE) / w);
+            w = MAX_SIZE;
+          } else {
+            w = Math.round((w * MAX_SIZE) / h);
+            h = MAX_SIZE;
+          }
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          const compressed = canvas.toDataURL('image/jpeg', 0.82);
+          const caption = prompt('ছবির ক্যাপশন বা শিরোনাম দিন (যেমন: ওয়্যারিং সার্কিট চিত্র):', 'সার্কিট ডায়াগ্রাম') || 'চিত্র';
+          const markdownImg = `\n\n![${caption}](${compressed})\n\n`;
+          const updated = [...bChapters];
+          updated[chapterIndex].content = (updated[chapterIndex].content || '') + markdownImg;
+          setBChapters(updated);
+        }
+      };
+      img.src = rawData;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Insert image to chapter from web URL
+  const handleInsertImageUrl = (chapterIndex: number) => {
+    const url = prompt('ছবির সরাসরি ওয়েব লিঙ্ক (Image URL) দিন:');
+    if (!url || !url.trim()) return;
+    const caption = prompt('ছবির ক্যাপশন বা শিরোনাম দিন:', 'সার্কিট চিত্র') || 'চিত্র';
+    const markdownImg = `\n\n![${caption}](${url.trim()})\n\n`;
+    const updated = [...bChapters];
+    updated[chapterIndex].content = (updated[chapterIndex].content || '') + markdownImg;
+    setBChapters(updated);
   };
 
   // Save Note Handler
@@ -396,7 +451,7 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }
             অ্যাডমিন লগইন
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-            শুধুমাত্র অনুমোদিত ডেভেলপার ইমেইল দিয়ে লগইন করতে পারবেন। অন্য কারো প্রবেশাধিকার নেই।
+            সিস্টেম পরিচালনা ও কনটেন্ট ব্যবস্থাপনার জন্য অনুমোদিত অ্যাকাউন্টে লগইন করুন।
           </p>
 
           <form onSubmit={handleLogin} className="w-full mt-5 flex flex-col gap-3">
@@ -410,7 +465,7 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }
                   type="email"
                   value={emailInput}
                   onChange={(e) => setEmailInput(e.target.value)}
-                  placeholder="zulfiqar1hasan@gmail.com"
+                  placeholder="আপনার অনুমোদিত ইমেইল লিখুন"
                   className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 text-xs font-bold text-slate-900 dark:text-white"
                 />
                 <Mail className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
@@ -427,7 +482,7 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }
                   type="password"
                   value={passInput}
                   onChange={(e) => setPassInput(e.target.value)}
-                  placeholder="ডিফল্ট পাসওয়ার্ড: zulfiqar2026"
+                  placeholder="গোপন পাসওয়ার্ড লিখুন"
                   className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 text-xs font-bold text-slate-900 dark:text-white"
                 />
                 <KeyRound className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
@@ -450,11 +505,9 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }
             </button>
           </form>
 
-          <div className="mt-4 p-2.5 rounded-xl bg-blue-50 dark:bg-slate-800/80 text-[11px] text-slate-500 w-full text-left flex items-start gap-2">
-            <ShieldAlert className="w-4 h-4 text-[#0B63F6] shrink-0 mt-0.5" />
-            <span>
-              লক করা ইমেইল: <strong className="text-[#0B63F6]">{AUTHORIZED_ADMIN_EMAIL}</strong>
-            </span>
+          <div className="mt-4 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 text-[11px] text-slate-400 w-full text-center flex items-center justify-center gap-1.5">
+            <ShieldAlert className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span>শুধুমাত্র অনুমোদিত সিস্টেম অ্যাডমিনদের জন্য এনক্রিপ্ট করা ও সুরক্ষিত</span>
           </div>
         </div>
       </div>
@@ -669,41 +722,146 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }
                 </div>
 
                 <div className="flex flex-col gap-3">
-                  {bChapters.map((ch, idx) => (
-                    <div key={ch.id} className="p-3.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl flex flex-col gap-2">
-                      <div className="flex items-center justify-between">
-                        <input
-                          type="text"
-                          value={ch.titleBn}
+                  {bChapters.map((ch, idx) => {
+                    const imgMatches = Array.from(ch.content.matchAll(/!\[(.*?)\]\((.*?)\)/g));
+
+                    return (
+                      <div key={ch.id} className="p-3.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl flex flex-col gap-2.5">
+                        <div className="flex items-center justify-between">
+                          <input
+                            type="text"
+                            value={ch.titleBn}
+                            onChange={(e) => {
+                              const updated = [...bChapters];
+                              updated[idx].titleBn = e.target.value;
+                              setBChapters(updated);
+                            }}
+                            placeholder="অধ্যায়ের শিরোনাম..."
+                            className="font-bold text-xs text-slate-900 dark:text-white bg-transparent border-b border-slate-300 dark:border-slate-600 pb-0.5 w-3/4"
+                          />
+                          {bChapters.length > 1 && (
+                            <button
+                              onClick={() => setBChapters(bChapters.filter((_, i) => i !== idx))}
+                              className="text-xs text-rose-500 font-bold hover:underline"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Chapter Visual Toolbar */}
+                        <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs">
+                          {/* Device Image Upload Button */}
+                          <label className="cursor-pointer px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-[#0B63F6] hover:bg-blue-100 dark:hover:bg-blue-900/50 font-bold flex items-center gap-1 text-[11px] transition">
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>+ ছবি আপলোড (গ্যালারি)</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  handleInsertImageFromFile(idx, file);
+                                  e.target.value = '';
+                                }
+                              }}
+                            />
+                          </label>
+
+                          {/* Web Image URL Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleInsertImageUrl(idx)}
+                            className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-[#0B63F6] font-bold flex items-center gap-1 text-[11px] transition"
+                          >
+                            <Link className="w-3.5 h-3.5" />
+                            <span>ছবির লিঙ্ক</span>
+                          </button>
+
+                          {/* Quick Formula Callout */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const formula = prompt('সূত্রটি লিখুন (যেমন: P = V × I × cosθ):', 'V = I × R');
+                              if (formula) {
+                                const updated = [...bChapters];
+                                updated[idx].content = (updated[idx].content || '') + `\n\n> ⚡ সূত্র: ${formula}\n\n`;
+                                setBChapters(updated);
+                              }
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-emerald-600 font-bold flex items-center gap-1 text-[11px] transition"
+                          >
+                            <span>⚡ সূত্র বক্স</span>
+                          </button>
+
+                          {/* Quick Bullet List */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = [...bChapters];
+                              updated[idx].content = (updated[idx].content || '') + `\n\n- পয়েন্ট ১\n- পয়েন্ট ২\n`;
+                              setBChapters(updated);
+                            }}
+                            className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold text-[11px]"
+                          >
+                            <span>• পয়েন্ট</span>
+                          </button>
+                        </div>
+
+                        {/* Textarea */}
+                        <textarea
+                          rows={6}
+                          value={ch.content}
                           onChange={(e) => {
                             const updated = [...bChapters];
-                            updated[idx].titleBn = e.target.value;
+                            updated[idx].content = e.target.value;
                             setBChapters(updated);
                           }}
-                          className="font-bold text-xs text-slate-900 dark:text-white bg-transparent border-b border-slate-300 dark:border-slate-600 pb-0.5 w-3/4"
+                          placeholder="অধ্যায়ের বিস্তারিত বিষয়বস্তু লিখুন... উপরের বাটন দিয়ে যেকোনো জায়গায় ছবি ও সূত্র যুক্ত করতে পারেন।"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs font-sans leading-relaxed focus:ring-2 focus:ring-[#0B63F6] focus:outline-none"
                         />
-                        {bChapters.length > 1 && (
-                          <button
-                            onClick={() => setBChapters(bChapters.filter((_, i) => i !== idx))}
-                            className="text-xs text-rose-500 font-bold"
-                          >
-                            Remove
-                          </button>
+
+                        {/* Thumbnails of Added Images */}
+                        {imgMatches.length > 0 && (
+                          <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex flex-col gap-1.5">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                              <ImageIcon className="w-3 h-3 text-[#0B63F6]" />
+                              <span>এই অধ্যায়ে যুক্ত ছবিসমূহ ({imgMatches.length}):</span>
+                            </span>
+                            <div className="flex flex-wrap gap-2">
+                              {imgMatches.map((m, mIdx) => (
+                                <div
+                                  key={mIdx}
+                                  className="relative group border border-slate-200 dark:border-slate-700 rounded-lg p-1 bg-slate-50 dark:bg-slate-800 flex items-center gap-1.5"
+                                >
+                                  <img src={m[2]} alt={m[1]} className="w-10 h-10 object-cover rounded" />
+                                  <div className="max-w-[120px]">
+                                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200 block truncate">
+                                      {m[1]}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (confirm(`"${m[1]}" ছবিটি অধ্যায় থেকে মুছে ফেলবেন?`)) {
+                                          const updated = [...bChapters];
+                                          updated[idx].content = updated[idx].content.replace(m[0], '');
+                                          setBChapters(updated);
+                                        }
+                                      }}
+                                      className="text-[9px] text-rose-500 hover:underline font-semibold"
+                                    >
+                                      মুছে ফেলুন
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
                         )}
                       </div>
-                      <textarea
-                        rows={5}
-                        value={ch.content}
-                        onChange={(e) => {
-                          const updated = [...bChapters];
-                          updated[idx].content = e.target.value;
-                          setBChapters(updated);
-                        }}
-                        placeholder="অধ্যায়ের বিস্তারিত পাঠ্যবস্তু ও সূত্র লিখুন..."
-                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-xs font-sans"
-                      />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1441,7 +1599,7 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }
             অ্যাডমিন পাসওয়ার্ড পরিবর্তন
           </h3>
           <p className="text-xs text-slate-500">
-            লগইন করার জন্য নতুন একটি সিক্রেট পাসওয়ার্ড সেট করুন (বর্তমান পাসওয়ার্ড: {getAdminPassword()})।
+            লগইন করার জন্য আপনার নতুন একটি শক্তিশালী সিক্রেট পাসওয়ার্ড সেট করুন।
           </p>
 
           <div className="flex gap-2 mt-1">

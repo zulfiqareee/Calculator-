@@ -60,18 +60,12 @@ export function clearAdminSession(): void {
 
 export function verifyAdminCredentials(email: string, pass: string): { success: boolean; error?: string } {
   const normalizedEmail = email.trim().toLowerCase();
-  if (normalizedEmail !== AUTHORIZED_ADMIN_EMAIL.toLowerCase()) {
-    return {
-      success: false,
-      error: `অনুমোদিত নয়: এই অ্যাডমিন প্যানেল শুধুমাত্র ${AUTHORIZED_ADMIN_EMAIL} এর জন্য সংরক্ষিত। অন্য কোনো ইমেইল দিয়ে প্রবেশ সম্ভব নয়।`,
-    };
-  }
-
   const currentPass = getAdminPassword();
-  if (pass.trim() !== currentPass) {
+
+  if (normalizedEmail !== AUTHORIZED_ADMIN_EMAIL.toLowerCase() || pass.trim() !== currentPass) {
     return {
       success: false,
-      error: 'পাসওয়ার্ড সঠিক নয়! ডিফল্ট পাসওয়ার্ড: zulfiqar2026',
+      error: 'ইমেইল অথবা পাসওয়ার্ড সঠিক নয়। প্রবেশাধিকার সংরক্ষিত।',
     };
   }
 

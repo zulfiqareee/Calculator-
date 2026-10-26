@@ -9,6 +9,9 @@ import {
   Sparkles,
   Search,
   Book,
+  Image as ImageIcon,
+  ZoomIn,
+  X,
 } from 'lucide-react';
 import { BookItem, BookChapter, Language } from '../../types';
 import { getStoredBooks } from '../../utils/booksStorage';
@@ -25,10 +28,139 @@ export const BookReaderView: React.FC<Props> = ({ lang, onBack, onOpenAdmin }) =
   const [activeChapterIndex, setActiveChapterIndex] = useState<number>(0);
   const [showChapterList, setShowChapterList] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [zoomedImage, setZoomedImage] = useState<{ url: string; caption: string } | null>(null);
 
   const activeChapter: BookChapter | null = selectedBook && selectedBook.chapters[activeChapterIndex]
     ? selectedBook.chapters[activeChapterIndex]
     : null;
+
+  // Render markdown bold text
+  const renderInlineStyles = (text: string) => {
+    const parts = text.split(/(\*\*.*?\*\*)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return <strong key={i} className="font-bold text-slate-900 dark:text-white">{part.slice(2, -2)}</strong>;
+      }
+      return part;
+    });
+  };
+
+  // Parse chapter content into images, callouts, headings, lists, and formatted text
+  const renderFormattedContent = (content: string) => {
+    const lines = content.split('\n');
+    const elements: React.ReactNode[] = [];
+    let currentParagraph: string[] = [];
+
+    const flushParagraph = (key: string | number) => {
+      if (currentParagraph.length > 0) {
+        const text = currentParagraph.join('\n').trim();
+        if (text) {
+          elements.push(
+            <p key={`p-${key}`} className="text-xs sm:text-sm text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap font-sans my-2">
+              {renderInlineStyles(text)}
+            </p>
+          );
+        }
+        currentParagraph = [];
+      }
+    };
+
+    lines.forEach((line, idx) => {
+      const trimmed = line.trim();
+
+      // Check for markdown image: ![caption](url)
+      const imgMatch = trimmed.match(/^!\[(.*?)\]\((.*?)\)$/);
+      if (imgMatch) {
+        flushParagraph(idx);
+        const caption = imgMatch[1];
+        const url = imgMatch[2];
+        elements.push(
+          <figure key={`img-${idx}`} className="my-4 flex flex-col items-center w-full">
+            <div
+              onClick={() => setZoomedImage({ url, caption })}
+              className="relative group cursor-pointer max-w-full overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-950 transition hover:shadow-md"
+            >
+              <img
+                src={url}
+                alt={caption}
+                className="max-h-80 sm:max-h-96 w-auto max-w-full object-contain mx-auto transition group-hover:scale-[1.01]"
+                loading="lazy"
+              />
+              <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-1.5 text-white text-xs font-bold pointer-events-none">
+                <ZoomIn className="w-4 h-4" />
+                <span>বড় করে দেখুন</span>
+              </div>
+            </div>
+            {caption && (
+              <figcaption className="text-center text-[11px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 mt-2 flex items-center gap-1.5 px-2">
+                <ImageIcon className="w-3.5 h-3.5 text-[#0B63F6] shrink-0" />
+                <span>চিত্র: {caption}</span>
+              </figcaption>
+            )}
+          </figure>
+        );
+        return;
+      }
+
+      // Check for Callout Box: > ...
+      if (trimmed.startsWith('>')) {
+        flushParagraph(idx);
+        elements.push(
+          <div key={`callout-${idx}`} className="my-3 p-3.5 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border-l-4 border-[#0B63F6] text-xs sm:text-sm text-slate-800 dark:text-slate-200 font-medium">
+            {trimmed.replace(/^>\s*/, '')}
+          </div>
+        );
+        return;
+      }
+
+      // Check for Headings: ###, ##, #
+      if (trimmed.startsWith('### ')) {
+        flushParagraph(idx);
+        elements.push(
+          <h3 key={`h3-${idx}`} className="text-sm font-bold text-slate-900 dark:text-white mt-4 mb-1">
+            {trimmed.replace(/^###\s*/, '')}
+          </h3>
+        );
+        return;
+      }
+      if (trimmed.startsWith('## ')) {
+        flushParagraph(idx);
+        elements.push(
+          <h2 key={`h2-${idx}`} className="text-base font-extrabold text-[#0B63F6] mt-5 mb-2">
+            {trimmed.replace(/^##\s*/, '')}
+          </h2>
+        );
+        return;
+      }
+      if (trimmed.startsWith('# ')) {
+        flushParagraph(idx);
+        elements.push(
+          <h1 key={`h1-${idx}`} className="text-lg font-black text-slate-900 dark:text-white mt-6 mb-2">
+            {trimmed.replace(/^#\s*/, '')}
+          </h1>
+        );
+        return;
+      }
+
+      // Check for Bullet points: - ... or • ...
+      if (trimmed.startsWith('- ') || trimmed.startsWith('• ')) {
+        flushParagraph(idx);
+        elements.push(
+          <div key={`bullet-${idx}`} className="flex items-start gap-2 my-1 text-xs sm:text-sm text-slate-700 dark:text-slate-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#0B63F6] mt-1.5 shrink-0" />
+            <span>{renderInlineStyles(trimmed.replace(/^[-•]\s*/, ''))}</span>
+          </div>
+        );
+        return;
+      }
+
+      // Regular line
+      currentParagraph.push(line);
+    });
+
+    flushParagraph('final');
+    return elements;
+  };
 
   // Filter books by search
   const filteredBooks = books.filter((b) => {
@@ -202,9 +334,9 @@ export const BookReaderView: React.FC<Props> = ({ lang, onBack, onOpenAdmin }) =
             </h1>
           </div>
 
-          {/* Chapter Content Typography */}
-          <div className="prose dark:prose-invert max-w-none text-xs sm:text-sm text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap font-sans">
-            {activeChapter.content}
+          {/* Chapter Content Typography & Images */}
+          <div className="flex flex-col gap-1">
+            {renderFormattedContent(activeChapter.content)}
           </div>
 
           {/* Bottom Next/Prev Chapter buttons */}
@@ -227,6 +359,37 @@ export const BookReaderView: React.FC<Props> = ({ lang, onBack, onOpenAdmin }) =
               <span>পরবর্তী অধ্যায়</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox / Zoom Modal for Diagrams and Schematics */}
+      {zoomedImage && (
+        <div
+          onClick={() => setZoomedImage(null)}
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-w-lg w-full bg-slate-900 border border-slate-800 rounded-3xl p-3 flex flex-col items-center shadow-2xl"
+          >
+            <button
+              onClick={() => setZoomedImage(null)}
+              className="absolute top-3 right-3 p-1.5 rounded-full bg-slate-800 text-white hover:bg-slate-700 transition"
+              title="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <img
+              src={zoomedImage.url}
+              alt={zoomedImage.caption}
+              className="max-h-[75vh] w-auto max-w-full object-contain rounded-2xl bg-white dark:bg-slate-950 p-1"
+            />
+            {zoomedImage.caption && (
+              <span className="text-xs font-semibold text-slate-300 mt-2 text-center px-4">
+                {zoomedImage.caption}
+              </span>
+            )}
           </div>
         </div>
       )}

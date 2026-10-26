@@ -583,14 +583,14 @@ export default function App() {
                         <div>
                           <div className="flex items-center gap-1.5">
                             <span className="font-bold text-sm block">
-                              {lang === 'bn' ? 'অ্যাডমিন প্যানেল' : 'Admin Panel'}
+                              {lang === 'bn' ? 'সিস্টেম অ্যাডমিন প্যানেল' : 'System Admin Console'}
                             </span>
                             <span className="text-[10px] bg-white/20 px-1.5 py-0.2 rounded text-blue-100">
-                              Personal
+                              Protected
                             </span>
                           </div>
                           <span className="text-[11px] text-blue-100 block">
-                            বই লিখুন, নোট ও সূত্র তৈরি করুন (শুধুমাত্র জুলফিকার হাসান)
+                            {lang === 'bn' ? 'কনটেন্ট ম্যানেজমেন্ট ও সুরক্ষিত অ্যাক্সেস' : 'Content management and secure configuration'}
                           </span>
                         </div>
                       </div>
