@@ -11,6 +11,8 @@ import {
   Book,
   Image as ImageIcon,
   ZoomIn,
+  ZoomOut,
+  RotateCcw,
   X,
 } from 'lucide-react';
 import { BookItem, BookChapter, Language } from '../../types';
@@ -39,7 +41,7 @@ export const BookReaderView: React.FC<Props> = ({ lang, onBack, onOpenAdmin }) =
 
   const handleZoom = (delta: number) => {
     setZoomLevel((prev) => {
-      const next = Math.min(180, Math.max(70, prev + delta));
+      const next = Math.min(220, Math.max(70, prev + delta));
       try {
         localStorage.setItem('reader_zoom_level', next.toString());
       } catch {}
@@ -71,6 +73,13 @@ export const BookReaderView: React.FC<Props> = ({ lang, onBack, onOpenAdmin }) =
 
   // Parse chapter content into images, callouts, headings, lists, and formatted text
   const renderFormattedContent = (content: string) => {
+    // Dynamic scalable font sizes derived from zoomLevel (70% - 220%)
+    const baseFontSizePx = Math.round((16 * zoomLevel) / 100);
+    const h1SizePx = Math.round((24 * zoomLevel) / 100);
+    const h2SizePx = Math.round((20 * zoomLevel) / 100);
+    const h3SizePx = Math.round((18 * zoomLevel) / 100);
+    const calloutSizePx = Math.round((15 * zoomLevel) / 100);
+
     const lines = content.split('\n');
     const elements: React.ReactNode[] = [];
     let currentParagraph: string[] = [];
@@ -80,7 +89,11 @@ export const BookReaderView: React.FC<Props> = ({ lang, onBack, onOpenAdmin }) =
         const text = currentParagraph.join('\n').trim();
         if (text) {
           elements.push(
-            <p key={`p-${key}`} className="text-xs sm:text-sm text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap font-sans my-2">
+            <p
+              key={`p-${key}`}
+              style={{ fontSize: `${baseFontSizePx}px`, lineHeight: 1.75 }}
+              className="text-slate-700 dark:text-slate-200 whitespace-pre-wrap font-sans my-2.5 transition-all duration-150"
+            >
               {renderInlineStyles(text)}
             </p>
           );
@@ -130,7 +143,11 @@ export const BookReaderView: React.FC<Props> = ({ lang, onBack, onOpenAdmin }) =
       if (trimmed.startsWith('>')) {
         flushParagraph(idx);
         elements.push(
-          <div key={`callout-${idx}`} className="my-3 p-3.5 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border-l-4 border-[#0B63F6] text-xs sm:text-sm text-slate-800 dark:text-slate-200 font-medium">
+          <div
+            key={`callout-${idx}`}
+            style={{ fontSize: `${calloutSizePx}px`, lineHeight: 1.6 }}
+            className="my-3 p-3.5 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border-l-4 border-[#0B63F6] text-slate-800 dark:text-slate-200 font-medium transition-all duration-150"
+          >
             {trimmed.replace(/^>\s*/, '')}
           </div>
         );
@@ -141,7 +158,11 @@ export const BookReaderView: React.FC<Props> = ({ lang, onBack, onOpenAdmin }) =
       if (trimmed.startsWith('### ')) {
         flushParagraph(idx);
         elements.push(
-          <h3 key={`h3-${idx}`} className="text-sm font-bold text-slate-900 dark:text-white mt-4 mb-1">
+          <h3
+            key={`h3-${idx}`}
+            style={{ fontSize: `${h3SizePx}px` }}
+            className="font-bold text-slate-900 dark:text-white mt-4 mb-1 transition-all duration-150"
+          >
             {trimmed.replace(/^###\s*/, '')}
           </h3>
         );
@@ -150,7 +171,11 @@ export const BookReaderView: React.FC<Props> = ({ lang, onBack, onOpenAdmin }) =
       if (trimmed.startsWith('## ')) {
         flushParagraph(idx);
         elements.push(
-          <h2 key={`h2-${idx}`} className="text-base font-extrabold text-[#0B63F6] mt-5 mb-2">
+          <h2
+            key={`h2-${idx}`}
+            style={{ fontSize: `${h2SizePx}px` }}
+            className="font-extrabold text-[#0B63F6] mt-5 mb-2 transition-all duration-150"
+          >
             {trimmed.replace(/^##\s*/, '')}
           </h2>
         );
@@ -159,7 +184,11 @@ export const BookReaderView: React.FC<Props> = ({ lang, onBack, onOpenAdmin }) =
       if (trimmed.startsWith('# ')) {
         flushParagraph(idx);
         elements.push(
-          <h1 key={`h1-${idx}`} className="text-lg font-black text-slate-900 dark:text-white mt-6 mb-2">
+          <h1
+            key={`h1-${idx}`}
+            style={{ fontSize: `${h1SizePx}px` }}
+            className="font-black text-slate-900 dark:text-white mt-6 mb-2 transition-all duration-150"
+          >
             {trimmed.replace(/^#\s*/, '')}
           </h1>
         );
@@ -170,8 +199,12 @@ export const BookReaderView: React.FC<Props> = ({ lang, onBack, onOpenAdmin }) =
       if (trimmed.startsWith('- ') || trimmed.startsWith('• ')) {
         flushParagraph(idx);
         elements.push(
-          <div key={`bullet-${idx}`} className="flex items-start gap-2 my-1 text-xs sm:text-sm text-slate-700 dark:text-slate-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#0B63F6] mt-1.5 shrink-0" />
+          <div
+            key={`bullet-${idx}`}
+            style={{ fontSize: `${baseFontSizePx}px`, lineHeight: 1.65 }}
+            className="flex items-start gap-2 my-1 text-slate-700 dark:text-slate-200 transition-all duration-150"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-[#0B63F6] mt-2 shrink-0" />
             <span>{renderInlineStyles(trimmed.replace(/^[-•]\s*/, ''))}</span>
           </div>
         );
@@ -310,29 +343,31 @@ export const BookReaderView: React.FC<Props> = ({ lang, onBack, onOpenAdmin }) =
         </button>
 
         {/* Zoom In & Zoom Out Controls */}
-        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl shrink-0">
+        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl shrink-0 border border-slate-200/60 dark:border-slate-700/60">
           <button
-            onClick={() => handleZoom(-10)}
+            onClick={() => handleZoom(-15)}
             disabled={zoomLevel <= 70}
-            className="w-7 h-7 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-30 text-xs font-bold flex items-center justify-center transition active:scale-95"
-            title="Zoom Out (লেখা ছোট করুন)"
+            className="h-7 px-2 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-30 text-xs font-bold flex items-center gap-1 transition active:scale-95"
+            title="লেখা ছোট করুন (Zoom Out)"
           >
-            A-
+            <ZoomOut className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
+            <span className="text-[11px]">A-</span>
           </button>
           <button
             onClick={handleResetZoom}
-            className="px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold text-[#0B63F6] hover:bg-white dark:hover:bg-slate-700"
-            title="Reset to 100%"
+            className="px-2 py-0.5 rounded-lg text-[11px] font-mono font-bold text-[#0B63F6] hover:bg-white dark:hover:bg-slate-700 transition"
+            title="রিসেট করুন (100%)"
           >
             {zoomLevel}%
           </button>
           <button
-            onClick={() => handleZoom(10)}
-            disabled={zoomLevel >= 180}
-            className="w-7 h-7 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-30 text-xs font-bold flex items-center justify-center transition active:scale-95"
-            title="Zoom In (লেখা বড় করুন)"
+            onClick={() => handleZoom(15)}
+            disabled={zoomLevel >= 220}
+            className="h-7 px-2 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-30 text-xs font-bold flex items-center gap-1 transition active:scale-95"
+            title="লেখা বড় করুন (Zoom In)"
           >
-            A+
+            <span className="text-[11px]">A+</span>
+            <ZoomIn className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
           </button>
         </div>
 
@@ -380,7 +415,10 @@ export const BookReaderView: React.FC<Props> = ({ lang, onBack, onOpenAdmin }) =
             <span className="text-[11px] font-bold text-[#0B63F6] uppercase tracking-wider block">
               {lang === 'bn' ? selectedBook.titleBn : selectedBook.titleEn}
             </span>
-            <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white mt-1">
+            <h1
+              style={{ fontSize: `${Math.max(16, Math.round((22 * zoomLevel) / 100))}px`, lineHeight: 1.35 }}
+              className="font-bold text-slate-900 dark:text-white mt-1 transition-all duration-150"
+            >
               {activeChapter.titleBn || activeChapter.titleEn}
             </h1>
           </div>

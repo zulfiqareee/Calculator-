@@ -72,6 +72,7 @@ import { BatteryIpsCalculator } from './components/tools/BatteryIpsCalculator';
 import { LiveWeatherView } from './components/tools/LiveWeatherView';
 import { PrayerTimesView } from './components/tools/PrayerTimesView';
 import { GoogleNewsFeedView } from './components/tools/GoogleNewsFeedView';
+import { CompactHomeWeatherWidget } from './components/tools/CompactHomeWeatherWidget';
 
 // Hero Banner & Views
 import { ScenicHeroBanner } from './components/ScenicHeroBanner';
@@ -357,28 +358,43 @@ export default function App() {
           </span>
         </div>
 
-        {/* Right: Bilingual Pill Switcher */}
-        <div className="bg-[#0047C7]/60 border border-white/60 p-0.5 rounded-full flex items-center shrink-0 shadow-inner">
+        {/* Right: 1-Tap Theme Toggle & Bilingual Pill Switcher */}
+        <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={() => switchLanguage('bn')}
-            className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
-              lang === 'bn'
-                ? 'bg-white text-emerald-600 shadow-sm'
-                : 'text-white/90 hover:text-white'
-            }`}
+            onClick={toggleTheme}
+            className="w-8 h-8 rounded-full bg-[#0047C7]/70 hover:bg-[#0047C7] border border-white/60 flex items-center justify-center text-white shadow-xs active:scale-90 transition-all shrink-0"
+            title={theme === 'dark' ? 'লাইট মোড অন করুন' : 'ডার্ক মোড অন করুন'}
+            aria-label="Toggle Dark / Light Theme"
           >
-            বাংলা
+            {theme === 'dark' ? (
+              <Sun className="w-4 h-4 text-amber-300" />
+            ) : (
+              <Moon className="w-4 h-4 text-blue-100" />
+            )}
           </button>
-          <button
-            onClick={() => switchLanguage('en')}
-            className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
-              lang === 'en'
-                ? 'bg-white text-[#0B63F6] shadow-sm'
-                : 'text-white/90 hover:text-white'
-            }`}
-          >
-            EN
-          </button>
+
+          <div className="bg-[#0047C7]/60 border border-white/60 p-0.5 rounded-full flex items-center shrink-0 shadow-inner">
+            <button
+              onClick={() => switchLanguage('bn')}
+              className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                lang === 'bn'
+                  ? 'bg-white text-emerald-600 shadow-sm'
+                  : 'text-white/90 hover:text-white'
+              }`}
+            >
+              বাংলা
+            </button>
+            <button
+              onClick={() => switchLanguage('en')}
+              className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                lang === 'en'
+                  ? 'bg-white text-[#0B63F6] shadow-sm'
+                  : 'text-white/90 hover:text-white'
+              }`}
+            >
+              EN
+            </button>
+          </div>
         </div>
       </header>
 
@@ -482,6 +498,14 @@ export default function App() {
                     </button>
                   )}
                 </div>
+
+                {/* Real-time Auto-Locating Weather Shortcut Card (Prominent Live Weather) */}
+                {!searchQuery && (
+                  <CompactHomeWeatherWidget
+                    lang={lang}
+                    onOpenDetails={() => openTool('weather')}
+                  />
+                )}
 
                 {/* Scenic Landscape Hero Banner */}
                 {!searchQuery && <ScenicHeroBanner lang={lang} />}
