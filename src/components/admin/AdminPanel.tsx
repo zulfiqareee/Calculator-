@@ -68,7 +68,7 @@ type AdminTab = 'books' | 'notes' | 'tools' | 'backup' | 'security';
 
 export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }) => {
   // Auth state
-  const [emailInput, setEmailInput] = useState<string>('');
+  const [emailInput, setEmailInput] = useState<string>('zulfiqar1hasan@gmail.com');
   const [passInput, setPassInput] = useState<string>('');
   const [session, setSession] = useState(getAdminSession());
   const [authError, setAuthError] = useState<string | null>(null);
@@ -156,13 +156,10 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }
 
   // Save Book Handler
   const handleSaveBook = () => {
-    if (!bTitleBn.trim()) {
-      alert('বইয়ের শিরোনাম দিন।');
-      return;
-    }
+    const effectiveTitle = bTitleBn.trim() || "নতুন ইলেকট্রিক্যাল গাইড";
     const bookObj: BookItem = {
       id: editingBook ? editingBook.id : `book-${Date.now()}`,
-      titleBn: bTitleBn.trim(),
+      titleBn: effectiveTitle,
       titleEn: bTitleEn.trim() || bTitleBn.trim(),
       author: bAuthor.trim() || 'জুলফিকার হাসান',
       category: bCategory,

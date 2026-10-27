@@ -9,15 +9,21 @@
   }
 
   body {
-    font-family: var(--font-latin);
+    font-family: var(--font-bengali);
     -webkit-tap-highlight-color: transparent;
-    user-select: none;
     overscroll-behavior-y: contain;
   }
 
   /* Bengali text styling support */
-  [lang="bn"] {
+  [lang="bn"], body {
     font-family: var(--font-bengali);
+  }
+
+  /* Essential for mobile typing & IME composition in Bengali (Avro, Ridmik, Gboard) */
+  input, textarea, select, [contenteditable="true"] {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    font-family: var(--font-bengali) !important;
   }
 }
 
@@ -37,4 +43,3 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
-
