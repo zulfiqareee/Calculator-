@@ -106,7 +106,15 @@ export interface NoteFolder {
   iconName?: string;
 }
 
+export interface NoteChecklistItem {
+  id: string;
+  text: string;
+  completed: boolean;
+}
+
 export interface NoteItem {
+  color?: string;
+  checklist?: NoteChecklistItem[];
   id: string;
   folderId: string;
   title: string;

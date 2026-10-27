@@ -1,47 +1,58 @@
 import { NoteFolder, NoteItem } from '../types';
 
-const STORAGE_KEY_FOLDERS = 'smart_utility_note_folders_v1';
-const STORAGE_KEY_NOTES = 'smart_utility_notes_v1';
+const STORAGE_KEY_FOLDERS = 'smart_utility_note_folders_v2';
+const STORAGE_KEY_NOTES = 'smart_utility_notes_v2';
 
 export const INITIAL_FOLDERS: NoteFolder[] = [
-  { id: 'f-formula', nameBn: 'ইলেকট্রিক্যাল সূত্র ব্যাঙ্ক', nameEn: 'Electrical Formula Bank', color: '#0B63F6' },
-  { id: 'f-wiring', nameBn: 'সাইট ওয়্যারিং নোট ও টিপস', nameEn: 'Site Wiring Notes', color: '#10B981' },
-  { id: 'f-daily', nameBn: 'জরুরি কাজের হিসাব', nameEn: 'Quick Work Log', color: '#F59E0B' },
+  { id: 'f-daily', nameBn: 'দৈনন্দিন নোট', nameEn: 'Daily Notes', color: '#0B63F6' },
+  { id: 'f-work', nameBn: 'কাজের হিসাব ও লিস্ট', nameEn: 'Work & Tasks', color: '#10B981' },
+  { id: 'f-personal', nameBn: 'ব্যক্তিগত তথ্য', nameEn: 'Personal Memo', color: '#F59E0B' },
 ];
 
 export const INITIAL_NOTES: NoteItem[] = [
   {
     id: 'n-1',
-    folderId: 'f-formula',
-    title: '৩-ফেজ মোটরের ফুল লোড কারেন্ট সূত্র',
-    formula: 'I = P / (√3 × V × cosφ × η)',
-    content: 'মোটর কিলোওয়াট (kW) জানা থাকলে: কারেন্ট = (kW × 1000) ÷ (1.732 × 400 × 0.85 × 0.88)। সাধারণ থাম্বরুল: প্রতি ১ HP তে প্রায় ১.৪৫ অ্যাম্পিয়ার কারেন্ট।',
-    tags: ['মোটর', 'ফর্মুলা', '৩-ফেজ'],
+    folderId: 'f-daily',
+    title: 'আজকের বাজার ফর্দ ও দরকারি জিনিস',
+    content: 'সকাল ১০টায় বাজারে গিয়ে নিচের প্রয়োজনীয় জিনিসগুলো কিনতে হবে:',
+    checklist: [
+      { id: 'c-1', text: 'মিনিকেট চাল - ২৫ কেজি', completed: true },
+      { id: 'c-2', text: 'সয়াবিন তেল - ৫ লিটার', completed: true },
+      { id: 'c-3', text: 'মসুর ডাল ও পেঁয়াজ', completed: false },
+      { id: 'c-4', text: 'ডিম ও তাজা শাকসবজি', completed: false },
+    ],
+    color: 'amber',
+    tags: ['বাজার', 'দৈনন্দিন'],
     isPinned: true,
-    createdAt: Date.now() - 500000,
-    updatedAt: Date.now() - 500000,
+    createdAt: Date.now() - 3600000 * 2,
+    updatedAt: Date.now() - 3600000 * 2,
   },
   {
     id: 'n-2',
-    folderId: 'f-formula',
-    title: 'ক্যাপাসিটর ব্যাংক kVAR নির্ণয়',
-    formula: 'kVAR = kW × (tan θ1 - tan θ2)',
-    content: 'বিদ্যুৎ বিলের লো-পাওয়ার ফ্যাক্টর জরিমানা কমাতে এই সূত্রের সাহায্যে সঠিক সাইজের ক্যাপাসিটর ব্যাংক নির্বাচন করা যায়।',
-    tags: ['পাওয়ার ফ্যাক্টর', 'ক্যাপাসিটর'],
-    isPinned: false,
-    createdAt: Date.now() - 400000,
-    updatedAt: Date.now() - 400000,
+    folderId: 'f-work',
+    title: 'জরুরি কাজের চেকলিস্ট',
+    content: 'এই সপ্তাহের মধ্যে শেষ করতে হবে:',
+    checklist: [
+      { id: 'c-5', text: 'চলতি মাসের বিদ্যুৎ বিল পরিশোধ করা', completed: true },
+      { id: 'c-6', text: 'মোটর ও আইপিএস ব্যাটারির ওয়াটার লেভেল চেক করা', completed: false },
+      { id: 'c-7', text: 'প্রয়োজনীয় জিনিসপত্রের হিসাব সংরক্ষণ করা', completed: false },
+    ],
+    color: 'blue',
+    tags: ['কাজ', 'চেকলিস্ট'],
+    isPinned: true,
+    createdAt: Date.now() - 3600000 * 5,
+    updatedAt: Date.now() - 3600000 * 5,
   },
   {
     id: 'n-3',
-    folderId: 'f-wiring',
-    title: 'বাসাবাড়ির এসি ও গিজার ওয়্যারিং চেকলিস্ট',
-    formula: 'Cable Size: 4.0 mm² / Breaker: 20A',
-    content: '১. প্রতিটি এসির জন্য অবশ্যই আলাদা ৪.০ mm² ক্যাবল টানতে হবে।\n২. নিউট্রাল কখনো অন্য কোনো রুমের সাথে কমন করা যাবে না।\n৩. নির্ভরযোগ্য আর্থিং ওয়্যার (২.৫ mm² গ্রিন) ফ্রেমের সাথে কানেক্ট নিশ্চিত করতে হবে।',
-    tags: ['ওয়্যারিং', 'এসি', 'নিরাপত্তা'],
-    isPinned: true,
-    createdAt: Date.now() - 300000,
-    updatedAt: Date.now() - 300000,
+    folderId: 'f-personal',
+    title: 'ব্যক্তিগত নোট ও প্রয়োজনীয় মেমো',
+    content: 'যেকোনো ব্যক্তিগত তথ্য, হিসাব, ঠিকানা, মোবাইল নম্বর বা কাজের বিবরণ এই নোটপ্যাডে নিরাপদভাবে লিখে সংরক্ষণ করে রাখুন।\n\nউপরে সার্চ বারে যেকোনো শব্দ লিখে তৎক্ষণাৎ আপনার নোট খুঁজে পেতে পারবেন।',
+    color: 'emerald',
+    tags: ['মেমো', 'তথ্য'],
+    isPinned: false,
+    createdAt: Date.now() - 3600000 * 12,
+    updatedAt: Date.now() - 3600000 * 12,
   },
 ];
 
@@ -53,7 +64,7 @@ export function getStoredFolders(): NoteFolder[] {
       return INITIAL_FOLDERS;
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : INITIAL_FOLDERS;
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_FOLDERS;
   } catch {
     return INITIAL_FOLDERS;
   }
@@ -85,7 +96,7 @@ export function getStoredNotes(): NoteItem[] {
       return INITIAL_NOTES;
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : INITIAL_NOTES;
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_NOTES;
   } catch {
     return INITIAL_NOTES;
   }

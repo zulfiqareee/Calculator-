@@ -629,14 +629,14 @@ export default function App() {
                       className="p-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white flex items-center gap-2.5 shadow-sm active:scale-98 transition text-left"
                     >
                       <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-                        <Bookmark className="w-4 h-4 text-white" />
+                        <FileText className="w-4 h-4 text-white" />
                       </div>
                       <div className="min-w-0">
                         <span className="font-bold text-xs block truncate leading-tight">
-                          {lang === 'bn' ? 'নোট ও সূত্র ব্যাঙ্ক' : 'Formula Bank'}
+                          {lang === 'bn' ? 'নোটপ্যাড ও মেমো' : 'Smart Notepad'}
                         </span>
                         <span className="text-[10px] text-emerald-100 block truncate">
-                          {lang === 'bn' ? 'কাজের সূত্র ও নোট' : 'Saved notes'}
+                          {lang === 'bn' ? 'যেকোনো তথ্য ও চেকলিস্ট' : 'Notes & checklist'}
                         </span>
                       </div>
                     </button>
@@ -1113,8 +1113,8 @@ export default function App() {
                   }}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-left"
                 >
-                  <Bookmark className="w-4 h-4 text-emerald-600" />
-                  <span>{lang === 'bn' ? 'নোটপ্যাড ও সূত্র ব্যাঙ্ক' : 'Notepad & Formulas'}</span>
+                  <FileText className="w-4 h-4 text-emerald-600" />
+                  <span>{lang === 'bn' ? 'নোটপ্যাড ও মেমো' : 'Smart Notepad'}</span>
                 </button>
 
                 <button
