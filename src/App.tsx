@@ -38,6 +38,7 @@ import {
   CloudSun,
   Compass,
   MapPin,
+  Newspaper,
 } from 'lucide-react';
 import { Language, ThemeMode, ToolCategory, ToolId, ToolItem, CustomTool } from './types';
 import {
@@ -70,6 +71,7 @@ import { BmiCalorieCalculator } from './components/tools/BmiCalorieCalculator';
 import { BatteryIpsCalculator } from './components/tools/BatteryIpsCalculator';
 import { LiveWeatherView } from './components/tools/LiveWeatherView';
 import { PrayerTimesView } from './components/tools/PrayerTimesView';
+import { GoogleNewsFeedView } from './components/tools/GoogleNewsFeedView';
 
 // Hero Banner & Views
 import { ScenicHeroBanner } from './components/ScenicHeroBanner';
@@ -247,6 +249,8 @@ export default function App() {
         return <CloudSun className={className} />;
       case 'Compass':
         return <Compass className={className} />;
+      case 'Newspaper':
+        return <Newspaper className={className} />;
       default:
         return <Sparkles className={className} />;
     }
@@ -302,6 +306,8 @@ export default function App() {
         return <LiveWeatherView lang={lang} />;
       case 'prayer-times':
         return <PrayerTimesView lang={lang} />;
+      case 'news':
+        return <GoogleNewsFeedView lang={lang} />;
       default:
         return null;
     }

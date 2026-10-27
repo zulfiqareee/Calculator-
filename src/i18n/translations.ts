@@ -183,6 +183,19 @@ export const TOOLS_LIST: ToolItem[] = [
     gradient: 'from-teal-600 to-emerald-800',
     accentColor: 'text-teal-600',
   },
+  {
+    id: 'news',
+    category: 'daily',
+    titleEn: 'Live News & Headlines',
+    titleBn: 'শীর্ষ সংবাদ ও খবর',
+    descEn: 'Real-time top Bengali news feeds from Google News with categorized updates and source links.',
+    descBn: 'গুগল নিউজের তাজা বাংলা খবর, জাতীয়, প্রযুক্তি, খেলাধুলা ও আন্তর্জাতিক খবরের লাইভ আপডেট।',
+    badgeEn: 'Live News',
+    badgeBn: 'লাইভ সংবাদ',
+    iconName: 'Newspaper',
+    gradient: 'from-blue-600 to-indigo-700',
+    accentColor: 'text-blue-600',
+  },
 ];
 
 export const UI_TEXT = {

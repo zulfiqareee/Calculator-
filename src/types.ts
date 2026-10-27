@@ -18,6 +18,7 @@ export type ToolId =
   | 'battery-ips'
   | 'weather'
   | 'prayer-times'
+  | 'news'
   | string;
 
 export interface ToolItem {
