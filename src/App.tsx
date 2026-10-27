@@ -1,3 +1,4 @@
+import { App as CapApp } from '@capacitor/app';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -71,7 +72,6 @@ import { BmiCalorieCalculator } from './components/tools/BmiCalorieCalculator';
 import { BatteryIpsCalculator } from './components/tools/BatteryIpsCalculator';
 import { LiveWeatherView } from './components/tools/LiveWeatherView';
 import { PrayerTimesView } from './components/tools/PrayerTimesView';
-import { GoogleNewsFeedView } from './components/tools/GoogleNewsFeedView';
 import { CompactHomeWeatherWidget } from './components/tools/CompactHomeWeatherWidget';
 
 // Hero Banner & Views
@@ -102,6 +102,102 @@ export default function App() {
   const [isOnline, setIsOnline] = useState<boolean>(
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
+
+  // Android Hardware Back Button & Browser Back Gestures Handling
+  const [exitToastVisible, setExitToastVisible] = useState<boolean>(false);
+  const lastBackPressRef = React.useRef<number>(0);
+
+  const activeToolIdRef = React.useRef(activeToolId);
+  const specialViewRef = React.useRef(specialView);
+  const isDrawerOpenRef = React.useRef(isDrawerOpen);
+  const settingsSubViewRef = React.useRef(settingsSubView);
+  const activeTabRef = React.useRef(activeTab);
+
+  React.useEffect(() => { activeToolIdRef.current = activeToolId; }, [activeToolId]);
+  React.useEffect(() => { specialViewRef.current = specialView; }, [specialView]);
+  React.useEffect(() => { isDrawerOpenRef.current = isDrawerOpen; }, [isDrawerOpen]);
+  React.useEffect(() => { settingsSubViewRef.current = settingsSubView; }, [settingsSubView]);
+  React.useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+
+  const handleAppBack = React.useCallback(() => {
+    // 1. If Drawer is open, close it
+    if (isDrawerOpenRef.current) {
+      setIsDrawerOpen(false);
+      return;
+    }
+
+    // 2. If an active tool is open, close it and return to home
+    if (activeToolIdRef.current) {
+      setActiveToolId(null);
+      return;
+    }
+
+    // 3. If in Special View (Books Reader or Notepad), close it
+    if (specialViewRef.current !== 'none') {
+      setSpecialView('none');
+      return;
+    }
+
+    // 4. If in Settings subview (Admin, AdMob, About), return to main settings
+    if (activeTabRef.current === 'settings' && settingsSubViewRef.current !== 'main') {
+      setSettingsSubView('main');
+      return;
+    }
+
+    // 5. If on another tab (Favorites, Recents, Settings), return to home tab
+    if (activeTabRef.current !== 'home') {
+      setActiveTab('home');
+      return;
+    }
+
+    // 6. Already on Home tab: double back press to safely exit (prevents accidental exit)
+    const now = Date.now();
+    if (now - lastBackPressRef.current < 2000) {
+      try {
+        CapApp.exitApp();
+      } catch {
+        // browser fallback
+      }
+    } else {
+      lastBackPressRef.current = now;
+      setExitToastVisible(true);
+      setTimeout(() => {
+        setExitToastVisible(false);
+      }, 2000);
+    }
+  }, []);
+
+  // Listen for Capacitor native Android hardware back button
+  React.useEffect(() => {
+    let listenerHandle: any = null;
+    try {
+      CapApp.addListener('backButton', () => {
+        handleAppBack();
+      }).then((handle) => {
+        listenerHandle = handle;
+      });
+    } catch (e) {}
+
+    return () => {
+      if (listenerHandle && listenerHandle.remove) {
+        listenerHandle.remove();
+      }
+    };
+  }, [handleAppBack]);
+
+  // Listen for Web / Mobile Browser popstate events
+  React.useEffect(() => {
+    window.history.replaceState({ page: 'root' }, '');
+    window.history.pushState({ page: 'app' }, '');
+
+    const handlePop = () => {
+      window.history.pushState({ page: 'app' }, '');
+      handleAppBack();
+    };
+
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, [handleAppBack]);
 
   const t = UI_TEXT[lang];
 
@@ -307,8 +403,6 @@ export default function App() {
         return <LiveWeatherView lang={lang} />;
       case 'prayer-times':
         return <PrayerTimesView lang={lang} />;
-      case 'news':
-        return <GoogleNewsFeedView lang={lang} />;
       default:
         return null;
     }
@@ -1063,6 +1157,13 @@ export default function App() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {/* Android Double-Tap Back Exit Toast Notification */}
+      {exitToastVisible && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 dark:bg-slate-800/95 text-white text-xs font-semibold px-4 py-2.5 rounded-full shadow-2xl border border-slate-700/80 backdrop-blur-md flex items-center gap-2 pointer-events-none animate-pulse">
+          <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+          <span>{lang === 'bn' ? 'অ্যাপ থেকে বের হতে আবার ব্যাক বাটনে চাপ দিন' : 'Press back again to exit'}</span>
         </div>
       )}
     </div>
