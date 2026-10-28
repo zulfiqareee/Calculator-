@@ -40,6 +40,7 @@ import {
   Compass,
   MapPin,
   Newspaper,
+  HeartPulse,
 } from 'lucide-react';
 import { Language, ThemeMode, ToolCategory, ToolId, ToolItem, CustomTool } from './types';
 import {
@@ -73,6 +74,7 @@ import { BatteryIpsCalculator } from './components/tools/BatteryIpsCalculator';
 import { LiveWeatherView } from './components/tools/LiveWeatherView';
 import { PrayerTimesView } from './components/tools/PrayerTimesView';
 import { CompactHomeWeatherWidget } from './components/tools/CompactHomeWeatherWidget';
+import { HealthTipsView } from './components/tools/HealthTipsView';
 
 // Hero Banner & Views
 import { ScenicHeroBanner } from './components/ScenicHeroBanner';
@@ -346,6 +348,8 @@ export default function App() {
         return <CloudSun className={className} />;
       case 'Compass':
         return <Compass className={className} />;
+      case 'HeartPulse':
+        return <HeartPulse className={className} />;
       case 'Newspaper':
         return <Newspaper className={className} />;
       default:
@@ -403,6 +407,8 @@ export default function App() {
         return <LiveWeatherView lang={lang} />;
       case 'prayer-times':
         return <PrayerTimesView lang={lang} />;
+      case 'health-tips':
+        return <HealthTipsView lang={lang} onOpenBmi={() => openTool('bmi-calorie')} />;
       default:
         return null;
     }
@@ -520,15 +526,22 @@ export default function App() {
           />
         ) : activeToolId && currentTool ? (
           /* 3. ACTIVE TOOL VIEW */
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <button
-                onClick={closeTool}
-                className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:text-[#0B63F6] transition px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>{t.actions.back}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={closeTool}
+                  className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:text-[#0B63F6] transition px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>{t.actions.back}</span>
+                </button>
+                {currentTool.id === 'calculator' && (
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                    {lang === 'bn' ? currentTool.titleBn : currentTool.titleEn}
+                  </span>
+                )}
+              </div>
 
               <div className="flex items-center gap-2">
                 <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-blue-50 dark:bg-slate-800 text-[#0B63F6] dark:text-blue-400 border border-blue-200/60 dark:border-slate-700">
@@ -549,21 +562,24 @@ export default function App() {
               </div>
             </div>
 
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-4 shadow-xs flex items-center gap-3.5">
-              <div
-                className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${currentTool.gradient} text-white flex items-center justify-center shrink-0 shadow-sm`}
-              >
-                {renderToolIcon(currentTool.iconName, 'w-6 h-6')}
+            {/* Omit duplicate logo & title banner card for Calculator as requested */}
+            {currentTool.id !== 'calculator' && (
+              <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-4 shadow-xs flex items-center gap-3.5">
+                <div
+                  className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${currentTool.gradient} text-white flex items-center justify-center shrink-0 shadow-sm`}
+                >
+                  {renderToolIcon(currentTool.iconName, 'w-6 h-6')}
+                </div>
+                <div className="min-w-0">
+                  <h1 className="text-base font-bold text-slate-900 dark:text-white truncate">
+                    {lang === 'bn' ? currentTool.titleBn : currentTool.titleEn}
+                  </h1>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">
+                    {lang === 'bn' ? currentTool.descBn : currentTool.descEn}
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <h1 className="text-base font-bold text-slate-900 dark:text-white truncate">
-                  {lang === 'bn' ? currentTool.titleBn : currentTool.titleEn}
-                </h1>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">
-                  {lang === 'bn' ? currentTool.descBn : currentTool.descEn}
-                </p>
-              </div>
-            </div>
+            )}
 
             {renderActiveToolComponent()}
           </div>
@@ -603,6 +619,36 @@ export default function App() {
 
                 {/* Scenic Landscape Hero Banner */}
                 {!searchQuery && <ScenicHeroBanner lang={lang} />}
+
+                {/* Health & Wellness Tips Feature Shortcut Card */}
+                {!searchQuery && (
+                  <button
+                    onClick={() => openTool('health-tips')}
+                    className="p-3.5 rounded-2xl bg-gradient-to-r from-rose-500 via-pink-600 to-rose-600 text-white flex items-center justify-between shadow-sm active:scale-98 transition text-left"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-xs">
+                        <HeartPulse className="w-5 h-5 text-white" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-xs sm:text-sm block truncate leading-tight">
+                            {lang === 'bn' ? 'স্বাস্থ্য টিপস ও গাইডলাইন' : 'Health & Wellness Tips'}
+                          </span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-white/20 text-white shrink-0">
+                            {lang === 'bn' ? 'ছবিসহ' : 'Illustrated'}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-rose-100 block truncate mt-0.5">
+                          {lang === 'bn'
+                            ? 'শিশু, বয়স্ক ও সবার জন্য বিস্তারিত পরামর্শ'
+                            : 'Pediatric, senior & adult wellness guides'}
+                        </span>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-white/80 shrink-0 ml-2" />
+                  </button>
+                )}
 
                 {/* Quick Shortcuts: Books & Notepad */}
                 {!searchQuery && (
@@ -1115,6 +1161,17 @@ export default function App() {
                 >
                   <FileText className="w-4 h-4 text-emerald-600" />
                   <span>{lang === 'bn' ? 'নোটপ্যাড ও মেমো' : 'Smart Notepad'}</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    openTool('health-tips');
+                    setIsDrawerOpen(false);
+                  }}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-left"
+                >
+                  <HeartPulse className="w-4 h-4 text-rose-500" />
+                  <span>{lang === 'bn' ? 'স্বাস্থ্য টিপস ও গাইডলাইন' : 'Health & Wellness Tips'}</span>
                 </button>
 
                 <button

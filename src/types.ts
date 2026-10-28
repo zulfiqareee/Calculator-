@@ -18,7 +18,36 @@ export type ToolId =
   | 'battery-ips'
   | 'weather'
   | 'prayer-times'
+  | 'health-tips'
   | string;
+
+export type HealthAudience = 'child' | 'elderly' | 'general' | 'women' | 'firstaid';
+
+export interface HealthTipItem {
+  id: string;
+  category: HealthAudience;
+  titleBn: string;
+  titleEn: string;
+  summaryBn: string;
+  summaryEn: string;
+  image: string;
+  readTimeBn: string;
+  readTimeEn: string;
+  detailsBn: {
+    description: string;
+    dos: string[];
+    donts: string[];
+    nutritions?: string[];
+    whenToSeeDoctor?: string;
+  };
+  detailsEn: {
+    description: string;
+    dos: string[];
+    donts: string[];
+    nutritions?: string[];
+    whenToSeeDoctor?: string;
+  };
+}
 
 export interface ToolItem {
   id: ToolId;

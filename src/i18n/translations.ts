@@ -183,6 +183,19 @@ export const TOOLS_LIST: ToolItem[] = [
     gradient: 'from-teal-600 to-emerald-800',
     accentColor: 'text-teal-600',
   },
+  {
+    id: 'health-tips',
+    category: 'daily',
+    titleEn: 'Health & Wellness Tips',
+    titleBn: 'স্বাস্থ্য টিপস ও গাইডলাইন',
+    descEn: 'Doctor-reviewed health, nutrition, pediatric, elderly & first-aid tips with photos.',
+    descBn: 'শিশু, বয়স্ক, নারী ও সবার জন্য ছবিসহ বিস্তারিত স্বাস্থ্য ও পুষ্টি পরামর্শ এবং প্রাথমিক চিকিৎসা।',
+    badgeEn: 'Health',
+    badgeBn: 'স্বাস্থ্য',
+    iconName: 'HeartPulse',
+    gradient: 'from-rose-500 to-pink-600',
+    accentColor: 'text-rose-500',
+  },
 ];
 
 export const UI_TEXT = {
