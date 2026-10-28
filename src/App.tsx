@@ -60,21 +60,17 @@ import { TOOLS_LIST, UI_TEXT, formatNumber } from './i18n/translations';
 // Standard Tools
 import { BasicCalculator } from './components/tools/BasicCalculator';
 import { ElectricityBillEstimator } from './components/tools/ElectricityBillEstimator';
-import { PercentageCalculator } from './components/tools/PercentageCalculator';
-import { UnitConverter } from './components/tools/UnitConverter';
 import { AgeCalculator } from './components/tools/AgeCalculator';
-import { ElectricalCalculator } from './components/tools/ElectricalCalculator';
-import { EnergyConsumptionCalculator } from './components/tools/EnergyConsumptionCalculator';
 import { DateDifferenceCalculator } from './components/tools/DateDifferenceCalculator';
 import { CustomToolRunner } from './components/tools/CustomToolRunner';
 import { LoanEmiCalculator } from './components/tools/LoanEmiCalculator';
 import { LandMeasurementCalculator } from './components/tools/LandMeasurementCalculator';
 import { BmiCalorieCalculator } from './components/tools/BmiCalorieCalculator';
-import { BatteryIpsCalculator } from './components/tools/BatteryIpsCalculator';
 import { LiveWeatherView } from './components/tools/LiveWeatherView';
 import { PrayerTimesView } from './components/tools/PrayerTimesView';
 import { CompactHomeWeatherWidget } from './components/tools/CompactHomeWeatherWidget';
 import { HealthTipsView } from './components/tools/HealthTipsView';
+import { QuranPdfReader } from './components/tools/QuranPdfReader';
 
 // Hero Banner & Views
 import { ScenicHeroBanner } from './components/ScenicHeroBanner';
@@ -383,16 +379,8 @@ export default function App() {
         return <BasicCalculator lang={lang} />;
       case 'electricity':
         return <ElectricityBillEstimator lang={lang} />;
-      case 'percentage':
-        return <PercentageCalculator lang={lang} />;
-      case 'converter':
-        return <UnitConverter lang={lang} />;
       case 'age':
         return <AgeCalculator lang={lang} />;
-      case 'electrical':
-        return <ElectricalCalculator lang={lang} />;
-      case 'energy':
-        return <EnergyConsumptionCalculator lang={lang} />;
       case 'date-diff':
         return <DateDifferenceCalculator lang={lang} />;
       case 'emi':
@@ -401,14 +389,14 @@ export default function App() {
         return <LandMeasurementCalculator lang={lang} />;
       case 'bmi-calorie':
         return <BmiCalorieCalculator lang={lang} />;
-      case 'battery-ips':
-        return <BatteryIpsCalculator lang={lang} />;
       case 'weather':
         return <LiveWeatherView lang={lang} />;
       case 'prayer-times':
         return <PrayerTimesView lang={lang} />;
       case 'health-tips':
         return <HealthTipsView lang={lang} onOpenBmi={() => openTool('bmi-calorie')} />;
+      case 'quran-pdf':
+        return <QuranPdfReader lang={lang} />;
       default:
         return null;
     }
@@ -1176,14 +1164,16 @@ export default function App() {
 
                 <button
                   onClick={() => {
-                    openTool('electrical');
+                    openTool('quran-pdf');
                     setIsDrawerOpen(false);
                   }}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-left"
                 >
-                  <Zap className="w-4 h-4 text-amber-500" />
-                  <span>{lang === 'bn' ? '১০-ইন-১ ইলেকট্রিক্যাল স্যুট' : 'Electrical Master Suite'}</span>
+                  <BookOpen className="w-4 h-4 text-emerald-600" />
+                  <span>{lang === 'bn' ? 'আল-কুরআনুল কারীম' : 'Holy Quran'}</span>
                 </button>
+
+
 
                 {/* Exclusive Admin Panel Link */}
                 <button

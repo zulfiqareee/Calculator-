@@ -54,14 +54,29 @@ export const setStoredTheme = (theme: ThemeMode) => {
   }
 };
 
+const DELETED_TOOLS = new Set([
+  'percentage',
+  'converter',
+  'electrical',
+  'energy',
+  'battery-ips',
+  'custom-solar-pv',
+  'custom-led-resistor',
+]);
+
 export const getStoredFavorites = (): string[] => {
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.FAVORITES);
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((id) => !DELETED_TOOLS.has(id));
+      }
+    }
   } catch (e) {
     console.warn('Storage read error:', e);
   }
-  return ['calculator', 'electricity', 'percentage'];
+  return ['calculator', 'electricity', 'land'];
 };
 
 export const setStoredFavorites = (favs: string[]) => {
@@ -75,7 +90,12 @@ export const setStoredFavorites = (favs: string[]) => {
 export const getStoredRecents = (): string[] => {
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.RECENTS);
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((id) => !DELETED_TOOLS.has(id));
+      }
+    }
   } catch (e) {
     console.warn('Storage read error:', e);
   }

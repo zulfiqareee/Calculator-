@@ -5,54 +5,7 @@ const STORAGE_KEY_ADMIN_PIN = 'smart_utility_admin_pin_v1';
 
 export const DEFAULT_ADMIN_PIN = '1234';
 
-export const INITIAL_CUSTOM_TOOLS: CustomTool[] = [
-  {
-    id: 'custom-solar-pv',
-    titleEn: 'Solar Panel Daily Energy (Wh)',
-    titleBn: 'সোলার প্যানেল দৈনিক উৎপাদন',
-    descEn: 'Calculate daily Watt-hours generated based on panel wattage and peak sun hours.',
-    descBn: 'প্যানেল ওয়াট এবং দৈনিক রোদের ঘণ্টা অনুযায়ী সম্ভাব্য বিদ্যুৎ উৎপাদন।',
-    category: 'electrical',
-    badgeEn: 'Solar',
-    badgeBn: 'সোলার',
-    iconName: 'Sun',
-    gradient: 'from-amber-500 to-yellow-600',
-    inputs: [
-      { id: 'w', labelEn: 'Panel Capacity (Watts)', labelBn: 'প্যানেল ক্ষমতা (ওয়াট)', variable: 'w', defaultValue: 300, unit: 'W' },
-      { id: 'h', labelEn: 'Peak Sun Hours / Day', labelBn: 'দৈনিক গড় রোদ (ঘণ্টা)', variable: 'h', defaultValue: 4.5, unit: 'hrs', step: 0.1 },
-      { id: 'eff', labelEn: 'System Efficiency (%)', labelBn: 'সিস্টেম দক্ষতা (%)', variable: 'eff', defaultValue: 80, unit: '%', step: 1 }
-    ],
-    formula: 'w * h * (eff / 100)',
-    outputLabelEn: 'Daily Generated Energy',
-    outputLabelBn: 'দৈনিক উৎপাদিত মোট শক্তি',
-    outputUnit: 'Wh / দিন',
-    formulaDesc: 'Energy (Wh) = Watts × Sun Hours × (Efficiency / 100)',
-    createdAt: Date.now() - 100000,
-  },
-  {
-    id: 'custom-led-resistor',
-    titleEn: 'LED Current Limiting Resistor',
-    titleBn: 'এলইডি সিরিজ রেজিস্টর সাইজ',
-    descEn: 'Calculate required series resistor for any LED given supply voltage and LED rating.',
-    descBn: 'সাপ্লাই ভোল্টেজ এবং এলইডি ড্রপ ও কারেন্ট অনুযায়ী সুরক্ষা রেজিস্টরের মান।',
-    category: 'electrical',
-    badgeEn: 'Electronics',
-    badgeBn: 'ইলেকট্রনিক্স',
-    iconName: 'Cpu',
-    gradient: 'from-blue-500 to-cyan-600',
-    inputs: [
-      { id: 'vs', labelEn: 'Supply Voltage (Vs)', labelBn: 'সাপ্লাই ভোল্টেজ (Vs)', variable: 'vs', defaultValue: 12, unit: 'V' },
-      { id: 'vf', labelEn: 'LED Forward Voltage (Vf)', labelBn: 'এলইডি ভোল্টেজ ড্রপ (Vf)', variable: 'vf', defaultValue: 2.2, unit: 'V', step: 0.1 },
-      { id: 'if_ma', labelEn: 'LED Current (mA)', labelBn: 'এলইডি কারেন্ট (mA)', variable: 'if_ma', defaultValue: 20, unit: 'mA' }
-    ],
-    formula: '(vs - vf) / (if_ma / 1000)',
-    outputLabelEn: 'Required Resistor (Ohms)',
-    outputLabelBn: 'প্রয়োজনীয় রেজিস্টরের মান',
-    outputUnit: 'Ω',
-    formulaDesc: 'R = (Supply Volts - LED Volts) / (Amps)',
-    createdAt: Date.now() - 50000,
-  }
-];
+export const INITIAL_CUSTOM_TOOLS: CustomTool[] = [];
 
 export function getStoredCustomTools(): CustomTool[] {
   try {
@@ -62,7 +15,13 @@ export function getStoredCustomTools(): CustomTool[] {
       return INITIAL_CUSTOM_TOOLS;
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : INITIAL_CUSTOM_TOOLS;
+    const list = Array.isArray(parsed) ? parsed : INITIAL_CUSTOM_TOOLS;
+    // Filter out deleted tools if previously saved in user localStorage
+    const filtered = list.filter((t: CustomTool) => t.id !== 'custom-solar-pv' && t.id !== 'custom-led-resistor');
+    if (filtered.length !== list.length) {
+      localStorage.setItem(STORAGE_KEY_CUSTOM_TOOLS, JSON.stringify(filtered));
+    }
+    return filtered;
   } catch {
     return INITIAL_CUSTOM_TOOLS;
   }

@@ -6,19 +6,15 @@ export type ToolCategory = 'all' | 'finance' | 'utility' | 'daily' | 'electrical
 export type ToolId =
   | 'calculator'
   | 'electricity'
-  | 'percentage'
-  | 'converter'
   | 'age'
-  | 'electrical'
-  | 'energy'
   | 'date-diff'
   | 'emi'
   | 'land'
   | 'bmi-calorie'
-  | 'battery-ips'
   | 'weather'
   | 'prayer-times'
   | 'health-tips'
+  | 'quran-pdf'
   | string;
 
 export type HealthAudience = 'child' | 'elderly' | 'general' | 'women' | 'firstaid';
