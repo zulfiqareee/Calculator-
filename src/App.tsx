@@ -42,6 +42,7 @@ import {
   Newspaper,
   HeartPulse,
   Bell,
+  BellRing,
 } from 'lucide-react';
 import { Language, ThemeMode, ToolCategory, ToolId, ToolItem, CustomTool } from './types';
 import {
@@ -57,6 +58,14 @@ import {
 import { getStoredCustomTools } from './utils/customToolsStorage';
 import { AUTHORIZED_ADMIN_EMAIL } from './utils/adminAuth';
 import { TOOLS_LIST, UI_TEXT, formatNumber } from './i18n/translations';
+import {
+  AlarmItem,
+  getStoredAlarms,
+  toggleAlarm,
+  startAlarmSound,
+  stopAlarmSound,
+  addOrUpdateAlarm,
+} from './utils/alarmStorage';
 
 // Standard Tools
 import { BasicCalculator } from './components/tools/BasicCalculator';
@@ -105,6 +114,67 @@ export default function App() {
   // Android Hardware Back Button & Browser Back Gestures Handling
   const [exitToastVisible, setExitToastVisible] = useState<boolean>(false);
   const lastBackPressRef = React.useRef<number>(0);
+
+  // Global Alarm State & Monitor across all screens and tabs
+  const [globalRingingAlarm, setGlobalRingingAlarm] = useState<AlarmItem | null>(null);
+  const lastGlobalTriggeredMinuteRef = React.useRef<string>('');
+
+  React.useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date();
+      const currentHours = String(now.getHours()).padStart(2, '0');
+      const currentMinutes = String(now.getMinutes()).padStart(2, '0');
+      const timeStr = `${currentHours}:${currentMinutes}`;
+      const dayOfWeek = now.getDay();
+
+      if (lastGlobalTriggeredMinuteRef.current !== timeStr) {
+        const stored = getStoredAlarms();
+        const matched = stored.find((a) => {
+          if (!a.enabled) return false;
+          if (a.time !== timeStr) return false;
+          if (a.repeatDays.length === 0) return true; // once
+          return a.repeatDays.includes(dayOfWeek);
+        });
+
+        if (matched && !globalRingingAlarm) {
+          lastGlobalTriggeredMinuteRef.current = timeStr;
+          setGlobalRingingAlarm(matched);
+          startAlarmSound(matched.soundTone);
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [globalRingingAlarm]);
+
+  const handleDismissGlobalAlarm = () => {
+    stopAlarmSound();
+    if (globalRingingAlarm && globalRingingAlarm.repeatDays.length === 0) {
+      toggleAlarm(globalRingingAlarm.id);
+    }
+    setGlobalRingingAlarm(null);
+  };
+
+  const handleSnoozeGlobalAlarm = (minutes = 5) => {
+    stopAlarmSound();
+    if (globalRingingAlarm) {
+      const now = new Date();
+      now.setMinutes(now.getMinutes() + minutes);
+      const snoozeTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const snoozedAlarm: AlarmItem = {
+        id: `snooze-${Date.now()}`,
+        time: snoozeTime,
+        labelBn: `(স্নুজ) ${globalRingingAlarm.labelBn}`,
+        labelEn: `(Snoozed) ${globalRingingAlarm.labelEn || globalRingingAlarm.labelBn}`,
+        enabled: true,
+        repeatDays: [],
+        soundTone: globalRingingAlarm.soundTone,
+        createdAt: Date.now(),
+      };
+      addOrUpdateAlarm(snoozedAlarm);
+    }
+    setGlobalRingingAlarm(null);
+  };
 
   const activeToolIdRef = React.useRef(activeToolId);
   const specialViewRef = React.useRef(specialView);
@@ -1178,6 +1248,49 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Global Ringing Alarm Modal - Rings anywhere in the app */}
+      {globalRingingAlarm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in">
+          <div className="w-full max-w-sm rounded-3xl bg-white dark:bg-slate-900 border-2 border-indigo-500 shadow-2xl p-6 text-center animate-bounce-subtle">
+            <div className="w-20 h-20 mx-auto rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 flex items-center justify-center shadow-inner animate-pulse">
+              <BellRing className="w-10 h-10 text-indigo-600 animate-spin-slow" />
+            </div>
+
+            <span className="text-xs font-black uppercase text-indigo-500 tracking-wider mt-4 block">
+              {lang === 'bn' ? '🔔 অ্যালার্ম বাজছে!' : '🔔 Alarm Ringing!'}
+            </span>
+
+            <h3 className="text-4xl font-black tracking-tight text-slate-900 dark:text-white mt-1 font-mono">
+              {formatNumber(globalRingingAlarm.time, lang)}
+            </h3>
+
+            <p className="text-base font-semibold text-slate-700 dark:text-slate-200 mt-2">
+              {lang === 'bn' ? globalRingingAlarm.labelBn : globalRingingAlarm.labelEn}
+            </p>
+
+            <span className="inline-block mt-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-300 text-xs font-semibold">
+              🎵 {globalRingingAlarm.soundTone.toUpperCase()} TONE
+            </span>
+
+            <div className="grid grid-cols-2 gap-3 mt-6">
+              <button
+                onClick={() => handleSnoozeGlobalAlarm(5)}
+                className="py-3 px-4 rounded-xl font-bold text-sm bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 active:scale-95 transition"
+              >
+                {lang === 'bn' ? 'স্নুজ (৫ মিনিট)' : 'Snooze (5m)'}
+              </button>
+              <button
+                onClick={handleDismissGlobalAlarm}
+                className="py-3 px-4 rounded-xl font-bold text-sm bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 shadow-md transition"
+              >
+                {lang === 'bn' ? 'বন্ধ করুন' : 'Dismiss'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Android Double-Tap Back Exit Toast Notification */}
       {exitToastVisible && (
         <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 dark:bg-slate-800/95 text-white text-xs font-semibold px-4 py-2.5 rounded-full shadow-2xl border border-slate-700/80 backdrop-blur-md flex items-center gap-2 pointer-events-none animate-pulse">

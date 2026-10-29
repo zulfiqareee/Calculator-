@@ -41,6 +41,7 @@ import {
   clearCustomSoundData,
   getAlarmVolume,
   setAlarmVolume,
+  unlockAudio,
 } from '../../utils/alarmStorage';
 
 interface Props {
@@ -71,8 +72,37 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
 
   // Triggered alarm state
   const [ringingAlarm, setRingingAlarm] = useState<AlarmItem | null>(null);
+  const [isTestingSound, setIsTestingSound] = useState<boolean>(false);
+  const testTimerRef = useRef<number | null>(null);
   const lastTriggeredMinuteRef = useRef<string>('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleToggleSoundTest = () => {
+    unlockAudio();
+    if (isTestingSound) {
+      stopAlarmSound();
+      setIsTestingSound(false);
+      if (testTimerRef.current) clearTimeout(testTimerRef.current);
+    } else {
+      setIsTestingSound(true);
+      startAlarmSound(selectedTone || 'digital');
+      if (testTimerRef.current) clearTimeout(testTimerRef.current);
+      testTimerRef.current = window.setTimeout(() => {
+        stopAlarmSound();
+        setIsTestingSound(false);
+      }, 7000);
+    }
+  };
+
+  const handleSetQuick1MinAlarm = () => {
+    const testDate = new Date();
+    testDate.setMinutes(testDate.getMinutes() + 1);
+    const h = String(testDate.getHours()).padStart(2, '0');
+    const m = String(testDate.getMinutes()).padStart(2, '0');
+    setInputTime(`${h}:${m}`);
+    setInputLabel(lang === 'bn' ? 'টেস্ট অ্যালার্ম (১ মিনিট পর)' : 'Test Alarm (1m later)');
+    setSelectedDays([0, 1, 2, 3, 4, 5, 6]);
+  };
 
   // Update clock every second
   useEffect(() => {
@@ -429,6 +459,55 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
         </div>
       </div>
 
+      {/* Test Sound & Speaker Verification Banner */}
+      <div className={`p-4 rounded-3xl border transition shadow-xs flex items-center justify-between gap-3 ${
+        isTestingSound
+          ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800'
+          : 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800'
+      }`}>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
+            isTestingSound ? 'bg-rose-500 text-white animate-pulse' : 'bg-emerald-600 text-white'
+          }`}>
+            {isTestingSound ? <BellRing className="w-5 h-5 animate-spin-slow" /> : <Volume2 className="w-5 h-5" />}
+          </div>
+          <div className="min-w-0">
+            <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">
+              {isTestingSound
+                ? (lang === 'bn' ? 'অ্যালার্ম সাউন্ড বাজছে...' : 'Alarm Sound is Playing...')
+                : (lang === 'bn' ? 'ফোনের স্পিকার ও সাউন্ড টেস্ট করুন' : 'Test Alarm Sound & Speaker')}
+            </h4>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              {isTestingSound
+                ? (lang === 'bn' ? 'সাউন্ড শুনতে পেলে স্পিকার ঠিক আছে' : 'If hearing sound, audio is working')
+                : (lang === 'bn' ? '১ ক্লিকেই অ্যালার্ম সাউন্ড বেজে উঠবে' : 'Click to test alarm ringtone now')}
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleToggleSoundTest}
+          className={`px-4 py-2.5 rounded-2xl text-xs font-bold shrink-0 shadow-md active:scale-95 transition flex items-center gap-1.5 ${
+            isTestingSound
+              ? 'bg-rose-600 hover:bg-rose-700 text-white'
+              : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+          }`}
+        >
+          {isTestingSound ? (
+            <>
+              <Square className="w-3.5 h-3.5 fill-current" />
+              <span>{lang === 'bn' ? 'বন্ধ করুন' : 'Stop Test'}</span>
+            </>
+          ) : (
+            <>
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>{lang === 'bn' ? 'সাউন্ড বাজান' : 'Test Sound'}</span>
+            </>
+          )}
+        </button>
+      </div>
+
       {/* Prominent Sound & Ringtone Settings Card */}
       <div className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-indigo-100 dark:border-slate-800 shadow-xs space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -755,6 +834,15 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
                   onChange={(e) => setInputTime(e.target.value)}
                   className="w-full px-4 py-3 text-3xl font-black font-mono text-center rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                 />
+
+                <button
+                  type="button"
+                  onClick={handleSetQuick1MinAlarm}
+                  className="mt-2 w-full py-2 px-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 text-xs font-bold flex items-center justify-center gap-1.5 border border-indigo-200 dark:border-indigo-800 transition active:scale-98"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                  <span>{lang === 'bn' ? '⚡ এখনই ১ মিনিট পর টেস্ট এলার্ম সেট করুন' : '⚡ Set alarm for 1 min later to test'}</span>
+                </button>
               </div>
 
               {/* Label & Quick Suggestions */}
