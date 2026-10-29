@@ -1,4 +1,5 @@
 import { ALL_114_SURAHS_META, SurahMeta } from './quran114Data';
+import { arabicToBengaliTajweed } from './tajweedHelper';
 
 export interface QuranAyah {
   ayahNumber: number;
@@ -23,7 +24,7 @@ export interface QuranSurah {
   updatedAt?: number;
 }
 
-export const QURAN_STORAGE_KEY = 'smart_utility_quran_surahs_v4';
+export const QURAN_STORAGE_KEY = 'smart_utility_quran_surahs_v5';
 
 // Curated full and essential verses for preloaded Surahs with Tajweed marks
 const CURATED_SURAHS_AYAHS: Record<number, QuranAyah[]> = {
@@ -240,14 +241,19 @@ const CURATED_SURAHS_AYAHS: Record<number, QuranAyah[]> = {
 
 // Generate default Surah object for each of the 114 Surahs
 function createDefaultSurah(meta: SurahMeta): QuranSurah {
-  const ayahs = CURATED_SURAHS_AYAHS[meta.surahNumber] || [
+  const rawAyahs = CURATED_SURAHS_AYAHS[meta.surahNumber] || [
     {
       ayahNumber: 1,
       arabic: meta.surahNumber === 9 ? 'بَرَاءَةٌ مِّنَ اللَّهِ وَرَسُولِهِ' : 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ',
-      pronunciation: meta.surahNumber === 9 ? 'বারা-আতুম মিনাল্লাহি ওয়া রাসূলিহী' : 'বিসমিল্লাহির রাহমানির রাহীম',
+      pronunciation: meta.surahNumber === 9 ? 'বারা-আতুম মিনাল্লাহি ওয়া রাসূলিহী' : 'বিসমিল্লা-হির রাহমা-নির রাহী-ম',
       bangla: meta.surahNumber === 9 ? 'আল্লাহ ও তাঁর রসূলের পক্ষ থেকে সম্পর্কচ্ছেদের ঘোষণা।' : 'পরম করুণাময় ও অসীম দয়ালু আল্লাহর নামে শুরু করছি।',
     },
   ];
+
+  const ayahs = rawAyahs.map((a) => ({
+    ...a,
+    pronunciation: a.pronunciation && a.pronunciation.trim() ? a.pronunciation : arabicToBengaliTajweed(a.arabic),
+  }));
 
   return {
     id: `surah-${meta.surahNumber}`,
@@ -274,7 +280,14 @@ export function getStoredSurahs(): QuranSurah[] {
     }
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length >= 114) {
-      return parsed;
+      // Ensure all ayahs have pronunciation populated
+      return parsed.map((s: QuranSurah) => ({
+        ...s,
+        ayahs: (s.ayahs || []).map((a) => ({
+          ...a,
+          pronunciation: a.pronunciation && a.pronunciation.trim() ? a.pronunciation : arabicToBengaliTajweed(a.arabic),
+        })),
+      }));
     }
     // If user has old cache with only a few surahs, merge them so all 114 are available!
     const existingMap = new Map<number, QuranSurah>();
@@ -284,7 +297,13 @@ export function getStoredSurahs(): QuranSurah[] {
     const merged = ALL_114_DEFAULT_SURAHS.map((def) => {
       const existing = existingMap.get(def.surahNumber);
       if (existing && existing.ayahs && existing.ayahs.length > def.ayahs.length) {
-        return existing;
+        return {
+          ...existing,
+          ayahs: existing.ayahs.map((a) => ({
+            ...a,
+            pronunciation: a.pronunciation && a.pronunciation.trim() ? a.pronunciation : arabicToBengaliTajweed(a.arabic),
+          })),
+        };
       }
       return def;
     });
@@ -295,6 +314,7 @@ export function getStoredSurahs(): QuranSurah[] {
     return ALL_114_DEFAULT_SURAHS;
   }
 }
+
 
 export function saveStoredSurahs(surahs: QuranSurah[]): void {
   try {

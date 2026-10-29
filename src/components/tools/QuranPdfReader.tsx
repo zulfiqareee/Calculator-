@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { Language } from '../../types';
 import { QuranSurah, QuranAyah, getStoredSurahs, addOrUpdateSurah } from '../../utils/quranStorage';
-import { renderTajweedBengaliText, TAJWEED_RULES } from '../../utils/tajweedHelper';
+import { renderTajweedBengaliText, arabicToBengaliTajweed, TAJWEED_RULES } from '../../utils/tajweedHelper';
 
 interface Props {
   lang: Language;
@@ -91,7 +91,7 @@ export const QuranPdfReader: React.FC<Props> = ({ lang }) => {
           return {
             ayahNumber: arItem.numberInSurah,
             arabic: arItem.text,
-            pronunciation: '',
+            pronunciation: arabicToBengaliTajweed(arItem.text),
             bangla: bnItem ? bnItem.text : '',
           };
         });
@@ -519,25 +519,30 @@ export const QuranPdfReader: React.FC<Props> = ({ lang }) => {
                     </p>
                   </div>
 
-                  {/* Pronunciation (Bangla) with Tajweed Highlights */}
-                  {ayah.pronunciation && (
-                    <div className="text-xs text-slate-800 dark:text-slate-200 bg-emerald-50/50 dark:bg-emerald-950/20 p-3 rounded-2xl leading-relaxed border border-emerald-100/60 dark:border-emerald-900/30">
-                      <div className="flex items-center justify-between mb-1">
-                        <strong className="text-emerald-700 dark:text-emerald-400 font-bold text-[11px] flex items-center gap-1">
-                          <span>{lang === 'bn' ? 'উচ্চারণ (টান ও তাজবীদ সহ):' : 'Pronunciation (Tajweed Marked):'}</span>
-                        </strong>
-                        <button
-                          onClick={() => setShowTajweedModal(true)}
-                          className="text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline font-bold"
-                        >
-                          {lang === 'bn' ? 'টানের নিয়ম দেখুন' : 'Tajweed Help'}
-                        </button>
+                  {/* Pronunciation (Bangla) with Tajweed Highlights - ALWAYS SHOWN */}
+                  {(() => {
+                    const pronText = (ayah.pronunciation && ayah.pronunciation.trim()) || arabicToBengaliTajweed(ayah.arabic);
+                    if (!pronText) return null;
+                    return (
+                      <div className="text-xs text-slate-800 dark:text-slate-200 bg-emerald-50/60 dark:bg-emerald-950/25 p-3 rounded-2xl leading-relaxed border border-emerald-100/80 dark:border-emerald-900/40">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <strong className="text-emerald-700 dark:text-emerald-400 font-bold text-[11px] flex items-center gap-1">
+                            <span>{lang === 'bn' ? 'বাংলা উচ্চারণ (টান ও তাজবীদ সহ):' : 'Bengali Pronunciation (Tajweed Marked):'}</span>
+                          </strong>
+                          <button
+                            onClick={() => setShowTajweedModal(true)}
+                            className="text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline font-bold"
+                          >
+                            {lang === 'bn' ? 'টানের নিয়ম দেখুন' : 'Tajweed Help'}
+                          </button>
+                        </div>
+                        <div className="font-sans text-xs sm:text-sm">
+                          {renderTajweedBengaliText(pronText, enableTajweedHighlight)}
+                        </div>
                       </div>
-                      <div className="font-sans text-xs sm:text-sm">
-                        {renderTajweedBengaliText(ayah.pronunciation, enableTajweedHighlight)}
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
+
 
                   {/* Bangla Translation */}
                   <p className="text-sm font-normal text-slate-700 dark:text-slate-300 leading-relaxed">

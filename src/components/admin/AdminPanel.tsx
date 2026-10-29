@@ -67,6 +67,7 @@ import {
   deleteSurah,
   resetSurahsToDefault,
 } from '../../utils/quranStorage';
+import { arabicToBengaliTajweed } from '../../utils/tajweedHelper';
 
 interface Props {
   lang: Language;
@@ -1335,7 +1336,11 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }
                       totalAyahs: qAyahs.length,
                       revelationType: qRevType,
                       meaningBn: qMeaningBn.trim(),
-                      ayahs: qAyahs.map((a, i) => ({ ...a, ayahNumber: i + 1 })),
+                      ayahs: qAyahs.map((a, i) => ({
+                        ...a,
+                        ayahNumber: i + 1,
+                        pronunciation: a.pronunciation && a.pronunciation.trim() ? a.pronunciation : arabicToBengaliTajweed(a.arabic),
+                      })),
                     };
 
                     const updated = addOrUpdateSurah(surahData);
