@@ -1,4 +1,4 @@
-package com.smartutility.tools;
+package com.zulfiqar.smartutility;
 
 import com.getcapacitor.BridgeActivity;
 
