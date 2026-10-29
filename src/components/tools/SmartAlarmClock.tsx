@@ -16,10 +16,18 @@ import {
   ChevronRight,
   Sun,
   Moon,
+  Music,
+  Upload,
+  Sliders,
+  Play,
+  Square,
+  HelpCircle,
+  FileMusic,
 } from 'lucide-react';
 import { Language } from '../../types';
 import {
   AlarmItem,
+  SoundToneType,
   getStoredAlarms,
   saveStoredAlarms,
   addOrUpdateAlarm,
@@ -28,6 +36,11 @@ import {
   startAlarmSound,
   stopAlarmSound,
   playChimeNote,
+  getCustomSoundData,
+  saveCustomSoundData,
+  clearCustomSoundData,
+  getAlarmVolume,
+  setAlarmVolume,
 } from '../../utils/alarmStorage';
 
 interface Props {
@@ -47,11 +60,19 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
   const [inputTime, setInputTime] = useState<string>('06:00');
   const [inputLabel, setInputLabel] = useState<string>('');
   const [selectedDays, setSelectedDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
-  const [selectedTone, setSelectedTone] = useState<AlarmItem['soundTone']>('chime');
+  const [selectedTone, setSelectedTone] = useState<SoundToneType>('azan');
+
+  // Sound settings state
+  const [showSoundSettings, setShowSoundSettings] = useState<boolean>(false);
+  const [volume, setVolumeState] = useState<number>(getAlarmVolume());
+  const [customSound, setCustomSound] = useState<{ name: string; url: string } | null>(getCustomSoundData());
+  const [previewingTone, setPreviewingTone] = useState<SoundToneType | null>(null);
+  const [soundSuccessMsg, setSoundSuccessMsg] = useState<string | null>(null);
 
   // Triggered alarm state
   const [ringingAlarm, setRingingAlarm] = useState<AlarmItem | null>(null);
   const lastTriggeredMinuteRef = useRef<string>('');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Update clock every second
   useEffect(() => {
@@ -108,7 +129,6 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
   const handleSnooze = (minutes = 5) => {
     stopAlarmSound();
     if (ringingAlarm) {
-      // Calculate snooze time
       const now = new Date();
       now.setMinutes(now.getMinutes() + minutes);
       const snoozeTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -135,14 +155,14 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
     setInputTime('06:00');
     setInputLabel('');
     setSelectedDays([0, 1, 2, 3, 4, 5, 6]);
-    setSelectedTone('chime');
+    setSelectedTone('azan');
     setShowAddModal(true);
   };
 
   const openEditModal = (alarm: AlarmItem) => {
     setEditingAlarm(alarm);
     setInputTime(alarm.time);
-    setInputLabel(lang === 'bn' ? alarm.labelBn : (alarm.labelEn || alarm.labelBn));
+    setInputLabel(alarm.labelBn);
     setSelectedDays(alarm.repeatDays);
     setSelectedTone(alarm.soundTone);
     setShowAddModal(true);
@@ -150,13 +170,11 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
 
   const handleSaveAlarm = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputTime) return;
-
     const newAlarm: AlarmItem = {
       id: editingAlarm ? editingAlarm.id : `alarm-${Date.now()}`,
       time: inputTime,
-      labelBn: inputLabel.trim() || (lang === 'bn' ? 'স্মার্ট অ্যালার্ম' : 'Smart Alarm'),
-      labelEn: inputLabel.trim() || 'Smart Alarm',
+      labelBn: inputLabel.trim() || (lang === 'bn' ? 'অ্যালার্ম' : 'Alarm'),
+      labelEn: inputLabel.trim() || 'Alarm',
       enabled: true,
       repeatDays: selectedDays,
       soundTone: selectedTone,
@@ -187,67 +205,134 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
   };
 
   const selectAllDays = () => setSelectedDays([0, 1, 2, 3, 4, 5, 6]);
-  const selectWeekdays = () => setSelectedDays([0, 1, 2, 3, 4]); // Sun to Thu in Bangladesh/Middle East or Mon-Fri
   const clearDays = () => setSelectedDays([]); // Once
 
-  const previewTone = (tone: AlarmItem['soundTone']) => {
-    if (tone === 'peaceful') {
-      playChimeNote(523.25, 'sine', 0.4, 0.25);
-      setTimeout(() => playChimeNote(659.25, 'sine', 0.4, 0.25), 200);
-      setTimeout(() => playChimeNote(783.99, 'sine', 0.6, 0.25), 400);
-    } else if (tone === 'digital') {
-      playChimeNote(880, 'square', 0.1, 0.2);
-      setTimeout(() => playChimeNote(880, 'square', 0.1, 0.2), 150);
-      setTimeout(() => playChimeNote(1174, 'square', 0.2, 0.25), 300);
-    } else if (tone === 'radar') {
-      playChimeNote(950, 'triangle', 0.15, 0.3);
-      setTimeout(() => playChimeNote(1200, 'triangle', 0.2, 0.35), 200);
-    } else {
-      playChimeNote(659.25, 'sine', 0.3, 0.3);
-      setTimeout(() => playChimeNote(830.61, 'sine', 0.3, 0.3), 150);
-      setTimeout(() => playChimeNote(987.77, 'sine', 0.4, 0.35), 300);
+  // Sound preview controller
+  const handlePlayTonePreview = (tone: SoundToneType) => {
+    if (previewingTone === tone) {
+      stopAlarmSound();
+      setPreviewingTone(null);
+      return;
     }
+    stopAlarmSound();
+    setPreviewingTone(tone);
+    startAlarmSound(tone);
+    // Auto stop preview after 5 seconds
+    setTimeout(() => {
+      setPreviewingTone((prev) => (prev === tone ? null : prev));
+      stopAlarmSound();
+    }, 5000);
   };
 
-  // Format 24h to 12h display
-  const formatTime12h = (time24: string) => {
-    const [h, m] = time24.split(':').map(Number);
-    const period = h >= 12 ? 'PM' : 'AM';
-    const periodBn = h >= 12 ? 'বিকাল/রাত' : 'ভোর/সকাল';
-    const displayH = h % 12 === 0 ? 12 : h % 12;
-    const formatted = `${String(displayH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    return {
-      time: formatted,
-      period: lang === 'bn' ? period : period,
-      periodBn,
+  const handleVolumeChange = (newVol: number) => {
+    setVolumeState(newVol);
+    setAlarmVolume(newVol);
+    playChimeNote(659.25, 'sine', 0.25, 0.3);
+  };
+
+  // Upload Custom Sound from Phone
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 8 * 1024 * 1024) {
+      alert(lang === 'bn' ? 'ফাইলটি ৮ মেগাবাইটের চেয়ে ছোট হতে হবে।' : 'File size must be under 8MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      if (result) {
+        saveCustomSoundData(file.name, result);
+        setCustomSound({ name: file.name, url: result });
+        setSelectedTone('custom');
+        setSoundSuccessMsg(
+          lang === 'bn'
+            ? `মাশাআল্লাহ! "${file.name}" রিংটোন হিসেবে সফলভাবে সেভ হয়েছে।`
+            : `"${file.name}" saved as custom ringtone.`
+        );
+        setTimeout(() => setSoundSuccessMsg(null), 4000);
+      }
     };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
-  // Convert digits to Bengali if needed
-  const toBn = (num: string | number) => {
+  const handleRemoveCustomSound = () => {
+    clearCustomSoundData();
+    setCustomSound(null);
+    if (selectedTone === 'custom') setSelectedTone('azan');
+  };
+
+  // Convert numbers to Bengali
+  const toBn = (num: number | string) => {
     if (lang !== 'bn') return String(num);
     const bnDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
     return String(num).replace(/\d/g, (d) => bnDigits[Number(d)]);
   };
 
-  // Next alarm calculation
+  // Format 12-hour AM/PM
+  const formatTime12h = (time24: string) => {
+    const [hStr, mStr] = time24.split(':');
+    let h = parseInt(hStr, 10);
+    const m = mStr;
+    const period = h >= 12 ? (lang === 'bn' ? 'অপরাহ্ন' : 'PM') : (lang === 'bn' ? 'পূর্বাহ্ন' : 'AM');
+    h = h % 12 || 12;
+    return {
+      time: `${h}:${m}`,
+      period,
+    };
+  };
+
+  const getToneName = (tone: SoundToneType) => {
+    switch (tone) {
+      case 'azan':
+        return lang === 'bn' ? 'ফজর আযান' : 'Fajr Azan';
+      case 'birds':
+        return lang === 'bn' ? 'পাখির ডাক' : 'Morning Birds';
+      case 'chime':
+        return lang === 'bn' ? 'মধুর ঘণ্টা' : 'Sweet Chime';
+      case 'peaceful':
+        return lang === 'bn' ? 'প্রশান্তিময়' : 'Peaceful';
+      case 'digital':
+        return lang === 'bn' ? 'ডিজিটাল বিপ' : 'Digital Beep';
+      case 'radar':
+        return lang === 'bn' ? 'রাডার সংকেত' : 'Radar Pulse';
+      case 'custom':
+        return customSound?.name || (lang === 'bn' ? 'নিজস্ব অডিও' : 'Custom Sound');
+      default:
+        return 'Chime';
+    }
+  };
+
+  // Find next upcoming alarm
   const nextAlarm = alarms.find((a) => a.enabled);
+
+  const TONES_LIST: { id: SoundToneType; nameBn: string; nameEn: string; icon: string; descBn: string }[] = [
+    { id: 'azan', nameBn: 'ফজর আযান সুর', nameEn: 'Fajr Azan Motifs', icon: '🕌', descBn: 'সুমধুর আধ্যাত্মিক আযানের সুর' },
+    { id: 'birds', nameBn: 'পাখির কলকাকলি', nameEn: 'Morning Birds', icon: '🐦', descBn: 'স্নিগ্ধ সকালের মিষ্টি পাখির ডাক' },
+    { id: 'chime', nameBn: 'মধুর ঘণ্টা', nameEn: 'Sweet Chime', icon: '🔔', descBn: 'মনোরম মিষ্টি বেলের সুর' },
+    { id: 'peaceful', nameBn: 'প্রশান্তিময় মেলোডি', nameEn: 'Peaceful Chord', icon: '🎵', descBn: 'মারিম্বার প্রশান্তিময় সুর' },
+    { id: 'digital', nameBn: 'ডিজিটাল বিপ বিপ', nameEn: 'Digital Beep', icon: '⏰', descBn: 'ক্লাসিক ডিজিটাল ঘড়ির অ্যালার্ম' },
+    { id: 'radar', nameBn: 'জরুরি রাডার', nameEn: 'Radar Pulse', icon: '🚨', descBn: 'দ্রুত ঘুম ভাঙানোর রাডার সংকেত' },
+  ];
 
   return (
     <div className="space-y-4">
-      {/* Ringing Alarm Modal Alert */}
+      {/* Active Ringing Full Modal */}
       {ringingAlarm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
-          <div className="w-full max-w-sm rounded-3xl bg-white dark:bg-slate-900 border-2 border-indigo-500 shadow-2xl p-6 text-center text-slate-800 dark:text-slate-100">
-            <div className="w-20 h-20 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 mx-auto flex items-center justify-center animate-bounce mb-4">
-              <BellRing className="w-10 h-10" />
+          <div className="w-full max-w-sm rounded-3xl bg-white dark:bg-slate-900 border-2 border-indigo-500 shadow-2xl p-6 text-center animate-bounce-subtle">
+            <div className="w-20 h-20 mx-auto rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 flex items-center justify-center shadow-inner animate-pulse">
+              <BellRing className="w-10 h-10 text-indigo-600 animate-spin-slow" />
             </div>
 
-            <span className="text-xs font-bold px-3 py-1 rounded-full bg-indigo-500 text-white uppercase tracking-wider inline-block mb-2">
-              {lang === 'bn' ? '🔔 অ্যালার্ম বাজছে' : '🔔 ALARM RINGING'}
+            <span className="text-xs font-black uppercase text-indigo-500 tracking-wider mt-4 block">
+              {lang === 'bn' ? 'অ্যালার্ম বাজছে!' : 'Alarm Ringing!'}
             </span>
 
-            <h3 className="text-4xl font-black tracking-tight text-slate-900 dark:text-white mt-1">
+            <h3 className="text-4xl font-black tracking-tight text-slate-900 dark:text-white mt-1 font-mono">
               {toBn(formatTime12h(ringingAlarm.time).time)}{' '}
               <span className="text-xl font-bold text-indigo-600">{formatTime12h(ringingAlarm.time).period}</span>
             </h3>
@@ -255,6 +340,10 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
             <p className="text-base font-semibold text-slate-600 dark:text-slate-300 mt-2">
               {lang === 'bn' ? ringingAlarm.labelBn : ringingAlarm.labelEn}
             </p>
+
+            <span className="inline-block mt-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-300 text-xs font-semibold">
+              🎵 {getToneName(ringingAlarm.soundTone)}
+            </span>
 
             <div className="grid grid-cols-2 gap-3 mt-6">
               <button
@@ -296,13 +385,24 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
             </div>
           </div>
 
-          <button
-            onClick={openCreateModal}
-            className="flex items-center gap-1.5 py-1.5 px-3 rounded-xl bg-white text-indigo-800 font-bold text-xs shadow-md active:scale-95 transition hover:bg-indigo-50"
-          >
-            <Plus className="w-4 h-4" />
-            <span>{lang === 'bn' ? 'নতুন অ্যালার্ম' : 'New Alarm'}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowSoundSettings(!showSoundSettings)}
+              className="p-2 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs shadow-xs active:scale-95 transition flex items-center gap-1.5"
+              title={lang === 'bn' ? 'সাউন্ড ও রিংটোন সেট করুন' : 'Sound Settings'}
+            >
+              <Music className="w-4 h-4" />
+              <span className="hidden sm:inline">{lang === 'bn' ? 'সাউন্ড' : 'Sound'}</span>
+            </button>
+
+            <button
+              onClick={openCreateModal}
+              className="flex items-center gap-1.5 py-1.5 px-3 rounded-xl bg-white text-indigo-800 font-bold text-xs shadow-md active:scale-95 transition hover:bg-indigo-50"
+            >
+              <Plus className="w-4 h-4" />
+              <span>{lang === 'bn' ? 'নতুন অ্যালার্ম' : 'New Alarm'}</span>
+            </button>
+          </div>
         </div>
 
         {/* Big Live Digital Clock Display */}
@@ -321,10 +421,189 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
                 <strong className="text-white font-bold">
                   {toBn(formatTime12h(nextAlarm.time).time)} {formatTime12h(nextAlarm.time).period}
                 </strong>{' '}
-                ({lang === 'bn' ? nextAlarm.labelBn : nextAlarm.labelEn})
+                ({lang === 'bn' ? nextAlarm.labelBn : nextAlarm.labelEn}) •{' '}
+                <span className="text-amber-200">🎵 {getToneName(nextAlarm.soundTone)}</span>
               </span>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Prominent Sound & Ringtone Settings Card */}
+      <div className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-indigo-100 dark:border-slate-800 shadow-xs space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 flex items-center justify-center">
+              <Music className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                {lang === 'bn' ? 'অ্যালার্ম সাউন্ড ও রিংটোন সেটিংস' : 'Alarm Ringtone & Sound Settings'}
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                {lang === 'bn'
+                  ? 'পছন্দের সুর শুনে নির্বাচন করুন বা মোবাইলের নিজস্ব অডিও আপলোড করুন'
+                  : 'Choose a melody or upload custom ringtone from phone'}
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowSoundSettings(!showSoundSettings)}
+            className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+          >
+            {showSoundSettings ? (lang === 'bn' ? 'সংক্ষিপ্ত করুন' : 'Collapse') : (lang === 'bn' ? 'বিস্তারিত দেখুন' : 'Expand')}
+          </button>
+        </div>
+
+        {/* Success toast */}
+        {soundSuccessMsg && (
+          <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-bold flex items-center gap-2">
+            <Check className="w-4 h-4 shrink-0" />
+            <span>{soundSuccessMsg}</span>
+          </div>
+        )}
+
+        {/* Volume Slider Control */}
+        <div className="space-y-1.5 bg-slate-50 dark:bg-slate-800/40 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+            <span className="flex items-center gap-1.5">
+              <Volume2 className="w-4 h-4 text-indigo-600" />
+              <span>{lang === 'bn' ? 'অ্যালার্মের সাউন্ড ভলিউম:' : 'Alarm Sound Volume:'}</span>
+            </span>
+            <span className="font-mono text-indigo-600 dark:text-indigo-400">
+              {toBn(Math.round(volume * 100))}%
+            </span>
+          </div>
+          <input
+            type="range"
+            min="0.1"
+            max="1.0"
+            step="0.05"
+            value={volume}
+            onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+            className="w-full accent-indigo-600 cursor-pointer"
+          />
+        </div>
+
+        {/* Tone Selection Grid */}
+        <div className="space-y-2">
+          <span className="text-xs font-bold text-slate-600 dark:text-slate-400 block uppercase tracking-wider">
+            {lang === 'bn' ? 'বিল্ট-ইন মধুর সুরসমূহ (প্লে করে শুনুন):' : 'Built-in Tones (Click to test):'}
+          </span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {TONES_LIST.map((tone) => {
+              const isPlaying = previewingTone === tone.id;
+              return (
+                <div
+                  key={tone.id}
+                  className="p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-600 transition flex items-center justify-between group bg-white dark:bg-slate-900"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="text-xl shrink-0">{tone.icon}</span>
+                    <div className="min-w-0">
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                        {lang === 'bn' ? tone.nameBn : tone.nameEn}
+                      </h4>
+                      <p className="text-[10px] text-slate-400 truncate">{tone.descBn}</p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handlePlayTonePreview(tone.id)}
+                    className={`p-2 rounded-xl text-xs font-bold flex items-center gap-1 transition shrink-0 active:scale-95 ${
+                      isPlaying
+                        ? 'bg-rose-500 text-white shadow-xs'
+                        : 'bg-indigo-50 dark:bg-slate-800 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-600 hover:text-white'
+                    }`}
+                    title={isPlaying ? 'বন্ধ করুন' : 'প্লে করুন'}
+                  >
+                    {isPlaying ? <Square className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                    <span className="text-[11px]">{isPlaying ? (lang === 'bn' ? 'স্টপ' : 'Stop') : (lang === 'bn' ? 'শুনুন' : 'Play')}</span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Custom Phone Ringtone / MP3 Section */}
+        <div className="p-4 rounded-2xl border-2 border-dashed border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <FileMusic className="w-5 h-5 text-indigo-600" />
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                  {lang === 'bn' ? 'মোবাইলের নিজস্ব রিংটোন / অডিও MP3' : 'Custom Audio from Device'}
+                </h4>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                  {lang === 'bn'
+                    ? 'আপনার মেমোরির যেকোনো আযান, নাত বা রিংটোন ফাইল সরাসরি যুক্ত করুন'
+                    : 'Use any Azan or ringtone audio file from your mobile storage'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="audio/*"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs active:scale-95 transition"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>{lang === 'bn' ? '+ ফাইল আপলোড করুন' : '+ Upload File'}</span>
+              </button>
+            </div>
+          </div>
+
+          {customSound && (
+            <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <Music className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
+                  {customSound.name}
+                </span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold shrink-0">
+                  {lang === 'bn' ? 'সংরক্ষিত' : 'Saved'}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                <button
+                  onClick={() => handlePlayTonePreview('custom')}
+                  className={`p-1.5 rounded-lg text-xs font-bold flex items-center gap-1 ${
+                    previewingTone === 'custom' ? 'bg-rose-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                  }`}
+                  title="শুনুন"
+                >
+                  {previewingTone === 'custom' ? <Square className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                </button>
+                <button
+                  onClick={handleRemoveCustomSound}
+                  className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                  title="মুছে ফেলুন"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* How to use guide banner */}
+        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 text-[11px] text-slate-500 dark:text-slate-400 flex items-start gap-2">
+          <HelpCircle className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+          <p className="leading-relaxed">
+            {lang === 'bn'
+              ? '💡 সাউন্ড সেট করার নিয়ম: নতুন অ্যালার্ম তৈরি করার সময় অথবা বিদ্যমান অ্যালার্মের ওপর ট্যাপ করে পছন্দের সুর সিলেক্ট করুন। নির্ধারিত সময়ে স্বয়ংক্রিয়ভাবে সেই সুরেই অ্যালার্ম বেজে উঠবে।'
+              : '💡 How to set: Select your preferred tone when creating or editing an alarm. It will automatically ring with that tone at the set time.'}
+          </p>
         </div>
       </div>
 
@@ -340,8 +619,8 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
         </div>
 
         {alarms.length === 0 ? (
-          <div className="p-8 text-center rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-600">
-            <Bell className="w-10 h-10 mx-auto mb-2 opacity-40" />
+          <div className="p-8 text-center rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-600 bg-white dark:bg-slate-900">
+            <Bell className="w-10 h-10 mx-auto mb-2 opacity-40 text-indigo-500" />
             <p className="text-xs font-medium">
               {lang === 'bn' ? 'কোনো অ্যালার্ম সেট করা নেই' : 'No alarms set yet'}
             </p>
@@ -377,30 +656,33 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="font-semibold text-xs text-slate-700 dark:text-slate-200 truncate">
-                      {lang === 'bn' ? alarm.labelBn : alarm.labelEn}
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
+                    <span className="font-semibold text-xs text-slate-700 dark:text-slate-300">
+                      {alarm.labelBn}
                     </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 shrink-0 font-medium">
+
+                    {/* Tone Badge */}
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 flex items-center gap-1">
+                      <span>🎵</span>
+                      <span>{getToneName(alarm.soundTone)}</span>
+                    </span>
+
+                    {/* Days info */}
+                    <span className="text-[10px] text-slate-400 font-medium">
                       {alarm.repeatDays.length === 7
-                        ? lang === 'bn'
-                          ? 'প্রতিদিন'
-                          : 'Everyday'
+                        ? lang === 'bn' ? 'প্রতিদিন' : 'Everyday'
                         : alarm.repeatDays.length === 0
-                        ? lang === 'bn'
-                          ? 'একবার'
-                          : 'Once'
-                        : alarm.repeatDays
-                            .map((d) => (lang === 'bn' ? DAYS_BN[d] : DAYS_EN[d]))
-                            .join(', ')}
+                        ? lang === 'bn' ? 'একবার' : 'Once'
+                        : alarm.repeatDays.map((d) => (lang === 'bn' ? DAYS_BN[d] : DAYS_EN[d])).join(', ')}
                     </span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2.5 ml-3 shrink-0">
+                <div className="flex items-center gap-2 ml-3 shrink-0">
+                  {/* Test Sound Button */}
                   <button
-                    onClick={() => previewTone(alarm.soundTone)}
-                    title={lang === 'bn' ? 'টোন শুনুন' : 'Preview tone'}
+                    onClick={() => handlePlayTonePreview(alarm.soundTone)}
+                    title={lang === 'bn' ? 'সুরটি শুনুন' : 'Preview tone'}
                     className="p-2 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800 transition"
                   >
                     <Volume2 className="w-4 h-4" />
@@ -448,7 +730,7 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
                       ? 'অ্যালার্ম পরিবর্তন করুন'
                       : 'Edit Alarm'
                     : lang === 'bn'
-                    ? 'নতুন অ্যালার্ম যুক্ত করুন'
+                    ? 'নতুন অ্যালার্ম সেট করুন'
                     : 'Set New Alarm'}
                 </h3>
               </div>
@@ -464,25 +746,25 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
               {/* Time Picker */}
               <div>
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                  {lang === 'bn' ? 'সময় নির্বাচন করুন (২৪ ঘণ্টা / ১২ ঘণ্টা)' : 'Alarm Time'}
+                  {lang === 'bn' ? 'অ্যালার্মের সময় (২৪ ঘণ্টা ফরম্যাট)' : 'Alarm Time'}
                 </label>
                 <input
                   type="time"
                   required
                   value={inputTime}
                   onChange={(e) => setInputTime(e.target.value)}
-                  className="w-full px-4 py-3 text-2xl font-black font-mono text-center rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-3 text-3xl font-black font-mono text-center rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
               {/* Label & Quick Suggestions */}
               <div>
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                  {lang === 'bn' ? 'অ্যালার্মের নাম / উদ্দেশ্য' : 'Alarm Title / Label'}
+                  {lang === 'bn' ? 'অ্যালার্মের নাম / লেবেল' : 'Alarm Label'}
                 </label>
                 <input
                   type="text"
-                  placeholder={lang === 'bn' ? 'যেমন: ফজরের সালাত, ঔষধ, কাজ' : 'e.g. Fajr prayer, Medicine'}
+                  placeholder={lang === 'bn' ? 'যেমন: ফজরের সালাত, ঔষধ, পড়াশোনা' : 'e.g. Fajr prayer, Medicine'}
                   value={inputLabel}
                   onChange={(e) => setInputLabel(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
@@ -493,7 +775,7 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
                   {[
                     lang === 'bn' ? 'ফজরের সালাত' : 'Fajr Prayer',
                     lang === 'bn' ? 'ঔষধ খাওয়ার সময়' : 'Take Medicine',
-                    lang === 'bn' ? 'সকালের হাঁটা' : 'Morning Walk',
+                    lang === 'bn' ? 'সকালের ব্যায়াম' : 'Morning Workout',
                     lang === 'bn' ? 'কাজ শুরু' : 'Start Work',
                     lang === 'bn' ? 'পড়ালেখা' : 'Study Time',
                   ].map((chip) => (
@@ -558,32 +840,58 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
               {/* Sound Tone Selector */}
               <div>
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                  {lang === 'bn' ? 'অ্যালার্মের সুর / টোন' : 'Alarm Sound Tone'}
+                  {lang === 'bn' ? 'অ্যালার্মের সুর / রিংটোন পছন্দ করুন:' : 'Choose Alarm Ringtone:'}
                 </label>
                 <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { id: 'chime' as const, labelBn: 'মধুর ঘণ্টা (Chime)', labelEn: 'Sweet Chime' },
-                    { id: 'peaceful' as const, labelBn: 'প্রশান্তিময় (Peaceful)', labelEn: 'Peaceful Chord' },
-                    { id: 'digital' as const, labelBn: 'ডিজিটাল বিপ (Digital)', labelEn: 'Digital Beep' },
-                    { id: 'radar' as const, labelBn: 'রাডার সংকেত (Radar)', labelEn: 'Radar Pulse' },
-                  ].map((tone) => (
+                  {TONES_LIST.map((tone) => {
+                    const isSelected = selectedTone === tone.id;
+                    const isPlaying = previewingTone === tone.id;
+                    return (
+                      <button
+                        key={tone.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedTone(tone.id);
+                          handlePlayTonePreview(tone.id);
+                        }}
+                        className={`p-2.5 rounded-xl border text-left text-xs font-semibold flex items-center justify-between transition ${
+                          isSelected
+                            ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 ring-2 ring-indigo-500/20'
+                            : 'border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-indigo-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span>{tone.icon}</span>
+                          <span className="truncate">{lang === 'bn' ? tone.nameBn : tone.nameEn}</span>
+                        </div>
+                        <Volume2 className={`w-3.5 h-3.5 shrink-0 ${isPlaying ? 'text-indigo-600 animate-pulse' : 'opacity-40'}`} />
+                      </button>
+                    );
+                  })}
+
+                  {/* Custom option in modal if available */}
+                  {customSound && (
                     <button
-                      key={tone.id}
                       type="button"
                       onClick={() => {
-                        setSelectedTone(tone.id);
-                        previewTone(tone.id);
+                        setSelectedTone('custom');
+                        handlePlayTonePreview('custom');
                       }}
-                      className={`p-2.5 rounded-xl border text-left text-xs font-semibold flex items-center justify-between transition ${
-                        selectedTone === tone.id
-                          ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300'
-                          : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                      className={`p-2.5 rounded-xl border text-left text-xs font-semibold flex items-center justify-between col-span-2 transition ${
+                        selectedTone === 'custom'
+                          ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 ring-2 ring-emerald-500/20'
+                          : 'border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
                       }`}
                     >
-                      <span className="truncate">{lang === 'bn' ? tone.labelBn : tone.labelEn}</span>
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span>📁</span>
+                        <span className="truncate">
+                          {lang === 'bn' ? `নিজস্ব: ${customSound.name}` : `Custom: ${customSound.name}`}
+                        </span>
+                      </div>
                       <Volume2 className="w-3.5 h-3.5 shrink-0 opacity-70" />
                     </button>
-                  ))}
+                  )}
                 </div>
               </div>
 
