@@ -60,11 +60,13 @@ import {
   deleteNote,
 } from '../../utils/notesStorage';
 import {
-  saveQuranPdf,
-  getStoredQuranPdf,
-  deleteStoredQuranPdf,
-  StoredPdfRecord,
-} from '../../utils/pdfStorage';
+  QuranSurah,
+  QuranAyah,
+  getStoredSurahs,
+  addOrUpdateSurah,
+  deleteSurah,
+  resetSurahsToDefault,
+} from '../../utils/quranStorage';
 
 interface Props {
   lang: Language;
@@ -84,50 +86,22 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }
   // Active Admin Sub-tab
   const [activeTab, setActiveTab] = useState<AdminTab>('books');
 
-  // Quran PDF State for Admin
-  const [adminQuranRecord, setAdminQuranRecord] = useState<StoredPdfRecord | null>(null);
-  const [quranLoading, setQuranLoading] = useState<boolean>(false);
-  const [quranUploadSuccess, setQuranUploadSuccess] = useState<boolean>(false);
-  const quranInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (session) {
-      getStoredQuranPdf().then((rec) => setAdminQuranRecord(rec));
-    }
-  }, [session]);
-
-  const handleAdminQuranUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-      alert('অনুগ্রহ করে শুধুমাত্র একটি ভ্যালিড PDF ফাইল নির্বাচন করুন।');
-      return;
-    }
-
-    setQuranLoading(true);
-    const ok = await saveQuranPdf(file, file.name);
-    if (ok) {
-      setAdminQuranRecord({
-        file,
-        fileName: file.name,
-        fileSize: file.size,
-        uploadedAt: Date.now(),
-      });
-      setQuranUploadSuccess(true);
-      setTimeout(() => setQuranUploadSuccess(false), 3000);
-    } else {
-      alert('ফাইলটি ডাটাবেজে সংরক্ষণ করতে সমস্যা হয়েছে।');
-    }
-    setQuranLoading(false);
-  };
-
-  const handleAdminQuranDelete = async () => {
-    if (window.confirm('আপনি কি নিশ্চিত যে বর্তমান কুরআন পিডিএফ ফাইলটি ডাটাবেজ থেকে মুছে ফেলতে চান?')) {
-      await deleteStoredQuranPdf();
-      setAdminQuranRecord(null);
-    }
-  };
+  // ==========================================
+  // QURAN SURAH & AYAH WRITER STATE FOR ADMIN
+  // ==========================================
+  const [quranSurahs, setQuranSurahs] = useState<QuranSurah[]>(getStoredSurahs());
+  const [editingSurah, setEditingSurah] = useState<QuranSurah | null>(null);
+  const [isCreatingSurah, setIsCreatingSurah] = useState<boolean>(false);
+  const [qSurahNum, setQSurahNum] = useState<number>(1);
+  const [qNameBn, setQNameBn] = useState<string>('');
+  const [qNameEn, setQNameEn] = useState<string>('');
+  const [qNameAr, setQNameAr] = useState<string>('');
+  const [qMeaningBn, setQMeaningBn] = useState<string>('');
+  const [qRevType, setQRevType] = useState<'মাক্কী' | 'মাদানী'>('মাক্কী');
+  const [qAyahs, setQAyahs] = useState<QuranAyah[]>([
+    { ayahNumber: 1, arabic: '', pronunciation: '', bangla: '' },
+  ]);
+  const [quranSuccessMsg, setQuranSuccessMsg] = useState<string | null>(null);
 
   // ==========================================
   // BOOKS STATE
@@ -937,146 +911,429 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }
       )}
 
       {/* =========================================================================
-          TAB: QURAN PDF MANAGER (আল-কুরআন আপলোড ও ব্যবস্থাপনা)
+          TAB: QURAN WRITER & MANAGER (পবিত্র কুরআন সূরা ও আয়াত লেখক)
          ========================================================================= */}
       {activeTab === 'quran' && (
         <div className="flex flex-col gap-4">
-          <input
-            ref={quranInputRef}
-            type="file"
-            accept="application/pdf"
-            className="hidden"
-            onChange={handleAdminQuranUpload}
-          />
-
-          {/* Header Card */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-black uppercase text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                <Book className="w-4 h-4" />
-                <span>পবিত্র কুরআনুল কারীম ব্যবস্থাপনা</span>
-              </span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400">
-                অ্যাডমিন প্যানেল
-              </span>
-            </div>
-            <h2 className="text-base font-bold text-slate-900 dark:text-white">
-              আল-কুরআনুল কারীম ফাইল যুক্ত করুন
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-              আপনার কম্পিউটার বা মোবাইল থেকে কুরআন শরীফের মূল ফাইলটি (যেমন হাফেজী বা নূরানী কুরআন) নির্বাচন করে সরাসরি সিস্টেমে যুক্ত করুন। এটি যুক্ত করার সাথে সাথে তা অ্যাপের কুরআন সেকশনে সক্রিয় হয়ে যাবে।
-            </p>
-          </div>
-
-          {/* Current Status Card */}
-          {quranLoading ? (
-            <div className="py-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl flex flex-col items-center justify-center gap-3 text-center p-6">
-              <div className="w-8 h-8 border-3 border-[#0B63F6] border-t-transparent rounded-full animate-spin" />
-              <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
-                কুরআন পিডিএফ ফাইলটি সিস্টেমে সংরক্ষিত হচ্ছে...
-              </span>
-            </div>
-          ) : adminQuranRecord ? (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex flex-col gap-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center shrink-0">
-                    <Check className="w-6 h-6 stroke-[2.5]" />
-                  </div>
-                  <div>
-                    <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 block">
-                      ✓ কুরআন পিডিএফ বর্তমানে সক্রিয় ও সংরক্ষিত
-                    </span>
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-white mt-0.5 truncate max-w-xs">
-                      {adminQuranRecord.fileName}
-                    </h3>
-                    <span className="text-xs text-slate-400 block mt-0.5">
-                      সাইজ: {(adminQuranRecord.fileSize / (1024 * 1024)).toFixed(1)} MB · আপলোড:{' '}
-                      {new Date(adminQuranRecord.uploadedAt).toLocaleDateString('bn-BD', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
-                  </div>
+          {!isCreatingSurah && !editingSurah ? (
+            <>
+              {/* Header Card */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black uppercase text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                    <Book className="w-4 h-4" />
+                    <span>পবিত্র কুরআনুল কারীম লেখক ও সম্পাদক</span>
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400">
+                    অ্যাডমিন প্যানেল
+                  </span>
                 </div>
+                <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                  কুরআন সূরা ও আয়াতসমূহ লিখুন ও পরিচালনা করুন
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  এখানে আপনি সরাসরি যেকোনো নতুন সূরা, আরবি আয়াত, বাংলা উচ্চারণ ও বাংলা অনুবাদ লিখে যুক্ত করতে পারেন। আপনার সংরক্ষিত সকল সূরা সাধারণ ব্যবহারকারীরা সরাসরি পড়তে পারবেন।
+                </p>
+
+                {quranSuccessMsg && (
+                  <div className="p-3 mt-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center gap-2">
+                    <Check className="w-4 h-4 shrink-0" />
+                    <span>{quranSuccessMsg}</span>
+                  </div>
+                )}
               </div>
-
-              {quranUploadSuccess && (
-                <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 shrink-0" />
-                  <span>আলহামদুলিল্লাহ্‌! কুরআন পিডিএফটি সফলভাবে ডাটাবেজে যুক্ত হয়েছে।</span>
-                </div>
-              )}
 
               {/* Action Buttons */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                <button
-                  onClick={() => quranInputRef.current?.click()}
-                  className="h-10 px-4 rounded-xl bg-[#0B63F6] hover:bg-blue-600 text-white font-bold text-xs flex items-center justify-center gap-2 transition active:scale-98"
-                >
-                  <Upload className="w-4 h-4" />
-                  <span>নতুন কুরআন ফাইল দিয়ে পরিবর্তন</span>
-                </button>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                  সংরক্ষিত সূরাসমূহ ({quranSurahs.length})
+                </span>
 
-                <button
-                  onClick={handleAdminQuranDelete}
-                  className="h-10 px-4 rounded-xl bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 font-bold text-xs flex items-center justify-center gap-2 transition active:scale-98"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  <span>কুরআন ফাইল মুছে ফেলুন</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      if (window.confirm('আপনি কি পূর্বনির্ধারিত বিশুদ্ধ সূরাসমূহ পুনরায় লোড করতে চান?')) {
+                        const resetList = resetSurahsToDefault();
+                        setQuranSurahs(resetList);
+                        setQuranSuccessMsg('ডিফল্ট সূরাসমূহ সফলভাবে পুনরুদ্ধার করা হয়েছে।');
+                        setTimeout(() => setQuranSuccessMsg(null), 3000);
+                      }
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 text-xs font-semibold flex items-center gap-1"
+                    title="রিসেট"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>রিসেট</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsCreatingSurah(true);
+                      setEditingSurah(null);
+                      setQSurahNum(quranSurahs.length + 1);
+                      setQNameBn('');
+                      setQNameEn('');
+                      setQNameAr('');
+                      setQMeaningBn('');
+                      setQRevType('মাক্কী');
+                      setQAyahs([
+                        { ayahNumber: 1, arabic: '', pronunciation: '', bangla: '' },
+                      ]);
+                    }}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ নতুন সূরা লিখুন</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Direct Open Link */}
+              {/* Surahs List */}
+              <div className="flex flex-col gap-2.5">
+                {quranSurahs.map((s) => (
+                  <div
+                    key={s.id}
+                    className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 font-bold text-xs flex items-center justify-center shrink-0">
+                        {s.surahNumber}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-bold text-sm text-slate-900 dark:text-white truncate">
+                            {s.nameBn}
+                          </h3>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500">
+                            {s.revelationType}
+                          </span>
+                        </div>
+                        <span className="text-xs text-slate-400 block mt-0.5 truncate">
+                          {s.nameAr} • {s.ayahs?.length || 0} টি আয়াত • অর্থ: {s.meaningBn || 'সাধারণ'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0 ml-2">
+                      <button
+                        onClick={() => {
+                          setEditingSurah(s);
+                          setIsCreatingSurah(false);
+                          setQSurahNum(s.surahNumber);
+                          setQNameBn(s.nameBn);
+                          setQNameEn(s.nameEn || '');
+                          setQNameAr(s.nameAr);
+                          setQMeaningBn(s.meaningBn || '');
+                          setQRevType(s.revelationType || 'মাক্কী');
+                          setQAyahs(
+                            s.ayahs && s.ayahs.length > 0
+                              ? s.ayahs
+                              : [{ ayahNumber: 1, arabic: '', pronunciation: '', bangla: '' }]
+                          );
+                        }}
+                        className="p-2 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-emerald-50 dark:hover:bg-slate-800 transition"
+                        title="সম্পাদনা করুন"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          if (window.confirm(`আপনি কি "${s.nameBn}" মুছে ফেলতে চান?`)) {
+                            const updated = deleteSurah(s.id);
+                            setQuranSurahs(updated);
+                            setQuranSuccessMsg('সূরা মুছে ফেলা হয়েছে।');
+                            setTimeout(() => setQuranSuccessMsg(null), 3000);
+                          }
+                        }}
+                        className="p-2 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-rose-50 dark:hover:bg-slate-800 transition"
+                        title="মুছুন"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Direct Open Link to Quran Reader */}
               {onOpenTool && (
                 <button
                   onClick={() => onOpenTool('quran-pdf')}
-                  className="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-800 dark:text-slate-200 text-xs font-bold flex items-center justify-center gap-2 transition"
+                  className="w-full py-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-800 dark:text-emerald-200 text-xs font-bold flex items-center justify-center gap-2 transition border border-emerald-200 dark:border-emerald-800/60"
                 >
                   <BookOpen className="w-4 h-4 text-emerald-600" />
-                  <span>কুরআন রিডারে সরাসরি খুলুন</span>
+                  <span>কুরআন পাঠে সরাসরি যান (ইউজার ভিউ দেখুন)</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               )}
-            </div>
+            </>
           ) : (
-            /* Upload Placeholder Card */
-            <div className="bg-white dark:bg-slate-900 border-2 border-dashed border-emerald-300 dark:border-emerald-800/60 rounded-3xl p-6 sm:p-8 flex flex-col items-center justify-center text-center gap-3">
-              <div className="w-14 h-14 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center">
-                <Book className="w-7 h-7" />
-              </div>
-              <div>
-                <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-                  এখনো কোনো কুরআন পিডিএফ আপলোড করা হয়নি
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm">
-                  নিচের বাটনে ক্লিক করে আপনার কম্পিউটার বা মোবাইল থেকে কুরআনুল কারীমের সম্পূর্ণ পিডিএফ ফাইলটি নির্বাচন করুন।
-                </p>
+            /* ==========================================
+               CREATE / EDIT SURAH & AYAHS FORM
+               ========================================== */
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm flex flex-col gap-4">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center">
+                    <Book className="w-4 h-4" />
+                  </div>
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                    {editingSurah ? 'সূরা ও আয়াত সম্পাদনা করুন' : 'নতুন সূরা ও আয়াত লিখুন'}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsCreatingSurah(false);
+                    setEditingSurah(null);
+                  }}
+                  className="text-xs text-slate-400 hover:text-slate-600 font-bold"
+                >
+                  বাতিল (Cancel)
+                </button>
               </div>
 
-              <button
-                onClick={() => quranInputRef.current?.click()}
-                className="mt-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 shadow-sm active:scale-95 transition"
-              >
-                <Upload className="w-4 h-4" />
-                <span>পিডিএফ ফাইল নির্বাচন ও আপলোড করুন</span>
-              </button>
+              {/* Basic Surah Meta */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                    সূরা নম্বর (Surah Number)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={114}
+                    value={qSurahNum}
+                    onChange={(e) => setQSurahNum(Number(e.target.value))}
+                    className="w-full h-10 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 text-xs font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                    অবতীর্ণের স্থান (মাক্কী/মাদানী)
+                  </label>
+                  <select
+                    value={qRevType}
+                    onChange={(e) => setQRevType(e.target.value as 'মাক্কী' | 'মাদানী')}
+                    className="w-full h-10 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 text-xs font-bold"
+                  >
+                    <option value="মাক্কী">মাক্কী (Meccan)</option>
+                    <option value="মাদানী">মাদানী (Medinan)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                    সূরার নাম (বাংলা, যেমন: সূরা আল-ফাতিহা)
+                  </label>
+                  <input
+                    type="text"
+                    value={qNameBn}
+                    onChange={(e) => setQNameBn(e.target.value)}
+                    placeholder="সূরা আল-ফাতিহা"
+                    className="w-full h-10 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 text-xs font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                    সূরার নাম (আরবি, যেমন: الفاتحة)
+                  </label>
+                  <input
+                    type="text"
+                    dir="rtl"
+                    value={qNameAr}
+                    onChange={(e) => setQNameAr(e.target.value)}
+                    placeholder="الفاتحة"
+                    className="w-full h-10 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 text-xs font-arabic font-bold"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                    সূরার বাংলা অর্থ ও তাৎপর্য (যেমন: প্রারম্ভিক / সূচনা)
+                  </label>
+                  <input
+                    type="text"
+                    value={qMeaningBn}
+                    onChange={(e) => setQMeaningBn(e.target.value)}
+                    placeholder="সূচনা বা প্রারম্ভিক"
+                    className="w-full h-10 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Ayahs Editor Section */}
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-xs font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                    আয়াতসমূহ ({qAyahs.length} টি আয়াত):
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQAyahs([
+                        ...qAyahs,
+                        {
+                          ayahNumber: qAyahs.length + 1,
+                          arabic: '',
+                          pronunciation: '',
+                          bangla: '',
+                        },
+                      ]);
+                    }}
+                    className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 rounded-xl text-xs font-bold flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ পরবর্তী আয়াত যোগ করুন</span>
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-3.5">
+                  {qAyahs.map((ayah, idx) => (
+                    <div
+                      key={idx}
+                      className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 flex flex-col gap-2.5"
+                    >
+                      <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2">
+                        <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                          <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 flex items-center justify-center text-[10px]">
+                            {idx + 1}
+                          </span>
+                          <span>আয়াত #{idx + 1}</span>
+                        </span>
+
+                        {qAyahs.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = qAyahs
+                                .filter((_, i) => i !== idx)
+                                .map((item, newIdx) => ({
+                                  ...item,
+                                  ayahNumber: newIdx + 1,
+                                }));
+                              setQAyahs(updated);
+                            }}
+                            className="text-xs text-rose-500 font-bold hover:underline"
+                          >
+                            মুছুন
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Arabic Text */}
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                          আরবি মূল পাঠ (Arabic):
+                        </label>
+                        <input
+                          type="text"
+                          dir="rtl"
+                          value={ayah.arabic}
+                          onChange={(e) => {
+                            const updated = [...qAyahs];
+                            updated[idx].arabic = e.target.value;
+                            setQAyahs(updated);
+                          }}
+                          placeholder="بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-base font-arabic font-bold text-slate-900 dark:text-white"
+                        />
+                      </div>
+
+                      {/* Bangla Pronunciation */}
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                          বাংলা উচ্চারণ (Pronunciation):
+                        </label>
+                        <input
+                          type="text"
+                          value={ayah.pronunciation}
+                          onChange={(e) => {
+                            const updated = [...qAyahs];
+                            updated[idx].pronunciation = e.target.value;
+                            setQAyahs(updated);
+                          }}
+                          placeholder="বিসমিল্লাহির রাহমানির রাহীম"
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-900 dark:text-white"
+                        />
+                      </div>
+
+                      {/* Bangla Translation */}
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                          বাংলা অর্থ ও অনুবাদ (Translation):
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={ayah.bangla}
+                          onChange={(e) => {
+                            const updated = [...qAyahs];
+                            updated[idx].bangla = e.target.value;
+                            setQAyahs(updated);
+                          }}
+                          placeholder="শুরু করছি পরম করুণাময় অসীম দয়ালু আল্লাহর নামে..."
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="pt-3 flex gap-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreatingSurah(false);
+                    setEditingSurah(null);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl font-bold text-xs bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                >
+                  বাতিল
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!qNameBn.trim()) {
+                      alert('অনুগ্রহ করে সূরার বাংলা নাম লিখুন।');
+                      return;
+                    }
+                    if (!qNameAr.trim()) {
+                      alert('অনুগ্রহ করে সূরার আরবি নাম লিখুন।');
+                      return;
+                    }
+
+                    const surahData: QuranSurah = {
+                      id: editingSurah ? editingSurah.id : `surah-${qSurahNum}-${Date.now()}`,
+                      surahNumber: qSurahNum,
+                      nameBn: qNameBn.trim(),
+                      nameEn: qNameEn.trim() || qNameBn.trim(),
+                      nameAr: qNameAr.trim(),
+                      totalAyahs: qAyahs.length,
+                      revelationType: qRevType,
+                      meaningBn: qMeaningBn.trim(),
+                      ayahs: qAyahs.map((a, i) => ({ ...a, ayahNumber: i + 1 })),
+                    };
+
+                    const updated = addOrUpdateSurah(surahData);
+                    setQuranSurahs(updated);
+                    setIsCreatingSurah(false);
+                    setEditingSurah(null);
+                    setQuranSuccessMsg(`"${qNameBn}" সফলভাবে সংরক্ষণ করা হয়েছে!`);
+                    setTimeout(() => setQuranSuccessMsg(null), 3500);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-md flex items-center justify-center gap-1.5 transition"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>সূরা সংরক্ষণ করুন</span>
+                </button>
+              </div>
             </div>
           )}
-
-          {/* Guide for Play Store Production Build */}
-          <div className="p-4 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 flex items-start gap-2.5 text-xs text-blue-900 dark:text-blue-200">
-            <Info className="w-4 h-4 text-[#0B63F6] shrink-0 mt-0.5" />
-            <div className="flex flex-col gap-1">
-              <span className="font-bold">প্লে স্টোর APK রিলিজের জন্য বিশেষ তথ্য:</span>
-              <span className="leading-relaxed text-slate-600 dark:text-slate-300">
-                অ্যাডমিন প্যানেল থেকে আপলোড করা ফাইলটি আপনার ডিভাইসে স্থায়ীভাবে থাকবে। এছাড়া প্লে স্টোরে অ্যাপ রিলিজ করার সময় কুরআন ফাইলটি অ্যাপের সাথে স্বয়ংক্রিয়ভাবে দিয়ে দিতে চাইলে ফাইলটিকে `public/quran.pdf` হিসেবে প্রোজেক্টে রেখে দেওয়া যায়।
-              </span>
-            </div>
-          </div>
         </div>
       )}
 

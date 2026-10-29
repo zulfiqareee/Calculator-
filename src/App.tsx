@@ -41,6 +41,7 @@ import {
   MapPin,
   Newspaper,
   HeartPulse,
+  Bell,
 } from 'lucide-react';
 import { Language, ThemeMode, ToolCategory, ToolId, ToolItem, CustomTool } from './types';
 import {
@@ -71,9 +72,9 @@ import { PrayerTimesView } from './components/tools/PrayerTimesView';
 import { CompactHomeWeatherWidget } from './components/tools/CompactHomeWeatherWidget';
 import { HealthTipsView } from './components/tools/HealthTipsView';
 import { QuranPdfReader } from './components/tools/QuranPdfReader';
+import { SmartAlarmClock } from './components/tools/SmartAlarmClock';
 
 // Hero Banner & Views
-import { ScenicHeroBanner } from './components/ScenicHeroBanner';
 import { AdminPanel } from './components/admin/AdminPanel';
 import { BookReaderView } from './components/books/BookReaderView';
 import { NotepadView } from './components/notes/NotepadView';
@@ -346,6 +347,8 @@ export default function App() {
         return <Compass className={className} />;
       case 'HeartPulse':
         return <HeartPulse className={className} />;
+      case 'Bell':
+        return <Bell className={className} />;
       case 'Newspaper':
         return <Newspaper className={className} />;
       default:
@@ -397,6 +400,8 @@ export default function App() {
         return <HealthTipsView lang={lang} onOpenBmi={() => openTool('bmi-calorie')} />;
       case 'quran-pdf':
         return <QuranPdfReader lang={lang} />;
+      case 'alarm':
+        return <SmartAlarmClock lang={lang} />;
       default:
         return null;
     }
@@ -441,8 +446,8 @@ export default function App() {
           <h1 className="font-extrabold text-[17px] tracking-tight text-white leading-tight">
             Smart Utility Tools
           </h1>
-          <span className="text-[11px] text-blue-100/90 font-medium tracking-wide leading-none mt-0.5">
-            Simple · Fast · Useful
+          <span className="text-[11px] text-blue-100 font-semibold tracking-wide leading-none mt-0.5">
+            {lang === 'bn' ? 'সহজ হিসাব • স্মার্ট জীবন' : 'Simple · Fast · Useful'}
           </span>
         </div>
 
@@ -603,39 +608,6 @@ export default function App() {
                     lang={lang}
                     onOpenDetails={() => openTool('weather')}
                   />
-                )}
-
-                {/* Scenic Landscape Hero Banner */}
-                {!searchQuery && <ScenicHeroBanner lang={lang} />}
-
-                {/* Health & Wellness Tips Feature Shortcut Card */}
-                {!searchQuery && (
-                  <button
-                    onClick={() => openTool('health-tips')}
-                    className="p-3.5 rounded-2xl bg-gradient-to-r from-rose-500 via-pink-600 to-rose-600 text-white flex items-center justify-between shadow-sm active:scale-98 transition text-left"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-xs">
-                        <HeartPulse className="w-5 h-5 text-white" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-xs sm:text-sm block truncate leading-tight">
-                            {lang === 'bn' ? 'স্বাস্থ্য টিপস ও গাইডলাইন' : 'Health & Wellness Tips'}
-                          </span>
-                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-white/20 text-white shrink-0">
-                            {lang === 'bn' ? 'ছবিসহ' : 'Illustrated'}
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-rose-100 block truncate mt-0.5">
-                          {lang === 'bn'
-                            ? 'শিশু, বয়স্ক ও সবার জন্য বিস্তারিত পরামর্শ'
-                            : 'Pediatric, senior & adult wellness guides'}
-                        </span>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-white/80 shrink-0 ml-2" />
-                  </button>
                 )}
 
                 {/* Quick Shortcuts: Books & Notepad */}

@@ -1,421 +1,420 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   BookOpen,
-  Upload,
-  FileText,
-  Trash2,
+  Search,
   Bookmark,
+  Sparkles,
+  ChevronRight,
+  ArrowLeft,
+  Volume2,
+  Copy,
   Check,
-  RotateCcw,
   ZoomIn,
   ZoomOut,
-  Maximize2,
-  Minimize2,
-  ChevronRight,
-  ExternalLink,
-  Info,
-  Sparkles,
-  Search,
-  List,
-  AlertCircle,
-  Download,
+  Sliders,
+  Share2,
 } from 'lucide-react';
 import { Language } from '../../types';
-import {
-  saveQuranPdf,
-  getStoredQuranPdf,
-  deleteStoredQuranPdf,
-  saveLastReadPage,
-  getLastReadPage,
-  StoredPdfRecord,
-} from '../../utils/pdfStorage';
+import { QuranSurah, getStoredSurahs } from '../../utils/quranStorage';
 
 interface Props {
   lang: Language;
 }
 
-// 30 Para Index for Fast Navigation
-const QURAN_PARAS = [
-  { para: 1, nameBn: 'আলিফ লাম মীম', nameAr: 'الم', page: 1 },
-  { para: 2, nameBn: 'সায়াকুলু', nameAr: 'سيقول', page: 22 },
-  { para: 3, nameBn: 'তিলকার রুসুল', nameAr: 'تلك الرسل', page: 42 },
-  { para: 4, nameBn: 'লান তানা লু', nameAr: 'لن تنالوا', page: 62 },
-  { para: 5, nameBn: 'ওয়াল মুহসানাত', nameAr: 'والمحصنات', page: 82 },
-  { para: 6, nameBn: 'লা ইউহিব্বুল্লাহ', nameAr: 'لا يحب الله', page: 102 },
-  { para: 7, nameBn: 'ওয়া ইযা সামিউ', nameAr: 'وإذا سمعوا', page: 122 },
-  { para: 8, nameBn: 'ওয়া লাও আন্নানা', nameAr: 'ولو أننا', page: 142 },
-  { para: 9, nameBn: 'ক্বলাল মালাউ', nameAr: 'قال الملأ', page: 162 },
-  { para: 10, nameBn: 'ওয়া আ’লামু', nameAr: 'واعلموا', page: 182 },
-  { para: 11, nameBn: 'ইয়া’তাযিরুন', nameAr: 'يعتذرون', page: 202 },
-  { para: 12, nameBn: 'ওয়া মা মিন দা-ব্বাহ', nameAr: 'وما من دابة', page: 222 },
-  { para: 13, nameBn: 'ওয়া মা উবাররিউ', nameAr: 'وما أبرئ', page: 242 },
-  { para: 14, nameBn: 'রুবামা', nameAr: 'ربما', page: 262 },
-  { para: 15, nameBn: 'সুবহানাল্লাযী', nameAr: 'سبحان الذي', page: 282 },
-  { para: 16, nameBn: 'ক্বলা আলাম', nameAr: 'قال ألم', page: 302 },
-  { para: 17, nameBn: 'ইক্বতারা বা', nameAr: 'اقترب', page: 322 },
-  { para: 18, nameBn: 'ক্বাদ আফলাহা', nameAr: 'قد أفلح', page: 342 },
-  { para: 19, nameBn: 'ওয়া ক্বলাল্লাযীনা', nameAr: 'وقال الذين', page: 362 },
-  { para: 20, nameBn: 'আম্মান খালাক্বা', nameAr: 'أمن خلق', page: 382 },
-  { para: 21, nameBn: 'উতলু মা উহিয়া', nameAr: 'اتل ما أوحي', page: 402 },
-  { para: 22, nameBn: 'ওয়া মাই ইয়াক্বনুত', nameAr: 'ومن يقنت', page: 422 },
-  { para: 23, nameBn: 'ওয়া মা লিয়া', nameAr: 'وما لي', page: 442 },
-  { para: 24, nameBn: 'ফামান আযলামু', nameAr: 'فمن أظلم', page: 462 },
-  { para: 25, nameBn: 'ইলাইহি ইউরাদ্দু', nameAr: 'إليه يرد', page: 482 },
-  { para: 26, nameBn: 'হা-মীম', nameAr: 'حم', page: 502 },
-  { para: 27, nameBn: 'ক্বলা ফামা খাতবুকুম', nameAr: 'قال فما خطبكم', page: 522 },
-  { para: 28, nameBn: 'ক্বাদ সামিআল্লাহু', nameAr: 'قد سمع الله', page: 542 },
-  { para: 29, nameBn: 'তাবারাকাল্লাযী', nameAr: 'تبارك الذي', page: 562 },
-  { para: 30, nameBn: 'আম্মা ইয়াতাসাআলুন', nameAr: 'عم يتساءلون', page: 582 },
-];
-
 export const QuranPdfReader: React.FC<Props> = ({ lang }) => {
-  const [pdfRecord, setPdfRecord] = useState<StoredPdfRecord | null>(null);
-  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [currentPage, setCurrentPage] = useState<number>(getLastReadPage());
-  const [zoomLevel, setZoomLevel] = useState<number>(100);
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const [showParaList, setShowParaList] = useState<boolean>(false);
-  const [bookmarkSaved, setBookmarkSaved] = useState<boolean>(false);
-  const [inputPage, setInputPage] = useState<string>(currentPage.toString());
+  const [surahs, setSurahs] = useState<QuranSurah[]>([]);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedSurah, setSelectedSurah] = useState<QuranSurah | null>(null);
+  const [filterType, setFilterType] = useState<'all' | 'মাক্কী' | 'মাদানী'>('all');
+  const [copiedAyah, setCopiedAyah] = useState<number | null>(null);
+  const [fontSize, setFontSize] = useState<number>(22); // Arabic font size
+  const [bookmarkedSurahId, setBookmarkedSurahId] = useState<string | null>(() => {
+    return localStorage.getItem('smart_quran_bookmark_surah') || null;
+  });
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  // Load stored PDF from IndexedDB on mount
   useEffect(() => {
-    let active = true;
-    async function loadStored() {
-      setLoading(true);
-      try {
-        const stored = await getStoredQuranPdf();
-        if (active && stored) {
-          setPdfRecord(stored);
-          const url = URL.createObjectURL(stored.file);
-          setPdfBlobUrl(url);
-        }
-      } catch (err) {
-        console.warn('Error loading stored Quran PDF:', err);
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-    loadStored();
-
-    return () => {
-      active = false;
-      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
-    };
+    const list = getStoredSurahs();
+    setSurahs(list);
   }, []);
 
-  // Update current page when input changes
-  useEffect(() => {
-    setInputPage(currentPage.toString());
-  }, [currentPage]);
+  const handleCopyAyah = (arabic: string, bangla: string, num: number) => {
+    const text = `${arabic}\n${bangla} (সূরা ${selectedSurah?.nameBn}, আয়াত: ${num})`;
+    navigator.clipboard?.writeText(text);
+    setCopiedAyah(num);
+    setTimeout(() => setCopiedAyah(null), 2000);
+  };
 
-  // Handle User File Selection
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-      alert(lang === 'bn' ? 'অনুগ্রহ করে শুধুমাত্র একটি PDF ফাইল নির্বাচন করুন।' : 'Please select a valid PDF file.');
-      return;
-    }
-
-    setLoading(true);
-    const ok = await saveQuranPdf(file, file.name);
-    if (ok) {
-      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
-      const url = URL.createObjectURL(file);
-      setPdfBlobUrl(url);
-      setPdfRecord({
-        file,
-        fileName: file.name,
-        fileSize: file.size,
-        uploadedAt: Date.now(),
-      });
-      setCurrentPage(1);
-      saveLastReadPage(1);
+  const handleToggleBookmark = (surahId: string) => {
+    if (bookmarkedSurahId === surahId) {
+      setBookmarkedSurahId(null);
+      localStorage.removeItem('smart_quran_bookmark_surah');
     } else {
-      alert(lang === 'bn' ? 'ফাইলটি মেমোরিতে সংরক্ষণ করতে সমস্যা হয়েছে।' : 'Failed to save PDF to storage.');
-    }
-    setLoading(false);
-  };
-
-  // Remove uploaded PDF
-  const handleRemovePdf = async () => {
-    if (
-      window.confirm(
-        lang === 'bn'
-          ? 'আপনি কি নিশ্চিত যে সংরক্ষিত এই কুরআন ফাইলটি মুছে ফেলতে চান?'
-          : 'Are you sure you want to remove this stored Quran PDF?'
-      )
-    ) {
-      await deleteStoredQuranPdf();
-      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
-      setPdfBlobUrl(null);
-      setPdfRecord(null);
+      setBookmarkedSurahId(surahId);
+      localStorage.setItem('smart_quran_bookmark_surah', surahId);
     }
   };
 
-  // Bookmark current page
-  const handleBookmark = () => {
-    saveLastReadPage(currentPage);
-    setBookmarkSaved(true);
-    setTimeout(() => setBookmarkSaved(false), 2000);
+  const filteredSurahs = surahs.filter((s) => {
+    const matchesSearch =
+      s.nameBn.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.nameEn.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.nameAr.includes(searchQuery) ||
+      String(s.surahNumber).includes(searchQuery);
+
+    if (filterType === 'all') return matchesSearch;
+    return matchesSearch && s.revelationType === filterType;
+  });
+
+  // Convert number to Bengali
+  const toBn = (num: number | string) => {
+    if (lang !== 'bn') return String(num);
+    const bnDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+    return String(num).replace(/\d/g, (d) => bnDigits[Number(d)]);
   };
 
-  // Jump to specific page
-  const handlePageJump = (page: number) => {
-    const validPage = Math.max(1, page);
-    setCurrentPage(validPage);
-    saveLastReadPage(validPage);
-    setShowParaList(false);
-  };
+  // If a Surah is selected for reading
+  if (selectedSurah) {
+    const isBookmarked = bookmarkedSurahId === selectedSurah.id;
 
-  // Formatted PDF URL with page anchor
-  const viewerUrl = pdfBlobUrl ? `${pdfBlobUrl}#page=${currentPage}&zoom=${zoomLevel}` : null;
-
-  return (
-    <div
-      ref={containerRef}
-      className={`flex flex-col gap-3 max-w-4xl mx-auto w-full select-none ${
-        isFullscreen ? 'fixed inset-0 z-50 bg-slate-950 p-2 max-w-none h-screen' : ''
-      }`}
-    >
-      {/* Hidden File Input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="application/pdf"
-        className="hidden"
-        onChange={handleFileSelect}
-      />
-
-      {/* Top Toolbar (Navigation, Zoom, Bookmark, Fullscreen) */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-wrap items-center justify-between gap-2">
-        {/* Left: 30 Para Drawer Button & Title */}
-        <div className="flex items-center gap-2">
+    return (
+      <div className="space-y-4">
+        {/* Navigation & Controls Top Bar */}
+        <div className="sticky top-0 z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center justify-between">
           <button
-            onClick={() => setShowParaList(!showParaList)}
-            className="px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/80 text-[#0B63F6] dark:text-blue-400 border border-blue-200 dark:border-blue-800 text-xs font-bold flex items-center gap-1.5 active:scale-95 transition"
+            onClick={() => setSelectedSurah(null)}
+            className="flex items-center gap-1.5 py-1 px-2.5 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 active:scale-95 transition"
           >
-            <List className="w-4 h-4" />
-            <span>{lang === 'bn' ? '৩০ পারা সূচী' : '30 Paras'}</span>
+            <ArrowLeft className="w-4 h-4" />
+            <span>{lang === 'bn' ? 'সকল সূরা' : 'All Surahs'}</span>
           </button>
 
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-xs font-bold flex items-center gap-1.5 active:scale-95 transition"
-            title="নতুন পিডিএফ ফাইল নির্বাচন করুন"
-          >
-            <Upload className="w-3.5 h-3.5" />
-            <span>{pdfRecord ? (lang === 'bn' ? 'ফাইল পরিবর্তন' : 'Change File') : (lang === 'bn' ? 'কুরআন যুক্ত করুন' : 'Add Quran')}</span>
-          </button>
-        </div>
+          <div className="text-center min-w-0 px-2">
+            <h2 className="text-sm font-bold truncate text-slate-900 dark:text-white">
+              {lang === 'bn' ? selectedSurah.nameBn : selectedSurah.nameEn}
+            </h2>
+            <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+              {selectedSurah.nameAr} • {toBn(selectedSurah.totalAyahs)} {lang === 'bn' ? 'আয়াত' : 'Ayahs'}
+            </span>
+          </div>
 
-        {/* Center: Page Jump Input & Bookmark */}
-        {pdfRecord && (
           <div className="flex items-center gap-1.5">
-            <span className="text-xs font-bold text-slate-500">{lang === 'bn' ? 'পৃষ্ঠা:' : 'Page:'}</span>
-            <div className="flex items-center">
-              <input
-                type="number"
-                min={1}
-                value={inputPage}
-                onChange={(e) => setInputPage(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handlePageJump(parseInt(inputPage, 10) || 1);
-                  }
-                }}
-                className="w-14 h-8 bg-slate-50 dark:bg-slate-800 border rounded-lg text-center font-bold text-xs"
-              />
-              <button
-                onClick={() => handlePageJump(parseInt(inputPage, 10) || 1)}
-                className="ml-1 px-2 h-8 rounded-lg bg-[#0B63F6] text-white text-[11px] font-bold"
-              >
-                Go
-              </button>
-            </div>
-
             <button
-              onClick={handleBookmark}
-              className={`p-2 rounded-xl border text-xs font-bold transition flex items-center gap-1 shadow-2xs ${
-                bookmarkSaved
-                  ? 'bg-emerald-50 text-emerald-600 border-emerald-300'
-                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+              onClick={() => setFontSize((f) => Math.max(16, f - 2))}
+              className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              title="Font smaller"
+            >
+              <ZoomOut className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setFontSize((f) => Math.min(36, f + 2))}
+              className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              title="Font larger"
+            >
+              <ZoomIn className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => handleToggleBookmark(selectedSurah.id)}
+              className={`p-1.5 rounded-lg transition ${
+                isBookmarked
+                  ? 'text-amber-500 bg-amber-50 dark:bg-amber-950/40'
+                  : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
-              title="শেষ পঠিত পৃষ্ঠা সেভ করুন"
+              title="Bookmark"
             >
-              <Bookmark className={`w-3.5 h-3.5 ${bookmarkSaved ? 'fill-emerald-600 text-emerald-600' : ''}`} />
-              <span className="hidden sm:inline">{bookmarkSaved ? 'সেভড!' : 'বুকমার্ক'}</span>
+              <Bookmark className={`w-4 h-4 ${isBookmarked ? 'fill-current' : ''}`} />
             </button>
           </div>
-        )}
+        </div>
 
-        {/* Right: Zoom & Fullscreen Controls */}
-        {pdfRecord && (
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setZoomLevel((z) => Math.max(50, z - 15))}
-              className="p-1.5 rounded-lg border bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
-              title="Zoom Out"
-            >
-              <ZoomOut className="w-3.5 h-3.5" />
-            </button>
-            <span className="text-[11px] font-mono font-bold text-slate-500 w-10 text-center">
-              {zoomLevel}%
+        {/* Surah Header Card */}
+        <div className="p-5 rounded-3xl bg-gradient-to-br from-emerald-700 via-teal-800 to-emerald-900 text-white text-center shadow-md relative overflow-hidden">
+          <div className="relative z-10">
+            <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-white/20 text-white inline-block mb-2">
+              {toBn(selectedSurah.surahNumber)}. {selectedSurah.revelationType} • {toBn(selectedSurah.totalAyahs)}{' '}
+              {lang === 'bn' ? 'আয়াত' : 'Ayahs'}
             </span>
-            <button
-              onClick={() => setZoomLevel((z) => Math.min(250, z + 15))}
-              className="p-1.5 rounded-lg border bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
-              title="Zoom In"
-            >
-              <ZoomIn className="w-3.5 h-3.5" />
-            </button>
+            <h1 className="text-3xl font-black font-arabic tracking-wide mt-1 mb-2">
+              {selectedSurah.nameAr}
+            </h1>
+            <p className="text-base font-bold text-emerald-100">
+              {lang === 'bn' ? selectedSurah.nameBn : selectedSurah.nameEn}
+            </p>
+            <p className="text-xs text-emerald-200 mt-0.5">
+              {lang === 'bn' ? `অর্থ: ${selectedSurah.meaningBn}` : `Meaning: ${selectedSurah.meaningBn}`}
+            </p>
 
-            <button
-              onClick={() => setIsFullscreen(!isFullscreen)}
-              className="p-1.5 rounded-lg border bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 ml-1"
-              title="Fullscreen Mode"
-            >
-              {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-            </button>
-
-            <button
-              onClick={handleRemovePdf}
-              className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 ml-1"
-              title="পিডিএফ ফাইলটি মুছুন"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            {/* Bismillah (Except Surah 9) */}
+            {selectedSurah.surahNumber !== 9 && (
+              <div className="mt-4 pt-3 border-t border-emerald-600/40">
+                <p className="text-xl font-arabic font-bold text-amber-200 tracking-wider">
+                  بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
+                </p>
+                <p className="text-[11px] text-emerald-100 mt-1">
+                  {lang === 'bn'
+                    ? 'পরম করুণাময় ও অসীম দয়ালু আল্লাহর নামে শুরু করছি'
+                    : 'In the name of Allah, Most Gracious, Ever Merciful'}
+                </p>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </div>
 
-      {/* 30 Para Quick Navigation Dropdown / Drawer */}
-      {showParaList && (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-xl flex flex-col gap-3 animate-fade-in max-h-72 overflow-y-auto">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300">
-            <span className="flex items-center gap-1.5 text-[#0B63F6]">
-              <BookOpen className="w-4 h-4" />
-              <span>{lang === 'bn' ? '৩০ পারা তালিকা (যেটিতে ক্লিক করবেন সরাসরি সেই পৃষ্ঠায় যাবে):' : '30 Para Index'}</span>
-            </span>
-            <button
-              onClick={() => setShowParaList(false)}
-              className="text-slate-400 hover:text-slate-600 text-xs"
-            >
-              বন্ধ করুন
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {QURAN_PARAS.map((p) => (
-              <button
-                key={p.para}
-                onClick={() => handlePageJump(p.page)}
-                className={`p-2.5 rounded-xl border text-left transition flex items-center justify-between ${
-                  currentPage >= p.page && currentPage < p.page + 20
-                    ? 'bg-blue-50 dark:bg-blue-950/60 border-[#0B63F6] text-[#0B63F6]'
-                    : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:bg-blue-50 text-slate-700 dark:text-slate-200'
-                }`}
+        {/* Ayahs List */}
+        <div className="space-y-3.5">
+          {selectedSurah.ayahs && selectedSurah.ayahs.length > 0 ? (
+            selectedSurah.ayahs.map((ayah) => (
+              <div
+                key={ayah.ayahNumber}
+                className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3"
               >
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 block">পারা {p.para}</span>
-                  <span className="text-xs font-bold block truncate max-w-[120px]">{p.nameBn}</span>
+                {/* Ayah Number Badge & Copy */}
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold text-xs flex items-center justify-center">
+                      {toBn(ayah.ayahNumber)}
+                    </span>
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      {lang === 'bn' ? `আয়াত #${toBn(ayah.ayahNumber)}` : `Ayah #${ayah.ayahNumber}`}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => handleCopyAyah(ayah.arabic, ayah.bangla, ayah.ayahNumber)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-800 transition"
+                    title={lang === 'bn' ? 'আয়াত কপি করুন' : 'Copy Ayah'}
+                  >
+                    {copiedAyah === ayah.ayahNumber ? (
+                      <Check className="w-4 h-4 text-emerald-600" />
+                    ) : (
+                      <Copy className="w-4 h-4" />
+                    )}
+                  </button>
                 </div>
+
+                {/* Arabic Text */}
                 <div className="text-right">
-                  <span className="text-xs font-serif text-slate-500 block">{p.nameAr}</span>
-                  <span className="text-[9px] text-slate-400 font-mono">পৃ. {p.page}</span>
+                  <p
+                    dir="rtl"
+                    style={{ fontSize: `${fontSize}px`, lineHeight: 1.8 }}
+                    className="font-arabic font-bold text-slate-900 dark:text-emerald-50 tracking-wide select-text"
+                  >
+                    {ayah.arabic}
+                    <span className="inline-block mx-1.5 text-emerald-600 dark:text-emerald-400 font-bold text-sm">
+                      ۝{toBn(ayah.ayahNumber)}
+                    </span>
+                  </p>
                 </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
-      {/* Main Reader View or Upload Placeholder */}
-      {loading ? (
-        <div className="py-24 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl flex flex-col items-center justify-center gap-3">
-          <div className="w-8 h-8 border-3 border-[#0B63F6] border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs font-bold text-slate-500">কুরআনুল কারীম লোড হচ্ছে...</span>
+                {/* Pronunciation (Bangla) */}
+                {ayah.pronunciation && (
+                  <p className="text-xs text-emerald-800 dark:text-emerald-300 font-medium bg-emerald-50/60 dark:bg-emerald-950/30 p-2.5 rounded-xl leading-relaxed">
+                    <strong className="text-emerald-700 dark:text-emerald-400 font-bold block mb-0.5">
+                      {lang === 'bn' ? 'উচ্চারণ:' : 'Pronunciation:'}
+                    </strong>
+                    {ayah.pronunciation}
+                  </p>
+                )}
+
+                {/* Bangla Translation */}
+                <p className="text-sm font-normal text-slate-700 dark:text-slate-300 leading-relaxed">
+                  <strong className="text-slate-800 dark:text-slate-100 font-bold block mb-0.5">
+                    {lang === 'bn' ? 'অর্থ ও অনুবাদ:' : 'Translation:'}
+                  </strong>
+                  {ayah.bangla}
+                </p>
+
+                {ayah.tafsir && (
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/40 p-2 rounded-lg">
+                    <span className="font-semibold block">{lang === 'bn' ? 'তাফসীর ও ব্যাখ্যা:' : 'Tafsir:'}</span>
+                    {ayah.tafsir}
+                  </div>
+                )}
+              </div>
+            ))
+          ) : (
+            <div className="p-8 text-center text-slate-400 rounded-2xl bg-white dark:bg-slate-900">
+              <p className="text-xs">
+                {lang === 'bn'
+                  ? 'এই সূরার আয়াতসমূহ এডমিন প্যানেল থেকে যুক্ত করতে পারবেন।'
+                  : 'Ayahs for this surah can be added in the Admin Panel.'}
+              </p>
+            </div>
+          )}
         </div>
-      ) : pdfRecord && pdfBlobUrl ? (
-        <div className="flex flex-col gap-2 flex-1 min-h-[550px] sm:min-h-[700px]">
-          {/* File Status Tag Bar */}
-          <div className="flex items-center justify-between text-[11px] text-slate-500 px-1">
-            <span className="truncate max-w-xs font-medium">
-              📖 {pdfRecord.fileName} ({(pdfRecord.fileSize / (1024 * 1024)).toFixed(1)} MB)
+
+        {/* Bottom Next/Prev Surah Navigator */}
+        <div className="pt-2 flex items-center justify-between text-xs font-bold text-emerald-600 dark:text-emerald-400">
+          <button
+            onClick={() => {
+              const curIdx = surahs.findIndex((s) => s.id === selectedSurah.id);
+              if (curIdx > 0) setSelectedSurah(surahs[curIdx - 1]);
+            }}
+            disabled={surahs.findIndex((s) => s.id === selectedSurah.id) <= 0}
+            className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 disabled:opacity-40"
+          >
+            ← {lang === 'bn' ? 'পূর্ববর্তী সূরা' : 'Previous Surah'}
+          </button>
+
+          <button
+            onClick={() => setSelectedSurah(null)}
+            className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800"
+          >
+            {lang === 'bn' ? 'সূচিপত্র' : 'Index'}
+          </button>
+
+          <button
+            onClick={() => {
+              const curIdx = surahs.findIndex((s) => s.id === selectedSurah.id);
+              if (curIdx < surahs.length - 1) setSelectedSurah(surahs[curIdx + 1]);
+            }}
+            disabled={surahs.findIndex((s) => s.id === selectedSurah.id) >= surahs.length - 1}
+            className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 disabled:opacity-40"
+          >
+            {lang === 'bn' ? 'পরবর্তী সূরা' : 'Next Surah'} →
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Surahs Directory View
+  return (
+    <div className="space-y-4">
+      {/* Quran Header Card */}
+      <div className="p-5 rounded-3xl bg-gradient-to-br from-teal-700 via-emerald-800 to-green-900 text-white shadow-md relative overflow-hidden">
+        <div className="flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-white/20 text-white">
+              {lang === 'bn' ? 'পবিত্র কুরআনুল কারীম' : 'Holy Quran Reader'}
             </span>
-            <span className="font-bold text-emerald-600 dark:text-emerald-400">
-              ✓ অফলাইনে সংরক্ষিত (কোনো ডাটা বা নেট লাগবে না)
-            </span>
-          </div>
-
-          {/* Interactive PDF Embedded Viewer */}
-          <div className="w-full flex-1 min-h-[550px] sm:min-h-[700px] bg-slate-900 rounded-2xl overflow-hidden shadow-lg border border-slate-800 relative">
-            <iframe
-              src={viewerUrl || undefined}
-              title="Quran Reader"
-              className="w-full h-full min-h-[550px] sm:min-h-[700px] border-none"
-            />
-          </div>
-        </div>
-      ) : (
-        /* Empty State / Upload Prompt Card */
-        <div className="bg-white dark:bg-slate-900 border-2 border-dashed border-blue-300 dark:border-blue-900/60 rounded-3xl p-6 sm:p-10 flex flex-col items-center justify-center text-center gap-4 shadow-sm">
-          <div className="w-16 h-16 rounded-3xl bg-blue-50 dark:bg-blue-950/60 text-[#0B63F6] flex items-center justify-center shadow-xs">
-            <BookOpen className="w-8 h-8" />
-          </div>
-
-          <div className="max-w-md">
-            <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-              {lang === 'bn' ? 'পবিত্র কুরআনুল কারীম যুক্ত করুন' : 'Add Holy Quran File'}
-            </h3>
-            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+            <h2 className="text-xl font-black mt-1">
+              {lang === 'bn' ? 'সূরা ও আয়াত সমগ্র' : 'Surahs & Verses'}
+            </h2>
+            <p className="text-xs text-emerald-100 mt-0.5">
               {lang === 'bn'
-                ? 'আপনার মোবাইল বা কম্পিউটারে থাকা কুরআন শরীফ (যেমন: হাফেজী কুরআন, নূরানী কুরআন বা ৩০ পারা) এখানে সরাসরি নির্বাচন করুন।'
-                : 'Select Quran file from your device. It will be stored safely offline in your phone storage.'}
+                ? 'আরবি পাঠ, উচ্চারণ ও সহজ বাংলা অর্থসহ'
+                : 'Arabic text, pronunciation & Bengali translation'}
             </p>
           </div>
 
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="px-6 py-3 rounded-2xl bg-[#0B63F6] hover:bg-blue-600 text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-md shadow-blue-500/25 active:scale-95 transition"
-          >
-            <Upload className="w-4 h-4" />
-            <span>{lang === 'bn' ? 'ডিভাইস থেকে কুরআন ফাইল নির্বাচন করুন' : 'Select Quran File'}</span>
-          </button>
-
-          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 max-w-md text-left text-xs flex flex-col gap-1.5 text-slate-600 dark:text-slate-300">
-            <span className="font-bold text-[#0B63F6] flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>অফলাইন সুবিধা ও নিরাপত্তা:</span>
-            </span>
-            <span>• একবার ফাইল দিলে এটি আপনার ফোনের স্থায়ী মেমোরিতে সেভ থাকবে; পরবর্তীতে কোনো ইন্টারনেট ছাড়াই সরাসরি পড়তে পারবেন।</span>
-            <span>• জুম ইন, জুম আউট ও শেষ পঠিত পৃষ্ঠা মনে রাখার স্বয়ংক্রিয় সুবিধা।</span>
+          <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
+            <BookOpen className="w-6 h-6 text-white" />
           </div>
         </div>
-      )}
 
-      {/* Guide Note for Admin / Play Store permanent embedding */}
-      <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 flex items-start gap-2.5 text-xs text-amber-900 dark:text-amber-200">
-        <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-        <div>
-          <span className="font-bold block mb-0.5">
-            {lang === 'bn'
-              ? 'প্লে স্টোরে অ্যাপ ছাড়ার সময় সবার জন্য কুরআন স্থায়ী করার নিয়ম:'
-              : 'Tip for App Distribution:'}
+        {/* Quick info badges */}
+        <div className="flex items-center gap-2 mt-4 text-[11px] text-emerald-100">
+          <span className="px-2 py-0.5 rounded-md bg-white/10">
+            {toBn(surahs.length)} {lang === 'bn' ? 'টি সংরক্ষিত সূরা' : 'Surahs'}
           </span>
-          <span className="leading-relaxed">
-            {lang === 'bn'
-              ? 'আপনি যদি চান যে অ্যাপটি প্লে স্টোর থেকে ডাউনলোড করলেই কোনো আপলোড ছাড়াই সব ব্যবহারকারীর ফোনে এই কুরআনটি সরাসরি লোড হবে, তবে আপনার কুরআন পিডিএফ ফাইলটির নাম "quran.pdf" দিয়ে প্রোজেক্টের public/ ফোল্ডারে রেখে দিলে তা স্বয়ংক্রিয়ভাবে অ্যাপের স্থায়ী অংশ হয়ে যাবে।'
-              : 'You can also place your quran.pdf in the public/ folder so every user gets it pre-installed without uploading.'}
+          <span className="px-2 py-0.5 rounded-md bg-white/10">
+            {lang === 'bn' ? '১০০% অফলাইন সুবিধা' : '100% Offline'}
           </span>
         </div>
       </div>
+
+      {/* Search & Filter Bar */}
+      <div className="space-y-2">
+        <div className="relative">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder={
+              lang === 'bn'
+                ? 'সূরার নাম (যেমন: ফাতিহা, ইখলাস) বা নম্বর লিখুন...'
+                : 'Search surah by name or number...'
+            }
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-2.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500 shadow-xs"
+          />
+        </div>
+
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-semibold">
+          <button
+            onClick={() => setFilterType('all')}
+            className={`px-3 py-1.5 rounded-xl transition shrink-0 ${
+              filterType === 'all'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+            }`}
+          >
+            {lang === 'bn' ? 'সকল সূরা' : 'All'}
+          </button>
+          <button
+            onClick={() => setFilterType('মাক্কী')}
+            className={`px-3 py-1.5 rounded-xl transition shrink-0 ${
+              filterType === 'মাক্কী'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+            }`}
+          >
+            {lang === 'bn' ? 'মাক্কী সূরা' : 'Meccan'}
+          </button>
+          <button
+            onClick={() => setFilterType('মাদানী')}
+            className={`px-3 py-1.5 rounded-xl transition shrink-0 ${
+              filterType === 'মাদানী'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+            }`}
+          >
+            {lang === 'bn' ? 'মাদানী সূরা' : 'Medinan'}
+          </button>
+        </div>
+      </div>
+
+      {/* Surahs Grid / Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        {filteredSurahs.map((surah) => {
+          const isBookmarked = bookmarkedSurahId === surah.id;
+          return (
+            <div
+              key={surah.id}
+              onClick={() => setSelectedSurah(surah)}
+              className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700 shadow-xs cursor-pointer active:scale-98 transition flex items-center justify-between group"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 font-bold text-xs flex items-center justify-center shrink-0 border border-emerald-100 dark:border-emerald-900/40">
+                  {toBn(surah.surahNumber)}
+                </div>
+
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
+                      {lang === 'bn' ? surah.nameBn : surah.nameEn}
+                    </span>
+                    {isBookmarked && (
+                      <Bookmark className="w-3.5 h-3.5 text-amber-500 fill-current shrink-0" />
+                    )}
+                  </div>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 block truncate">
+                    {surah.meaningBn} • {toBn(surah.totalAyahs)} {lang === 'bn' ? 'আয়াত' : 'ayahs'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-right shrink-0 ml-2">
+                <span className="font-arabic font-bold text-base text-emerald-700 dark:text-emerald-300 block">
+                  {surah.nameAr}
+                </span>
+                <span className="text-[10px] text-slate-400 block">
+                  {surah.revelationType}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {filteredSurahs.length === 0 && (
+        <div className="p-8 text-center text-slate-400 rounded-2xl bg-white dark:bg-slate-900">
+          <BookOpen className="w-8 h-8 mx-auto mb-2 opacity-50" />
+          <p className="text-xs">
+            {lang === 'bn' ? 'কোনো সূরা খুঁজে পাওয়া যায়নি।' : 'No surahs matched your search.'}
+          </p>
+        </div>
+      )}
     </div>
   );
 };
