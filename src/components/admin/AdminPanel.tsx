@@ -101,6 +101,7 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }
   const [qAyahs, setQAyahs] = useState<QuranAyah[]>([
     { ayahNumber: 1, arabic: '', pronunciation: '', bangla: '' },
   ]);
+  const [adminQuranSearch, setAdminQuranSearch] = useState<string>('');
   const [quranSuccessMsg, setQuranSuccessMsg] = useState<string | null>(null);
 
   // ==========================================
@@ -988,9 +989,27 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }
                 </div>
               </div>
 
+              {/* Search Bar for 114 Surahs */}
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="সূরার নাম বা নম্বর লিখে খুঁজুন (১-১১৪)..."
+                  value={adminQuranSearch}
+                  onChange={(e) => setAdminQuranSearch(e.target.value)}
+                  className="w-full h-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                />
+              </div>
+
               {/* Surahs List */}
-              <div className="flex flex-col gap-2.5">
-                {quranSurahs.map((s) => (
+              <div className="flex flex-col gap-2.5 max-h-[500px] overflow-y-auto pr-1">
+                {quranSurahs
+                  .filter(
+                    (s) =>
+                      s.nameBn.toLowerCase().includes(adminQuranSearch.toLowerCase()) ||
+                      s.nameAr.includes(adminQuranSearch) ||
+                      String(s.surahNumber).includes(adminQuranSearch)
+                  )
+                  .map((s) => (
                   <div
                     key={s.id}
                     className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs flex items-center justify-between"
