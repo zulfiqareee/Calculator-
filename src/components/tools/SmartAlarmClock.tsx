@@ -35,6 +35,8 @@ import {
   toggleAlarm,
   startAlarmSound,
   stopAlarmSound,
+  triggerAlarmRinging,
+  requestNotificationPermission,
   playChimeNote,
   getCustomSoundData,
   saveCustomSoundData,
@@ -70,12 +72,21 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
   const [previewingTone, setPreviewingTone] = useState<SoundToneType | null>(null);
   const [soundSuccessMsg, setSoundSuccessMsg] = useState<string | null>(null);
 
-  // Triggered alarm state
-  const [ringingAlarm, setRingingAlarm] = useState<AlarmItem | null>(null);
   const [isTestingSound, setIsTestingSound] = useState<boolean>(false);
+  const [notificationGranted, setNotificationGranted] = useState<boolean>(
+    typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted'
+  );
   const testTimerRef = useRef<number | null>(null);
-  const lastTriggeredMinuteRef = useRef<string>('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Update clock every second
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
 
   const handleToggleSoundTest = () => {
     unlockAudio();
@@ -94,6 +105,33 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
     }
   };
 
+  // Launch Full Alarm Ringing Screen immediately so user can see display, sound & dismiss buttons
+  const handleTestFullAlarmDisplay = () => {
+    unlockAudio();
+    const now = new Date();
+    const h = String(now.getHours()).padStart(2, '0');
+    const m = String(now.getMinutes()).padStart(2, '0');
+    const testItem: AlarmItem = {
+      id: 'test-' + Date.now(),
+      time: `${h}:${m}`,
+      labelBn: lang === 'bn' ? 'টেস্ট অ্যালার্ম (পূর্ণাঙ্গ ডিসপ্লে ও সাউন্ড পরীক্ষা)' : 'Test Alarm Display & Sound',
+      labelEn: 'Test Alarm Display & Sound',
+      enabled: true,
+      repeatDays: [],
+      soundTone: selectedTone || 'digital',
+      createdAt: Date.now(),
+    };
+    triggerAlarmRinging(testItem);
+  };
+
+  const handleRequestNotification = async () => {
+    const granted = await requestNotificationPermission();
+    setNotificationGranted(granted);
+    if (granted) {
+      alert(lang === 'bn' ? 'সিস্টেম নোটিফিকেশন সফলভাবে চালু করা হয়েছে!' : 'System notification enabled!');
+    }
+  };
+
   const handleSetQuick1MinAlarm = () => {
     const testDate = new Date();
     testDate.setMinutes(testDate.getMinutes() + 1);
@@ -102,82 +140,6 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
     setInputTime(`${h}:${m}`);
     setInputLabel(lang === 'bn' ? 'টেস্ট অ্যালার্ম (১ মিনিট পর)' : 'Test Alarm (1m later)');
     setSelectedDays([0, 1, 2, 3, 4, 5, 6]);
-  };
-
-  // Update clock every second
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const now = new Date();
-      setCurrentTime(now);
-
-      // Check alarms
-      const currentHours = String(now.getHours()).padStart(2, '0');
-      const currentMinutes = String(now.getMinutes()).padStart(2, '0');
-      const timeStr = `${currentHours}:${currentMinutes}`;
-      const dayOfWeek = now.getDay();
-
-      if (lastTriggeredMinuteRef.current !== timeStr) {
-        // Find if any alarm matches
-        const matched = alarms.find((a) => {
-          if (!a.enabled) return false;
-          if (a.time !== timeStr) return false;
-          if (a.repeatDays.length === 0) return true; // once
-          return a.repeatDays.includes(dayOfWeek);
-        });
-
-        if (matched && !ringingAlarm) {
-          lastTriggeredMinuteRef.current = timeStr;
-          setRingingAlarm(matched);
-          startAlarmSound(matched.soundTone);
-        }
-      }
-    }, 1000);
-
-    return () => {
-      clearInterval(timer);
-      stopAlarmSound();
-    };
-  }, [alarms, ringingAlarm]);
-
-  // Clean up sound on unmount
-  useEffect(() => {
-    return () => {
-      stopAlarmSound();
-    };
-  }, []);
-
-  const handleDismiss = () => {
-    stopAlarmSound();
-    if (ringingAlarm && ringingAlarm.repeatDays.length === 0) {
-      // Disable one-time alarm
-      const updated = toggleAlarm(ringingAlarm.id);
-      setAlarms(updated);
-    }
-    setRingingAlarm(null);
-  };
-
-  const handleSnooze = (minutes = 5) => {
-    stopAlarmSound();
-    if (ringingAlarm) {
-      const now = new Date();
-      now.setMinutes(now.getMinutes() + minutes);
-      const snoozeTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-      const snoozedAlarm: AlarmItem = {
-        id: `snooze-${Date.now()}`,
-        time: snoozeTime,
-        labelBn: `(স্নুজ) ${ringingAlarm.labelBn}`,
-        labelEn: `(Snoozed) ${ringingAlarm.labelEn || ringingAlarm.labelBn}`,
-        enabled: true,
-        repeatDays: [],
-        soundTone: ringingAlarm.soundTone,
-        createdAt: Date.now(),
-      };
-
-      const updated = addOrUpdateAlarm(snoozedAlarm);
-      setAlarms(updated);
-    }
-    setRingingAlarm(null);
   };
 
   const openCreateModal = () => {
@@ -350,49 +312,6 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
 
   return (
     <div className="space-y-4">
-      {/* Active Ringing Full Modal */}
-      {ringingAlarm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
-          <div className="w-full max-w-sm rounded-3xl bg-white dark:bg-slate-900 border-2 border-indigo-500 shadow-2xl p-6 text-center animate-bounce-subtle">
-            <div className="w-20 h-20 mx-auto rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 flex items-center justify-center shadow-inner animate-pulse">
-              <BellRing className="w-10 h-10 text-indigo-600 animate-spin-slow" />
-            </div>
-
-            <span className="text-xs font-black uppercase text-indigo-500 tracking-wider mt-4 block">
-              {lang === 'bn' ? 'অ্যালার্ম বাজছে!' : 'Alarm Ringing!'}
-            </span>
-
-            <h3 className="text-4xl font-black tracking-tight text-slate-900 dark:text-white mt-1 font-mono">
-              {toBn(formatTime12h(ringingAlarm.time).time)}{' '}
-              <span className="text-xl font-bold text-indigo-600">{formatTime12h(ringingAlarm.time).period}</span>
-            </h3>
-
-            <p className="text-base font-semibold text-slate-600 dark:text-slate-300 mt-2">
-              {lang === 'bn' ? ringingAlarm.labelBn : ringingAlarm.labelEn}
-            </p>
-
-            <span className="inline-block mt-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-300 text-xs font-semibold">
-              🎵 {getToneName(ringingAlarm.soundTone)}
-            </span>
-
-            <div className="grid grid-cols-2 gap-3 mt-6">
-              <button
-                onClick={() => handleSnooze(5)}
-                className="py-3 px-4 rounded-xl font-bold text-sm bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 active:scale-95 transition"
-              >
-                {lang === 'bn' ? 'স্নুজ (৫ মিনিট)' : 'Snooze (5m)'}
-              </button>
-              <button
-                onClick={handleDismiss}
-                className="py-3 px-4 rounded-xl font-bold text-sm bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 shadow-md transition"
-              >
-                {lang === 'bn' ? 'বন্ধ করুন' : 'Dismiss'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Header Live Clock Card */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-700 via-indigo-800 to-purple-900 text-white p-5 shadow-lg border border-indigo-500/30">
         <div className="flex items-center justify-between">
@@ -475,38 +394,73 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
             <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">
               {isTestingSound
                 ? (lang === 'bn' ? 'অ্যালার্ম সাউন্ড বাজছে...' : 'Alarm Sound is Playing...')
-                : (lang === 'bn' ? 'ফোনের স্পিকার ও সাউন্ড টেস্ট করুন' : 'Test Alarm Sound & Speaker')}
+                : (lang === 'bn' ? 'অ্যালার্মের ডিসপ্লে ও সাউন্ড টেস্ট' : 'Test Alarm Display & Audio')}
             </h4>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              {isTestingSound
-                ? (lang === 'bn' ? 'সাউন্ড শুনতে পেলে স্পিকার ঠিক আছে' : 'If hearing sound, audio is working')
-                : (lang === 'bn' ? '১ ক্লিকেই অ্যালার্ম সাউন্ড বেজে উঠবে' : 'Click to test alarm ringtone now')}
+              {lang === 'bn'
+                ? 'ডিসপ্লেতে অ্যালার্ম কেমন দেখাবে ও সাউন্ড কেমন বাজবে তা এখনই পরীক্ষা করুন'
+                : 'Test how the alarm looks on screen and sounds'}
             </p>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleToggleSoundTest}
-          className={`px-4 py-2.5 rounded-2xl text-xs font-bold shrink-0 shadow-md active:scale-95 transition flex items-center gap-1.5 ${
-            isTestingSound
-              ? 'bg-rose-600 hover:bg-rose-700 text-white'
-              : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-          }`}
-        >
-          {isTestingSound ? (
-            <>
-              <Square className="w-3.5 h-3.5 fill-current" />
-              <span>{lang === 'bn' ? 'বন্ধ করুন' : 'Stop Test'}</span>
-            </>
-          ) : (
-            <>
-              <Play className="w-3.5 h-3.5 fill-current" />
-              <span>{lang === 'bn' ? 'সাউন্ড বাজান' : 'Test Sound'}</span>
-            </>
-          )}
-        </button>
+        <div className="flex flex-col sm:flex-row items-center gap-2 shrink-0">
+          {/* Full Screen Alarm Display Test Button */}
+          <button
+            type="button"
+            onClick={handleTestFullAlarmDisplay}
+            className="px-3.5 py-2 rounded-2xl text-xs font-bold shadow-md bg-indigo-600 hover:bg-indigo-700 text-white active:scale-95 transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+            title="ডিসপ্লেতে অ্যালার্ম কেমন দেখাবে এখনই টেস্ট করুন"
+          >
+            <BellRing className="w-3.5 h-3.5" />
+            <span>{lang === 'bn' ? 'ডিসপ্লে টেস্ট' : 'Display Test'}</span>
+          </button>
+
+          {/* Quick Sound Play Button */}
+          <button
+            type="button"
+            onClick={handleToggleSoundTest}
+            className={`px-3 py-2 rounded-2xl text-xs font-bold shadow-md active:scale-95 transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              isTestingSound
+                ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+            }`}
+          >
+            {isTestingSound ? (
+              <>
+                <Square className="w-3.5 h-3.5 fill-current" />
+                <span>{lang === 'bn' ? 'বন্ধ করুন' : 'Stop'}</span>
+              </>
+            ) : (
+              <>
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>{lang === 'bn' ? 'সাউন্ড' : 'Sound'}</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
+
+      {/* Optional Notification Permission Helper */}
+      {!notificationGranted && (
+        <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 text-amber-900 dark:text-amber-200">
+            <span className="text-base">📱</span>
+            <span>
+              {lang === 'bn'
+                ? 'স্ক্রিন লক বা ব্যাকগ্রাউন্ডে অ্যালার্মের ব্যানার নোটিফিকেশন পেতে অনুমতি দিন'
+                : 'Enable system notifications for lockscreen alerts'}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleRequestNotification}
+            className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 active:scale-95 transition cursor-pointer"
+          >
+            {lang === 'bn' ? 'চালু করুন' : 'Enable'}
+          </button>
+        </div>
+      )}
 
       {/* Prominent Sound & Ringtone Settings Card */}
       <div className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-indigo-100 dark:border-slate-800 shadow-xs space-y-4">

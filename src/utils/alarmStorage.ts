@@ -96,6 +96,126 @@ export function toggleAlarm(id: string): AlarmItem[] {
 }
 
 // ==========================================
+// Centralized Ringing Alarm State & Event Bus
+// ==========================================
+type AlarmTriggerCallback = (alarm: AlarmItem | null) => void;
+const alarmListeners = new Set<AlarmTriggerCallback>();
+let activeRingingAlarm: AlarmItem | null = null;
+let lastTriggeredMinute = '';
+
+export function getActiveRingingAlarm(): AlarmItem | null {
+  return activeRingingAlarm;
+}
+
+export function subscribeToAlarmTrigger(cb: AlarmTriggerCallback): () => void {
+  alarmListeners.add(cb);
+  cb(activeRingingAlarm);
+  return () => {
+    alarmListeners.delete(cb);
+  };
+}
+
+export function triggerAlarmRinging(alarm: AlarmItem): void {
+  activeRingingAlarm = alarm;
+  startAlarmSound(alarm.soundTone);
+  trySendSystemNotification(alarm);
+
+  alarmListeners.forEach((listener) => {
+    try {
+      listener(alarm);
+    } catch (e) {
+      console.warn('Error in alarm listener:', e);
+    }
+  });
+}
+
+export function dismissActiveAlarm(): void {
+  if (activeRingingAlarm) {
+    if (activeRingingAlarm.repeatDays.length === 0) {
+      toggleAlarm(activeRingingAlarm.id);
+    }
+  }
+  stopAlarmSound();
+  activeRingingAlarm = null;
+  alarmListeners.forEach((listener) => {
+    try {
+      listener(null);
+    } catch (e) {
+      console.warn('Error in alarm listener:', e);
+    }
+  });
+}
+
+export function snoozeActiveAlarm(minutes = 5): void {
+  if (activeRingingAlarm) {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + minutes);
+    const snoozeTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const snoozedAlarm: AlarmItem = {
+      id: `snooze-${Date.now()}`,
+      time: snoozeTime,
+      labelBn: `(স্নুজ) ${activeRingingAlarm.labelBn}`,
+      labelEn: `(Snoozed) ${activeRingingAlarm.labelEn || activeRingingAlarm.labelBn}`,
+      enabled: true,
+      repeatDays: [],
+      soundTone: activeRingingAlarm.soundTone,
+      createdAt: Date.now(),
+    };
+    addOrUpdateAlarm(snoozedAlarm);
+  }
+  dismissActiveAlarm();
+}
+
+/**
+ * Checks all stored alarms against current time and triggers if due
+ */
+export function checkAndTriggerDueAlarms(): void {
+  const now = new Date();
+  const currentHours = String(now.getHours()).padStart(2, '0');
+  const currentMinutes = String(now.getMinutes()).padStart(2, '0');
+  const timeStr = `${currentHours}:${currentMinutes}`;
+  const dayOfWeek = now.getDay();
+
+  if (lastTriggeredMinute === timeStr) return;
+
+  const stored = getStoredAlarms();
+  const matched = stored.find((a) => {
+    if (!a.enabled) return false;
+    if (a.time !== timeStr) return false;
+    if (a.repeatDays.length === 0) return true; // once
+    return a.repeatDays.includes(dayOfWeek);
+  });
+
+  if (matched && !activeRingingAlarm) {
+    lastTriggeredMinute = timeStr;
+    triggerAlarmRinging(matched);
+  }
+}
+
+export function requestNotificationPermission(): Promise<boolean> {
+  if (typeof window !== 'undefined' && 'Notification' in window) {
+    return Notification.requestPermission().then((perm) => perm === 'granted');
+  }
+  return Promise.resolve(false);
+}
+
+function trySendSystemNotification(alarm: AlarmItem): void {
+  if (typeof window !== 'undefined' && 'Notification' in window) {
+    if (Notification.permission === 'granted') {
+      try {
+        new Notification(`🔔 অ্যালার্ম বাজছে! (${alarm.time})`, {
+          body: `${alarm.labelBn}\nবন্ধ করতে এখানে চাপ দিন।`,
+          icon: '/favicon.ico',
+          tag: 'smart-alarm-' + alarm.id,
+        });
+      } catch (e) {
+        console.warn('System notification error:', e);
+      }
+    }
+  }
+}
+
+// ==========================================
 // Custom Sound (User's uploaded MP3 / Audio)
 // ==========================================
 export function getCustomSoundData(): { name: string; url: string } | null {
