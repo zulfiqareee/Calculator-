@@ -1,3 +1,6 @@
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
+
 export type SoundToneType = 'azan' | 'birds' | 'chime' | 'peaceful' | 'digital' | 'radar' | 'custom';
 
 export interface AlarmItem {
@@ -96,6 +99,35 @@ export function toggleAlarm(id: string): AlarmItem[] {
 }
 
 // ==========================================
+// Screen Wake Lock API (keeps screen awake during alarm)
+// ==========================================
+let wakeLockSentinel: any = null;
+
+export async function requestScreenWakeLock(): Promise<void> {
+  try {
+    if (typeof navigator !== 'undefined' && 'wakeLock' in navigator && (navigator as any).wakeLock) {
+      wakeLockSentinel = await (navigator as any).wakeLock.request('screen');
+      wakeLockSentinel.addEventListener('release', () => {
+        wakeLockSentinel = null;
+      });
+    }
+  } catch (err) {
+    console.warn('Screen WakeLock error:', err);
+  }
+}
+
+export function releaseScreenWakeLock(): void {
+  try {
+    if (wakeLockSentinel) {
+      wakeLockSentinel.release();
+      wakeLockSentinel = null;
+    }
+  } catch (err) {
+    console.warn('Release WakeLock error:', err);
+  }
+}
+
+// ==========================================
 // Centralized Ringing Alarm State & Event Bus
 // ==========================================
 type AlarmTriggerCallback = (alarm: AlarmItem | null) => void;
@@ -117,6 +149,7 @@ export function subscribeToAlarmTrigger(cb: AlarmTriggerCallback): () => void {
 
 export function triggerAlarmRinging(alarm: AlarmItem): void {
   activeRingingAlarm = alarm;
+  requestScreenWakeLock();
   startAlarmSound(alarm.soundTone);
   trySendSystemNotification(alarm);
 
@@ -135,7 +168,9 @@ export function dismissActiveAlarm(): void {
       toggleAlarm(activeRingingAlarm.id);
     }
   }
+  releaseScreenWakeLock();
   stopAlarmSound();
+  dismissSystemNotification();
   activeRingingAlarm = null;
   alarmListeners.forEach((listener) => {
     try {
@@ -192,25 +227,137 @@ export function checkAndTriggerDueAlarms(): void {
   }
 }
 
-export function requestNotificationPermission(): Promise<boolean> {
+let notificationChannelCreated = false;
+export async function initAlarmNotificationChannel(): Promise<void> {
+  if (notificationChannelCreated) return;
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await LocalNotifications.createChannel({
+        id: 'alarm_ring_channel',
+        name: 'স্মার্ট অ্যালার্ম রিং চ্যানেল (High Priority)',
+        description: 'ডিসপ্লে ও লক স্ক্রিনে অ্যালার্ম পপ-আপ প্রদর্শনের চ্যানেল',
+        importance: 5, // MAX importance (Heads-up pop up banner on top of other apps & lock screen)
+        visibility: 1, // VISIBILITY_PUBLIC (shows on lock screen)
+        sound: undefined,
+        vibration: true,
+        lights: true,
+        lightColor: '#EF4444',
+      });
+
+      // Register notification actions
+      await LocalNotifications.registerActionTypes({
+        types: [
+          {
+            id: 'ALARM_ACTION_TYPE',
+            actions: [
+              {
+                id: 'DISMISS_ACTION',
+                title: '🛑 বন্ধ করুন (DISMISS)',
+                destructive: true,
+              },
+              {
+                id: 'SNOOZE_ACTION',
+                title: '⏰ ৫ মিনিট স্নুজ (SNOOZE)',
+              },
+            ],
+          },
+        ],
+      });
+
+      // Add click listener
+      LocalNotifications.removeAllListeners();
+      LocalNotifications.addListener('localNotificationActionPerformed', (notificationAction) => {
+        if (notificationAction.actionId === 'DISMISS_ACTION') {
+          dismissActiveAlarm();
+        } else if (notificationAction.actionId === 'SNOOZE_ACTION') {
+          snoozeActiveAlarm(5);
+        } else {
+          // Opened via tapping notification body
+          if (activeRingingAlarm) {
+            alarmListeners.forEach((listener) => listener(activeRingingAlarm));
+          }
+        }
+      });
+
+      notificationChannelCreated = true;
+    } catch (e) {
+      console.warn('LocalNotifications setup error:', e);
+    }
+  }
+}
+
+// Auto init channel on load
+if (typeof window !== 'undefined') {
+  initAlarmNotificationChannel();
+}
+
+export async function requestNotificationPermission(): Promise<boolean> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const res = await LocalNotifications.requestPermissions();
+      await initAlarmNotificationChannel();
+      return res.display === 'granted';
+    } catch (e) {
+      console.warn('Native requestPermissions error:', e);
+      return false;
+    }
+  }
   if (typeof window !== 'undefined' && 'Notification' in window) {
     return Notification.requestPermission().then((perm) => perm === 'granted');
   }
   return Promise.resolve(false);
 }
 
-function trySendSystemNotification(alarm: AlarmItem): void {
-  if (typeof window !== 'undefined' && 'Notification' in window) {
+async function trySendSystemNotification(alarm: AlarmItem): Promise<void> {
+  await initAlarmNotificationChannel();
+
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            title: `🔔 অ্যালার্ম বাজছে! (${alarm.time})`,
+            body: `${alarm.labelBn}\nবন্ধ করতে বা স্ক্রিনে দেখতে এখানে চাপ দিন।`,
+            id: 9999,
+            channelId: 'alarm_ring_channel',
+            ongoing: true, // Cannot be accidentally cleared until dismissed
+            autoCancel: false,
+            actionTypeId: 'ALARM_ACTION_TYPE',
+            extra: {
+              alarmId: alarm.id,
+            },
+            schedule: { at: new Date(Date.now() + 50) },
+          },
+        ],
+      });
+    } catch (e) {
+      console.warn('Capacitor LocalNotification schedule error:', e);
+    }
+  } else if (typeof window !== 'undefined' && 'Notification' in window) {
     if (Notification.permission === 'granted') {
       try {
-        new Notification(`🔔 অ্যালার্ম বাজছে! (${alarm.time})`, {
-          body: `${alarm.labelBn}\nবন্ধ করতে এখানে চাপ দিন।`,
+        const notif = new Notification(`🔔 অ্যালার্ম বাজছে! (${alarm.time})`, {
+          body: `${alarm.labelBn}\nবন্ধ করতে বা স্ক্রিনে দেখতে এখানে চাপ দিন।`,
           icon: '/favicon.ico',
           tag: 'smart-alarm-' + alarm.id,
+          requireInteraction: true,
         });
+        notif.onclick = () => {
+          window.focus();
+        };
       } catch (e) {
         console.warn('System notification error:', e);
       }
+    }
+  }
+}
+
+export async function dismissSystemNotification(): Promise<void> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await LocalNotifications.cancel({ notifications: [{ id: 9999 }] });
+    } catch (e) {
+      console.warn('Failed to cancel native notification:', e);
     }
   }
 }

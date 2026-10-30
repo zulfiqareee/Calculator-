@@ -76,6 +76,9 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
   const [notificationGranted, setNotificationGranted] = useState<boolean>(
     typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted'
   );
+  const [showAndroidGuideModal, setShowAndroidGuideModal] = useState<boolean>(false);
+  const [countdownLockTest, setCountdownLockTest] = useState<number | null>(null);
+  const countdownIntervalRef = useRef<number | null>(null);
   const testTimerRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -85,7 +88,10 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
       setCurrentTime(new Date());
     }, 1000);
 
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+    };
   }, []);
 
   const handleToggleSoundTest = () => {
@@ -122,6 +128,28 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
       createdAt: Date.now(),
     };
     triggerAlarmRinging(testItem);
+  };
+
+  // 5-second countdown test so user can lock screen or go to home screen and verify wake-up
+  const start5sLockScreenTest = async () => {
+    unlockAudio();
+    await requestNotificationPermission();
+    setNotificationGranted(true);
+    setCountdownLockTest(5);
+
+    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+
+    let count = 5;
+    countdownIntervalRef.current = window.setInterval(() => {
+      count -= 1;
+      if (count > 0) {
+        setCountdownLockTest(count);
+      } else {
+        if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+        setCountdownLockTest(null);
+        handleTestFullAlarmDisplay();
+      }
+    }, 1000);
   };
 
   const handleRequestNotification = async () => {
@@ -405,7 +433,7 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
         </div>
 
         <div className="flex flex-col sm:flex-row items-center gap-2 shrink-0">
-          {/* Full Screen Alarm Display Test Button */}
+          {/* Instant Full Screen Alarm Display Test Button */}
           <button
             type="button"
             onClick={handleTestFullAlarmDisplay}
@@ -414,6 +442,17 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
           >
             <BellRing className="w-3.5 h-3.5" />
             <span>{lang === 'bn' ? 'ডিসপ্লে টেস্ট' : 'Display Test'}</span>
+          </button>
+
+          {/* 5-second Lock Screen Test Button */}
+          <button
+            type="button"
+            onClick={start5sLockScreenTest}
+            className="px-3.5 py-2 rounded-2xl text-xs font-bold shadow-md bg-purple-600 hover:bg-purple-700 text-white active:scale-95 transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+            title="৫ সেকেন্ড পর বাজবে, পাওয়ার বাটন টিপে স্ক্রিন অফ করে পরীক্ষা করুন"
+          >
+            <Moon className="w-3.5 h-3.5" />
+            <span>{lang === 'bn' ? 'লক স্ক্রিন টেস্ট (৫ সে)' : 'Lock Test (5s)'}</span>
           </button>
 
           {/* Quick Sound Play Button */}
@@ -439,6 +478,64 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
             )}
           </button>
         </div>
+      </div>
+
+      {/* 5-Second Countdown Alert Banner */}
+      {countdownLockTest !== null && (
+        <div className="p-4 rounded-3xl bg-purple-900 text-white border-2 border-purple-400 shadow-xl animate-pulse flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-purple-500 flex items-center justify-center font-black text-2xl text-white shadow-inner">
+              {toBn(countdownLockTest)}
+            </div>
+            <div>
+              <h5 className="font-bold text-sm text-purple-100">
+                {lang === 'bn'
+                  ? 'দ্রুত স্ক্রিন অফ বা লক করুন!'
+                  : 'Turn off screen or lock phone now!'}
+              </h5>
+              <p className="text-xs text-purple-200">
+                {lang === 'bn'
+                  ? `${toBn(countdownLockTest)} সেকেন্ড পর অ্যালার্ম বাজবে এবং ডিসপ্লে অন হবে।`
+                  : `Alarm will ring and wake up screen in ${countdownLockTest} seconds.`}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+              setCountdownLockTest(null);
+            }}
+            className="px-3 py-1.5 rounded-xl bg-purple-700 text-xs font-bold hover:bg-purple-600 transition"
+          >
+            {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+          </button>
+        </div>
+      )}
+
+      {/* Android & Xiaomi Device Permission Guidance Card */}
+      <div className="p-3.5 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2.5 text-slate-700 dark:text-slate-300">
+          <span className="text-lg">⚙️</span>
+          <div>
+            <span className="font-bold text-slate-900 dark:text-white">
+              {lang === 'bn' ? 'ডিসপ্লে বন্ধ বা লক থাকলে স্ক্রিন অন না হলে:' : 'If screen does not wake when locked:'}
+            </span>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              {lang === 'bn'
+                ? 'শাওমি (Xiaomi/Redmi/Poco), অপ্পো ও ভিভো ফোনের ব্যাকগ্রাউন্ড পারমিশন অন করে নিন'
+                : 'Enable lock screen display & background popup permission'}
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowAndroidGuideModal(true)}
+          className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shrink-0 active:scale-95 transition cursor-pointer flex items-center gap-1 shadow-xs"
+        >
+          <HelpCircle className="w-3.5 h-3.5" />
+          <span>{lang === 'bn' ? 'নিয়ম দেখুন' : 'View Guide'}</span>
+        </button>
       </div>
 
       {/* Optional Notification Permission Helper */}
@@ -953,6 +1050,103 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Android & Xiaomi Device Lockscreen Permission Guidance Modal */}
+      {showAndroidGuideModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center text-xl">
+                  📱
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white leading-tight">
+                    {lang === 'bn' ? 'লক স্ক্রিন ও ব্যাকগ্রাউন্ড ডিসপ্লে নির্দেশিকা' : 'Lock Screen & Background Guide'}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {lang === 'bn' ? 'শাওমি (Xiaomi/Redmi/Poco), অপ্পো, ভিভো ও অ্যান্ড্রয়েড' : 'Xiaomi, Oppo, Vivo & Android devices'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAndroidGuideModal(false)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-xs text-indigo-900 dark:text-indigo-200 leading-relaxed">
+              {lang === 'bn'
+                ? 'মোবাইলের স্ক্রিন লক থাকলে অথবা অন্য অ্যাপ ব্যবহারের সময় অ্যালার্মের পূর্ণাঙ্গ ডিসপ্লে ও বড় রিং স্ক্রিন স্বয়ংক্রিয়ভাবে ভেসে উঠতে নিচের পারমিশনগুলো অন রাখুন:'
+                : 'To wake the screen and display the full alarm interface while locked or using other apps, ensure these permissions are active:'}
+            </div>
+
+            {/* Step-by-Step Guide */}
+            <div className="space-y-3 text-xs">
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1">
+                <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
+                  <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[11px]">১</span>
+                  <span>{lang === 'bn' ? 'অ্যাপ সেটিংসে যান' : 'Go to App Settings'}</span>
+                </div>
+                <p className="text-slate-600 dark:text-slate-300 pl-7 text-[11px]">
+                  {lang === 'bn'
+                    ? 'ফোনের Settings > Apps > Manage Apps এ গিয়ে "Smart Utility Tools" সিলেক্ট করুন।'
+                    : 'Open Phone Settings > Apps > Manage Apps > "Smart Utility Tools".'}
+                </p>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1">
+                <div className="flex items-center gap-2 font-bold text-emerald-700 dark:text-emerald-400">
+                  <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[11px]">২</span>
+                  <span>{lang === 'bn' ? 'লক স্ক্রিনে প্রদর্শন (Show on Lock screen)' : 'Show on Lock Screen'}</span>
+                </div>
+                <p className="text-slate-600 dark:text-slate-300 pl-7 text-[11px]">
+                  {lang === 'bn'
+                    ? 'Permissions অথবা Other permissions এ গিয়ে "Show on Lock screen" অপশনটি টিক বা Always Allow করে দিন।'
+                    : 'Under Permissions, toggle "Show on Lock screen" to Always Allow.'}
+                </p>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1">
+                <div className="flex items-center gap-2 font-bold text-indigo-700 dark:text-indigo-400">
+                  <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[11px]">৩</span>
+                  <span>{lang === 'bn' ? 'ব্যাকগ্রাউন্ড পপ-আপ প্রদর্শন (Display pop-up windows)' : 'Display Pop-up Windows'}</span>
+                </div>
+                <p className="text-slate-600 dark:text-slate-300 pl-7 text-[11px]">
+                  {lang === 'bn'
+                    ? '"Display pop-up windows while running in the background" চালু করুন। এর ফলে অন্য অ্যাপে থাকলেও অ্যালার্ম সরাসরি স্ক্রিনে চলে আসবে।'
+                    : 'Enable "Display pop-up windows while running in the background" to show overlay while using other apps.'}
+                </p>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1">
+                <div className="flex items-center gap-2 font-bold text-amber-700 dark:text-amber-400">
+                  <span className="w-5 h-5 rounded-full bg-amber-600 text-white flex items-center justify-center text-[11px]">৪</span>
+                  <span>{lang === 'bn' ? 'ব্যাটারি সেভার (Battery Saver)' : 'Battery Optimization'}</span>
+                </div>
+                <p className="text-slate-600 dark:text-slate-300 pl-7 text-[11px]">
+                  {lang === 'bn'
+                    ? 'Battery Saver অপশনে "No restrictions" নির্বাচন করুন, যাতে ব্যাকগ্রাউন্ডে অ্যালার্ম বন্ধ না হয়।'
+                    : 'Set Battery Saver to "No restrictions" so the alarm service stays alive.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setShowAndroidGuideModal(false)}
+                className="w-full py-3 rounded-2xl bg-indigo-600 text-white font-bold text-xs shadow-md hover:bg-indigo-700 transition"
+              >
+                {lang === 'bn' ? 'বুঝেছি (বন্ধ করুন)' : 'Got it (Close)'}
+              </button>
+            </div>
           </div>
         </div>
       )}
