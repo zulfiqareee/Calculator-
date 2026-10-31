@@ -163,8 +163,8 @@ export const TOOLS_LIST: ToolItem[] = [
 
 export const UI_TEXT = {
   en: {
-    appName: 'Smart Utility Tools',
-    appSubtitle: 'Offline Utility Toolkit',
+    appName: 'SmartHub – All-in-One Tools',
+    appSubtitle: 'All-in-One Utility Toolkit',
     searchPlaceholder: 'Search tools (e.g. bill, percentage, age)...',
     allTools: 'All Tools',
     favorites: 'Favorites',
@@ -225,10 +225,10 @@ export const UI_TEXT = {
       saveAdmobBtn: 'Save Ad Configuration',
     },
     about: {
-      title: 'About Smart Utility Tools',
+      title: 'About SmartHub – All-in-One Tools',
       version: 'Version 1.0.0 (Offline-First)',
       developer: 'Independent Android Developer Project',
-      description: 'Smart Utility Tools is designed for high-performance offline calculations, zero server costs, and instant local utility estimations. Fully bilingual in Bengali and English.',
+      description: 'SmartHub – All-in-One Tools is designed for high-performance offline calculations, holy Quran reading, smart alarms, and utility management with zero server costs.',
       features: [
         '100% Offline-first: zero backend, no cloud dependency, zero hosting bills.',
         'No registration or personal data collection.',
@@ -237,14 +237,14 @@ export const UI_TEXT = {
         'Capacitor & Google AdMob ready for Google Play distribution.',
       ],
       privacyTitle: 'Privacy Policy',
-      privacyContent: 'Smart Utility Tools does not collect, transmit, or sell any personal information. All inputs, calculation history, and preferences are stored exclusively on your local device storage. Google AdMob may use standard device identifiers for test or non-personalized ad serving according to Google’s privacy policy.',
+      privacyContent: 'SmartHub does not collect, transmit, or sell any personal information. All inputs, calculation history, and preferences are stored exclusively on your local device storage. Google AdMob may use standard device identifiers for test or non-personalized ad serving according to Google’s privacy policy.',
       supportTitle: 'Contact & Support',
       supportText: 'For feature suggestions, feedback, or inquiries, reach out through your Google Play developer console or app listing contact link.',
     },
   },
   bn: {
-    appName: 'স্মার্ট ইউটিলিটি টুলস',
-    appSubtitle: 'অফলাইন প্রয়োজনীয় টুলবক্স',
+    appName: 'স্মার্টহাব – অল-ইন-ওয়ান টুলস',
+    appSubtitle: 'অল-ইন-ওয়ান অফলাইন টুলবক্স',
     searchPlaceholder: 'টুল খুঁজুন (যেমন: বিল, বয়স, শতকরা, ওহমস)...',
     allTools: 'সকল টুলস',
     favorites: 'পছন্দের টুলস',
@@ -305,10 +305,10 @@ export const UI_TEXT = {
       saveAdmobBtn: 'কনফিগারেশন সেভ করুন',
     },
     about: {
-      title: 'স্মার্ট ইউটিলিটি টুলস সম্পর্কে',
+      title: 'স্মার্টহাব – অল-ইন-ওয়ান টুলস সম্পর্কে',
       version: 'সংস্করণ ১.০.০ (সম্পূর্ণ অফলাইন)',
       developer: 'স্বাধীন অ্যান্ড্রয়েড ডেভেলপার প্রজেক্ট',
-      description: 'স্মার্ট ইউটিলিটি টুলস তৈরি করা হয়েছে যাতে কোনো প্রকার সার্ভার খরচ ছাড়াই ব্যবহারকারী দ্রুত হিসাব সম্পন্ন করতে পারেন। এটি বাংলা ও ইংরেজি উভয় ভাষায় সাবলীল।',
+      description: 'স্মার্টহাব – অল-ইন-ওয়ান টুলস তৈরি করা হয়েছে যাতে কোনো প্রকার সার্ভার খরচ ছাড়াই ব্যবহারকারী দ্রুত প্রয়োজনীয় হিসাব, আল-কুরআন তিলাওয়াত, স্মার্ট অ্যালার্ম ও প্রয়োজনীয় টুলস ব্যবহার করতে পারেন।',
       features: [
         '১০০% অফলাইন: কোনো সার্ভার খরচ বা ক্লাউড নির্ভরশীলতা নেই।',
         'কোনো লগইন বা ব্যক্তিগত তথ্যের প্রয়োজন নেই।',
@@ -317,7 +317,7 @@ export const UI_TEXT = {
         'Capacitor ও Google AdMob সমন্বিত আধুনিক আর্কিটেকচার।',
       ],
       privacyTitle: 'প্রাইভেসী পলিসি (গোপনীয়তা নীতি)',
-      privacyContent: 'স্মার্ট ইউটিলিটি টুলস ব্যবহারকারীর কোনো ব্যক্তিগত তথ্য সংগ্রহ, আদান-প্রদান বা বিক্রি করে না। আপনার সকল গণনা ও পছন্দসমূহ সম্পূর্ণ নিরাপদে আপনার নিজস্ব ফোনের মেমরিতে সংরক্ষিত থাকে।',
+      privacyContent: 'স্মার্টহাব ব্যবহারকারীর কোনো ব্যক্তিগত তথ্য সংগ্রহ, আদান-প্রদান বা বিক্রি করে না। আপনার সকল গণনা ও পছন্দসমূহ সম্পূর্ণ নিরাপদে আপনার নিজস্ব ফোনের মেমরিতে সংরক্ষিত থাকে।',
       supportTitle: 'যোগাযোগ ও সহায়তা',
       supportText: 'যেকোনো মতামত, পরামর্শ বা নতুন ফিচারের অনুরোধের জন্য প্লে স্টোরের রিভিউ বা যোগাযোগ লিঙ্কের মাধ্যমে জানান।',
     },

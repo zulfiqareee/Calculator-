@@ -83,22 +83,37 @@ define(['./workbox-7e5eb42b'], (function (workbox) { 'use strict';
     "url": "manifest.webmanifest",
     "revision": "476a7d5d0743196faccae32e2f855826"
   }, {
+    "url": "logo.png",
+    "revision": "ce09b7d690c1d8e80414abf168a3ae9f"
+  }, {
     "url": "index.html",
-    "revision": "c423fa44e12f358f316921c208c0818b"
+    "revision": "8fcc13207870e2e831bc6619192b0c69"
   }, {
     "url": "icon.svg",
     "revision": "55a99b14a623ede9c1dbbb7714ede547"
   }, {
-    "url": "assets/web-D2lZ-dfX.js",
+    "url": "icon-512.png",
+    "revision": "ce09b7d690c1d8e80414abf168a3ae9f"
+  }, {
+    "url": "icon-192.png",
+    "revision": "eb878c18de98d47b4c0be8d85973f16c"
+  }, {
+    "url": "favicon.png",
+    "revision": "d2a2fe2bf4194675527f85a7e2dbc125"
+  }, {
+    "url": "assets/web-CJucHR4M.js",
     "revision": null
   }, {
-    "url": "assets/web-C1WOI15t.js",
+    "url": "assets/web-BSR5NGX1.js",
     "revision": null
   }, {
-    "url": "assets/index-MSTFcZbS.js",
+    "url": "assets/index-xPhGAoEC.js",
     "revision": null
   }, {
-    "url": "assets/index-B0VHsY_M.css",
+    "url": "assets/index-DqScYxjR.css",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/file_00000000c1348207a5a857e57d08cdc6_e66207ee.png",
     "revision": null
   }, {
     "url": "assets/aistudio/IMG_20261026_155055_5dd7a36c.png",
@@ -108,7 +123,7 @@ define(['./workbox-7e5eb42b'], (function (workbox) { 'use strict';
     "revision": "55a99b14a623ede9c1dbbb7714ede547"
   }, {
     "url": "manifest.webmanifest",
-    "revision": "8cdf16d8aede6b2f74c112bf5fb9866a"
+    "revision": "6e4bee9475a7e2a83269ceb3af7fe6a8"
   }, {
     "url": "manifest.webmanifest",
     "revision": "476a7d5d0743196faccae32e2f855826"

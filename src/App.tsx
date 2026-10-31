@@ -452,14 +452,27 @@ export default function App() {
           TOP ROYAL BLUE HEADER BAR (Matches User Screenshot)
          ========================================================================= */}
       <header className="bg-[#0B63F6] text-white px-4 pt-3 pb-3.5 shadow-md flex items-center justify-between sticky top-0 z-40">
-        {/* Left: Hamburger Menu Button */}
-        <button
-          onClick={() => setIsDrawerOpen(true)}
-          className="p-1.5 -ml-1 text-white hover:bg-white/10 rounded-xl transition active:scale-90"
-          title="Open Menu"
-        >
-          <Menu className="w-6 h-6 stroke-[2.4]" />
-        </button>
+        {/* Left: Hamburger Menu Button & Logo */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsDrawerOpen(true)}
+            className="p-1.5 -ml-1 text-white hover:bg-white/10 rounded-xl transition active:scale-90"
+            title="Open Menu"
+          >
+            <Menu className="w-6 h-6 stroke-[2.4]" />
+          </button>
+
+          <img
+            src="/logo.png"
+            alt="SmartHub Logo"
+            onClick={() => {
+              closeTool();
+              setSpecialView('none');
+              setActiveTab('home');
+            }}
+            className="w-8 h-8 rounded-xl object-cover shadow-xs border border-white/30 cursor-pointer active:scale-95 transition"
+          />
+        </div>
 
         {/* Center: Title & Subtitle */}
         <div
@@ -468,13 +481,13 @@ export default function App() {
             setSpecialView('none');
             setActiveTab('home');
           }}
-          className="flex flex-col text-left cursor-pointer flex-1 ml-3 select-none"
+          className="flex flex-col text-left cursor-pointer flex-1 ml-2.5 select-none"
         >
-          <h1 className="font-extrabold text-[17px] tracking-tight text-white leading-tight">
-            Smart Utility Tools
+          <h1 className="font-extrabold text-[16px] tracking-tight text-white leading-tight flex items-center gap-1.5">
+            <span>SmartHub</span>
           </h1>
-          <span className="text-[11px] text-blue-100 font-semibold tracking-wide leading-none mt-0.5">
-            {lang === 'bn' ? 'সহজ হিসাব • স্মার্ট জীবন' : 'Simple · Fast · Useful'}
+          <span className="text-[10px] text-blue-100 font-semibold tracking-wide leading-none mt-0.5">
+            {lang === 'bn' ? 'All-in-One Tools • সহজ জীবন' : 'All-in-One Tools'}
           </span>
         </div>
 
@@ -1091,15 +1104,17 @@ export default function App() {
             <div className="flex flex-col gap-5">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-[#0B63F6] text-white flex items-center justify-center font-bold">
-                    <Sparkles className="w-5 h-5" />
-                  </div>
+                  <img
+                    src="/logo.png"
+                    alt="SmartHub Logo"
+                    className="w-10 h-10 rounded-2xl object-cover shadow-md border border-slate-200 dark:border-slate-700"
+                  />
                   <div>
                     <span className="font-extrabold text-sm text-slate-900 dark:text-white block">
-                      Smart Utility Tools
+                      SmartHub
                     </span>
                     <span className="text-[10px] text-emerald-600 font-semibold block">
-                      সংস্করণ ১.০.০ (অফলাইন)
+                      All-in-One Tools (v১.০)
                     </span>
                   </div>
                 </div>

@@ -1,26 +1,26 @@
 {
   "id": "/",
-  "name": "Smart Utility Tools — বাংলা ও English",
-  "short_name": "SmartTools",
-  "description": "Essential offline utility tools: Calculator, Electricity, Percentage, Units, Age, Electrical, Energy, and Date Difference.",
+  "name": "SmartHub – All-in-One Tools",
+  "short_name": "SmartHub",
+  "description": "SmartHub – All-in-One Tools: Essential utility tools, Quran reader, smart alarm, prayer times, weather, calculators, and offline guides.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#10b981",
+  "background_color": "#0B63F6",
+  "theme_color": "#0B63F6",
   "orientation": "portrait",
   "categories": ["utilities", "productivity", "tools"],
   "icons": [
     {
-      "src": "/icon.svg",
+      "src": "/logo.png",
       "sizes": "192x192 512x512",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon.svg",
+      "src": "/logo.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "maskable"
     }
   ]

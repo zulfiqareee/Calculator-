@@ -1096,8 +1096,8 @@ export const SmartAlarmClock: React.FC<Props> = ({ lang }) => {
                 </div>
                 <p className="text-slate-600 dark:text-slate-300 pl-7 text-[11px]">
                   {lang === 'bn'
-                    ? 'ফোনের Settings > Apps > Manage Apps এ গিয়ে "Smart Utility Tools" সিলেক্ট করুন।'
-                    : 'Open Phone Settings > Apps > Manage Apps > "Smart Utility Tools".'}
+                    ? 'ফোনের Settings > Apps > Manage Apps এ গিয়ে "SmartHub" সিলেক্ট করুন।'
+                    : 'Open Phone Settings > Apps > Manage Apps > "SmartHub".'}
                 </p>
               </div>
 

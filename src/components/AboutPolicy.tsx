@@ -14,11 +14,11 @@ export const AboutPolicy: React.FC<Props> = ({ lang }) => {
     <div className="flex flex-col gap-5 max-w-xl mx-auto w-full pb-8">
       {/* App Branding Card */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-xs flex flex-col items-center text-center gap-3">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-400 p-0.5 shadow-md flex items-center justify-center">
-          <div className="w-full h-full bg-slate-900 rounded-[14px] flex items-center justify-center">
-            <Sparkles className="w-8 h-8 text-emerald-400" />
-          </div>
-        </div>
+        <img
+          src="/logo.png"
+          alt="SmartHub Logo"
+          className="w-20 h-20 rounded-3xl object-cover shadow-lg border border-slate-200 dark:border-slate-700"
+        />
 
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
@@ -124,7 +124,7 @@ export const AboutPolicy: React.FC<Props> = ({ lang }) => {
           {t.about.supportText}
         </p>
         <span className="text-[11px] text-slate-400 mt-1">
-          Smart Utility Tools © {new Date().getFullYear()} · Made for Android
+          SmartHub – All-in-One Tools © {new Date().getFullYear()} · Made for Android
         </span>
       </div>
     </div>

@@ -2,7 +2,12 @@ node_modules/
 build/
 dist/
 coverage/
+.gradle/
+.idea/
+*.iml
 .DS_Store
 *.log
 .env*
 !.env.example
+android/app/build/
+android/.gradle/
