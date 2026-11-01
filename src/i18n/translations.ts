@@ -146,6 +146,19 @@ export const TOOLS_LIST: ToolItem[] = [
     gradient: 'from-emerald-600 to-teal-800',
     accentColor: 'text-emerald-600',
   },
+  {
+    id: 'alarm',
+    category: 'daily',
+    titleEn: 'Smart Alarm Clock',
+    titleBn: 'স্মার্ট অ্যালার্ম ঘড়ি',
+    descEn: 'Reliable Android clock alarm with snooze, custom repeat, and ringtones.',
+    descBn: 'অ্যান্ড্রয়েড ক্লক স্টাইলের নির্ভরযোগ্য অ্যালার্ম, স্নুজ ও মধুর সুর।',
+    badgeEn: 'Alarm',
+    badgeBn: 'অ্যালার্ম',
+    iconName: 'Bell',
+    gradient: 'from-blue-600 to-indigo-700',
+    accentColor: 'text-[#0B63F6]',
+  },
 ];
 
 export const UI_TEXT = {

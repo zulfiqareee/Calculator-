@@ -73,6 +73,13 @@ import { PrayerTimesView } from './components/tools/PrayerTimesView';
 import { CompactHomeWeatherWidget } from './components/tools/CompactHomeWeatherWidget';
 import { HealthTipsView } from './components/tools/HealthTipsView';
 import { QuranPdfReader } from './components/tools/QuranPdfReader';
+import { AlarmMainView } from './components/alarm/AlarmMainView';
+import { AlarmRingingScreen } from './components/alarm/AlarmRingingScreen';
+import {
+  AlarmItem,
+  subscribeToAlarmTrigger,
+  checkAndTriggerDueAlarms,
+} from './utils/alarmEngine';
 
 // Hero Banner & Views
 import { AdminPanel } from './components/admin/AdminPanel';
@@ -105,6 +112,22 @@ export default function App() {
   // Android Hardware Back Button & Browser Back Gestures Handling
   const [exitToastVisible, setExitToastVisible] = useState<boolean>(false);
   const lastBackPressRef = React.useRef<number>(0);
+
+  // Global Alarm Ringing State & Tick Monitor
+  const [globalRingingAlarm, setGlobalRingingAlarm] = useState<AlarmItem | null>(null);
+
+  React.useEffect(() => {
+    const unsubscribe = subscribeToAlarmTrigger((alarm) => {
+      setGlobalRingingAlarm(alarm);
+    });
+    const timer = setInterval(() => {
+      checkAndTriggerDueAlarms();
+    }, 1000);
+    return () => {
+      unsubscribe();
+      clearInterval(timer);
+    };
+  }, []);
 
 
   const activeToolIdRef = React.useRef(activeToolId);
@@ -401,6 +424,8 @@ export default function App() {
         return <HealthTipsView lang={lang} onOpenBmi={() => openTool('bmi-calorie')} />;
       case 'quran-pdf':
         return <QuranPdfReader lang={lang} />;
+      case 'alarm':
+        return <AlarmMainView lang={lang} />;
       default:
         return null;
     }
@@ -567,8 +592,8 @@ export default function App() {
               </div>
             </div>
 
-            {/* Omit duplicate logo & title banner card for Calculator as requested */}
-            {currentTool.id !== 'calculator' && (
+            {/* Omit duplicate banner for Calculator and Alarm (which has its own native Clock layout) */}
+            {currentTool.id !== 'calculator' && currentTool.id !== 'alarm' && (
               <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-4 shadow-xs flex items-center gap-3.5">
                 <div
                   className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${currentTool.gradient} text-white flex items-center justify-center shrink-0 shadow-sm`}
@@ -1193,6 +1218,11 @@ export default function App() {
         </div>
       )}
 
+
+      {/* Global Ringing Alarm Screen - Strictly NO ADS */}
+      {globalRingingAlarm && (
+        <AlarmRingingScreen alarm={globalRingingAlarm} lang={lang} />
+      )}
 
       {/* Android Double-Tap Back Exit Toast Notification */}
       {exitToastVisible && (

@@ -62,7 +62,6 @@ const DELETED_TOOLS = new Set([
   'battery-ips',
   'custom-solar-pv',
   'custom-led-resistor',
-  'alarm',
 ]);
 
 export const getStoredFavorites = (): string[] => {
