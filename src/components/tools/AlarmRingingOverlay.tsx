@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { BellRing, Volume2, XCircle, Clock, VolumeX } from 'lucide-react';
+import { BellRing, Volume2, XCircle, Clock } from 'lucide-react';
 import { Language } from '../../types';
-import { AlarmItem, dismissActiveAlarm, snoozeActiveAlarm } from '../../utils/alarmStorage';
+import { AlarmItem, dismissActiveAlarm, snoozeActiveAlarm, getAlarmSettings } from '../../utils/alarmStorage';
 
 interface Props {
   alarm: AlarmItem;
@@ -11,6 +11,8 @@ interface Props {
 export const AlarmRingingOverlay: React.FC<Props> = ({ alarm, lang }) => {
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [currentTimeStr, setCurrentTimeStr] = useState<string>('');
+  const settings = getAlarmSettings();
+  const snoozeMinutes = alarm.snoozeDuration || settings.snoozeDurationMinutes || 5;
 
   useEffect(() => {
     const updateTime = () => {
@@ -47,8 +49,10 @@ export const AlarmRingingOverlay: React.FC<Props> = ({ alarm, lang }) => {
         return lang === 'bn' ? 'পাখির মিষ্টি ডাক' : 'Morning Birds';
       case 'peaceful':
         return lang === 'bn' ? 'প্রশান্তিময় সুর' : 'Peaceful Melodies';
+      case 'classic_bell':
+        return lang === 'bn' ? 'ক্লাসিক বেল' : 'Classic Bell';
       case 'custom':
-        return lang === 'bn' ? 'আপনার নিজস্ব অডিও' : 'Custom Sound';
+        return lang === 'bn' ? (alarm.customSoundName || 'নিজস্ব অডিও') : (alarm.customSoundName || 'Custom Sound');
       default:
         return lang === 'bn' ? 'মধুর ঘণ্টা (Chime)' : 'Sweet Chime';
     }
@@ -58,7 +62,7 @@ export const AlarmRingingOverlay: React.FC<Props> = ({ alarm, lang }) => {
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-[999999] w-screen h-screen bg-slate-950/95 backdrop-blur-2xl flex flex-col justify-between items-center text-white p-5 sm:p-8 select-none overflow-y-auto"
+      className="fixed inset-0 z-[999999] w-screen h-screen bg-[#071326] flex flex-col justify-between items-center text-white p-5 sm:p-8 select-none overflow-y-auto"
       style={{ isolation: 'isolate' }}
     >
       {/* Top Banner Status */}
@@ -74,14 +78,14 @@ export const AlarmRingingOverlay: React.FC<Props> = ({ alarm, lang }) => {
         </div>
       </div>
 
-      {/* Center Alarm Hero Card */}
+      {/* Center Alarm Hero Card matching uploaded screenshot */}
       <div className="flex flex-col items-center justify-center text-center my-auto py-6 max-w-sm w-full">
-        {/* Animated Pulsing Bell Ring Icon */}
+        {/* Animated Pulsing Bell Ring Icon with gradient circle */}
         <div className="relative mb-6">
           <div className="absolute inset-0 rounded-full bg-rose-500/30 animate-ping duration-1000"></div>
           <div className="absolute -inset-4 rounded-full bg-indigo-500/20 animate-pulse duration-1500"></div>
-          <div className="relative w-28 h-28 rounded-full bg-gradient-to-tr from-rose-600 via-rose-500 to-indigo-600 flex items-center justify-center shadow-2xl ring-8 ring-rose-500/40">
-            <BellRing className="w-14 h-14 text-white animate-bounce" />
+          <div className="relative w-32 h-32 rounded-full bg-gradient-to-tr from-[#E11D48] via-[#F43F5E] to-[#6366F1] flex items-center justify-center shadow-2xl ring-8 ring-rose-500/30">
+            <BellRing className="w-16 h-16 text-white animate-bounce" />
           </div>
         </div>
 
@@ -94,12 +98,12 @@ export const AlarmRingingOverlay: React.FC<Props> = ({ alarm, lang }) => {
             {toBn(alarm.time)}
           </h2>
           <p className="text-xs font-medium text-slate-400 font-mono">
-            {lang === 'bn' ? `বর্তমান সময়: ${toBn(currentTimeStr)}` : `Current: ${currentTimeStr}`}
+            {lang === 'bn' ? `বর্তমান সময়: ${toBn(currentTimeStr)}` : `Current Time: ${currentTimeStr}`}
           </p>
         </div>
 
         {/* Alarm Label Title */}
-        <div className="mt-5 px-4 py-2 rounded-2xl bg-white/10 border border-white/15 max-w-xs">
+        <div className="mt-5 px-5 py-2.5 rounded-2xl bg-white/10 border border-white/15 max-w-xs shadow-inner">
           <h3 className="text-xl sm:text-2xl font-black text-amber-300 leading-tight">
             {lang === 'bn' ? alarm.labelBn : alarm.labelEn}
           </h3>
@@ -122,7 +126,7 @@ export const AlarmRingingOverlay: React.FC<Props> = ({ alarm, lang }) => {
         <button
           type="button"
           onClick={() => dismissActiveAlarm()}
-          className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-black text-lg shadow-xl shadow-rose-950/60 active:scale-98 transition flex items-center justify-center gap-2.5 border-2 border-rose-400/30 cursor-pointer"
+          className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-600 hover:from-red-500 hover:to-rose-500 text-white font-black text-lg shadow-xl shadow-red-950/60 active:scale-98 transition flex items-center justify-center gap-2.5 border-2 border-red-400/30 cursor-pointer"
         >
           <XCircle className="w-6 h-6 shrink-0" />
           <span>{lang === 'bn' ? 'অ্যালার্ম বন্ধ করুন (DISMISS)' : 'DISMISS ALARM'}</span>
@@ -131,12 +135,14 @@ export const AlarmRingingOverlay: React.FC<Props> = ({ alarm, lang }) => {
         {/* Snooze Button */}
         <button
           type="button"
-          onClick={() => snoozeActiveAlarm(5)}
+          onClick={() => snoozeActiveAlarm(snoozeMinutes)}
           className="w-full py-3.5 px-6 rounded-2xl bg-slate-800/90 hover:bg-slate-700/90 text-slate-200 font-bold text-sm shadow-md active:scale-98 transition flex items-center justify-center gap-2 border border-slate-700 cursor-pointer"
         >
           <Clock className="w-4 h-4 text-indigo-400 shrink-0" />
           <span>
-            {lang === 'bn' ? '৫ মিনিট পর আবার বাজান (স্নুজ)' : 'Snooze for 5 Minutes'}
+            {lang === 'bn'
+              ? `${toBn(snoozeMinutes)} মিনিট পর আবার বাজান (স্নুজ)`
+              : `Snooze for ${snoozeMinutes} Minutes`}
           </span>
         </button>
       </div>

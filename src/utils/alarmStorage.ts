@@ -1,7 +1,8 @@
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { Language } from '../types';
 
-export type SoundToneType = 'azan' | 'birds' | 'chime' | 'peaceful' | 'digital' | 'radar' | 'custom';
+export type SoundToneType = 'azan' | 'birds' | 'chime' | 'peaceful' | 'digital' | 'radar' | 'classic_bell' | 'custom';
 
 export interface AlarmItem {
   id: string;
@@ -12,12 +13,40 @@ export interface AlarmItem {
   repeatDays: number[]; // 0=Sun, 1=Mon, ..., 6=Sat. Empty array means "Once" (একবার)
   soundTone: SoundToneType;
   customSoundName?: string;
+  vibrate?: boolean;
+  snoozeDuration?: number; // in minutes
+  autoSilence?: number; // in minutes (0 for never)
+  ascendingVolume?: boolean;
   createdAt: number;
+}
+
+export interface GlobalAlarmSettings {
+  defaultRingtone: SoundToneType;
+  timerRingtone: string;
+  volume: number; // 0.1 to 1.0
+  autoSilenceMinutes: number; // 1, 5, 10, 15, 20, 0 (never)
+  snoozeDurationMinutes: number; // 5, 10, 15, 20, 30
+  snoozeRepeatLimit: number; // 3, 5, 10, 0 (unlimited)
+  vibrateWithAlarm: boolean;
+  ascendingVolume: boolean;
+  silenceOnFlip: boolean;
 }
 
 export const ALARMS_STORAGE_KEY = 'smart_utility_alarms_v2';
 export const ALARM_CUSTOM_SOUND_KEY = 'smart_utility_custom_sound_data';
-export const ALARM_VOLUME_KEY = 'smart_utility_alarm_volume';
+export const ALARM_SETTINGS_KEY = 'smart_utility_alarm_settings_v2';
+
+export const DEFAULT_ALARM_SETTINGS: GlobalAlarmSettings = {
+  defaultRingtone: 'chime',
+  timerRingtone: 'bell_chime',
+  volume: 0.85,
+  autoSilenceMinutes: 10,
+  snoozeDurationMinutes: 5,
+  snoozeRepeatLimit: 3,
+  vibrateWithAlarm: true,
+  ascendingVolume: false,
+  silenceOnFlip: true,
+};
 
 export const DEFAULT_ALARMS: AlarmItem[] = [
   {
@@ -28,6 +57,10 @@ export const DEFAULT_ALARMS: AlarmItem[] = [
     enabled: true,
     repeatDays: [0, 1, 2, 3, 4, 5, 6],
     soundTone: 'azan',
+    vibrate: true,
+    snoozeDuration: 5,
+    autoSilence: 10,
+    ascendingVolume: false,
     createdAt: Date.now() - 100000,
   },
   {
@@ -38,10 +71,45 @@ export const DEFAULT_ALARMS: AlarmItem[] = [
     enabled: false,
     repeatDays: [0, 1, 2, 3, 4], // Weekdays
     soundTone: 'chime',
+    vibrate: true,
+    snoozeDuration: 5,
+    autoSilence: 10,
+    ascendingVolume: false,
     createdAt: Date.now() - 50000,
   },
 ];
 
+// ==========================================
+// Settings Storage
+// ==========================================
+export function getAlarmSettings(): GlobalAlarmSettings {
+  try {
+    const raw = localStorage.getItem(ALARM_SETTINGS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return { ...DEFAULT_ALARM_SETTINGS, ...parsed };
+    }
+  } catch (e) {
+    console.warn('Failed to get alarm settings:', e);
+  }
+  return DEFAULT_ALARM_SETTINGS;
+}
+
+export function saveAlarmSettings(settings: Partial<GlobalAlarmSettings>): GlobalAlarmSettings {
+  try {
+    const current = getAlarmSettings();
+    const updated = { ...current, ...settings };
+    localStorage.setItem(ALARM_SETTINGS_KEY, JSON.stringify(updated));
+    return updated;
+  } catch (e) {
+    console.warn('Failed to save alarm settings:', e);
+    return getAlarmSettings();
+  }
+}
+
+// ==========================================
+// Alarms Storage & Native Scheduling
+// ==========================================
 export function getStoredAlarms(): AlarmItem[] {
   try {
     const raw = localStorage.getItem(ALARMS_STORAGE_KEY);
@@ -63,6 +131,8 @@ export function getStoredAlarms(): AlarmItem[] {
 export function saveStoredAlarms(alarms: AlarmItem[]): void {
   try {
     localStorage.setItem(ALARMS_STORAGE_KEY, JSON.stringify(alarms));
+    // Trigger background native schedule sync
+    syncNativeAlarmSchedules(alarms).catch((err) => console.warn('Native alarm sync warning:', err));
   } catch (e) {
     console.error('Failed to save alarms:', e);
   }
@@ -99,7 +169,89 @@ export function toggleAlarm(id: string): AlarmItem[] {
 }
 
 // ==========================================
-// Screen Wake Lock API (keeps screen awake during alarm)
+// Next Trigger Calculation & Countdown
+// ==========================================
+export function calculateNextAlarmDate(alarm: AlarmItem): Date | null {
+  if (!alarm.enabled) return null;
+
+  const [hoursStr, minutesStr] = alarm.time.split(':');
+  const targetHour = parseInt(hoursStr, 10);
+  const targetMinute = parseInt(minutesStr, 10);
+
+  const now = new Date();
+
+  // If one-time alarm (repeatDays empty)
+  if (!alarm.repeatDays || alarm.repeatDays.length === 0) {
+    const candidate = new Date(now);
+    candidate.setHours(targetHour, targetMinute, 0, 0);
+    if (candidate.getTime() <= now.getTime()) {
+      candidate.setDate(candidate.getDate() + 1);
+    }
+    return candidate;
+  }
+
+  // If repeat days are set
+  // Check the next 7 days for the earliest matching day of week
+  for (let offset = 0; offset <= 7; offset++) {
+    const candidate = new Date(now);
+    candidate.setDate(now.getDate() + offset);
+    candidate.setHours(targetHour, targetMinute, 0, 0);
+
+    const dayOfWeek = candidate.getDay();
+    if (alarm.repeatDays.includes(dayOfWeek)) {
+      if (candidate.getTime() > now.getTime()) {
+        return candidate;
+      }
+    }
+  }
+
+  // Fallback next day
+  const fallback = new Date(now);
+  fallback.setDate(fallback.getDate() + 1);
+  fallback.setHours(targetHour, targetMinute, 0, 0);
+  return fallback;
+}
+
+export function formatAlarmCountdown(nextDate: Date | null, lang: Language): string {
+  if (!nextDate) {
+    return lang === 'bn' ? 'বন্ধ আছে' : 'Alarm off';
+  }
+
+  const now = new Date();
+  const diffMs = nextDate.getTime() - now.getTime();
+  if (diffMs <= 0) {
+    return lang === 'bn' ? 'এখনই বাজবে' : 'Ringing now';
+  }
+
+  const totalMinutes = Math.round(diffMs / (1000 * 60));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  const toBn = (num: number | string) => {
+    if (lang !== 'bn') return String(num);
+    const bnDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+    return String(num).replace(/\d/g, (d) => bnDigits[Number(d)]);
+  };
+
+  if (hours === 0 && minutes === 0) {
+    return lang === 'bn' ? '১ মিনিটের কম সময়ে বাজবে' : 'Rings in less than a minute';
+  }
+
+  if (hours === 0) {
+    return lang === 'bn' ? `${toBn(minutes)} মিনিট পর বাজবে` : `Rings in ${minutes} minutes`;
+  }
+
+  if (minutes === 0) {
+    return lang === 'bn' ? `${toBn(hours)} ঘণ্টা পর বাজবে` : `Rings in ${hours} hours`;
+  }
+
+  return lang === 'bn'
+    ? `${toBn(hours)} ঘণ্টা ${toBn(minutes)} মিনিট পর বাজবে`
+    : `Rings in ${hours} hours ${minutes} minutes`;
+}
+
+// ==========================================
+// Screen Wake Lock API
 // ==========================================
 let wakeLockSentinel: any = null;
 
@@ -134,6 +286,7 @@ type AlarmTriggerCallback = (alarm: AlarmItem | null) => void;
 const alarmListeners = new Set<AlarmTriggerCallback>();
 let activeRingingAlarm: AlarmItem | null = null;
 let lastTriggeredMinute = '';
+let autoSilenceTimeoutId: number | null = null;
 
 export function getActiveRingingAlarm(): AlarmItem | null {
   return activeRingingAlarm;
@@ -150,8 +303,25 @@ export function subscribeToAlarmTrigger(cb: AlarmTriggerCallback): () => void {
 export function triggerAlarmRinging(alarm: AlarmItem): void {
   activeRingingAlarm = alarm;
   requestScreenWakeLock();
-  startAlarmSound(alarm.soundTone);
+  
+  const settings = getAlarmSettings();
+  const shouldVibrate = alarm.vibrate !== undefined ? alarm.vibrate : settings.vibrateWithAlarm;
+  const isAscending = alarm.ascendingVolume !== undefined ? alarm.ascendingVolume : settings.ascendingVolume;
+
+  startAlarmSound(alarm.soundTone, isAscending, shouldVibrate);
   trySendSystemNotification(alarm);
+
+  // Setup auto-silence
+  const autoSilenceMins = alarm.autoSilence !== undefined ? alarm.autoSilence : settings.autoSilenceMinutes;
+  if (autoSilenceTimeoutId !== null) {
+    clearTimeout(autoSilenceTimeoutId);
+    autoSilenceTimeoutId = null;
+  }
+  if (autoSilenceMins > 0) {
+    autoSilenceTimeoutId = window.setTimeout(() => {
+      dismissActiveAlarm();
+    }, autoSilenceMins * 60 * 1000);
+  }
 
   alarmListeners.forEach((listener) => {
     try {
@@ -163,6 +333,10 @@ export function triggerAlarmRinging(alarm: AlarmItem): void {
 }
 
 export function dismissActiveAlarm(): void {
+  if (autoSilenceTimeoutId !== null) {
+    clearTimeout(autoSilenceTimeoutId);
+    autoSilenceTimeoutId = null;
+  }
   if (activeRingingAlarm) {
     if (activeRingingAlarm.repeatDays.length === 0) {
       toggleAlarm(activeRingingAlarm.id);
@@ -181,7 +355,10 @@ export function dismissActiveAlarm(): void {
   });
 }
 
-export function snoozeActiveAlarm(minutes = 5): void {
+export function snoozeActiveAlarm(customMinutes?: number): void {
+  const settings = getAlarmSettings();
+  const minutes = customMinutes ?? activeRingingAlarm?.snoozeDuration ?? settings.snoozeDurationMinutes ?? 5;
+
   if (activeRingingAlarm) {
     const now = new Date();
     now.setMinutes(now.getMinutes() + minutes);
@@ -189,11 +366,13 @@ export function snoozeActiveAlarm(minutes = 5): void {
     const snoozedAlarm: AlarmItem = {
       id: `snooze-${Date.now()}`,
       time: snoozeTime,
-      labelBn: `(স্নুজ) ${activeRingingAlarm.labelBn}`,
-      labelEn: `(Snoozed) ${activeRingingAlarm.labelEn || activeRingingAlarm.labelBn}`,
+      labelBn: `(স্নুজ ${minutes}মি) ${activeRingingAlarm.labelBn}`,
+      labelEn: `(Snoozed ${minutes}m) ${activeRingingAlarm.labelEn || activeRingingAlarm.labelBn}`,
       enabled: true,
       repeatDays: [],
       soundTone: activeRingingAlarm.soundTone,
+      vibrate: activeRingingAlarm.vibrate,
+      snoozeDuration: minutes,
       createdAt: Date.now(),
     };
     addOrUpdateAlarm(snoozedAlarm);
@@ -227,7 +406,11 @@ export function checkAndTriggerDueAlarms(): void {
   }
 }
 
+// ==========================================
+// Capacitor Native Notification & Exact Alarm Synchronization
+// ==========================================
 let notificationChannelCreated = false;
+
 export async function initAlarmNotificationChannel(): Promise<void> {
   if (notificationChannelCreated) return;
   if (Capacitor.isNativePlatform()) {
@@ -286,7 +469,6 @@ export async function initAlarmNotificationChannel(): Promise<void> {
   }
 }
 
-// Auto init channel on load
 if (typeof window !== 'undefined') {
   initAlarmNotificationChannel();
 }
@@ -308,6 +490,60 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return Promise.resolve(false);
 }
 
+/**
+ * Synchronizes all active alarms into native Capacitor LocalNotifications
+ * using exact scheduling so Android system triggers it even in Doze mode
+ */
+export async function syncNativeAlarmSchedules(alarms: AlarmItem[]): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    await initAlarmNotificationChannel();
+
+    // 1. Get pending notifications and cancel old alarm schedules (IDs starting from 1000)
+    const pending = await LocalNotifications.getPending();
+    const toCancel = pending.notifications
+      .filter((n) => n.id >= 1000 && n.id < 9999)
+      .map((n) => ({ id: n.id }));
+
+    if (toCancel.length > 0) {
+      await LocalNotifications.cancel({ notifications: toCancel });
+    }
+
+    // 2. Schedule upcoming notifications for enabled alarms
+    const toSchedule: any[] = [];
+    let notifIdCounter = 1000;
+
+    for (const alarm of alarms) {
+      if (!alarm.enabled) continue;
+      const nextDate = calculateNextAlarmDate(alarm);
+      if (!nextDate) continue;
+
+      toSchedule.push({
+        id: notifIdCounter++,
+        title: `🔔 SmartHub Alarm (${alarm.time})`,
+        body: `${alarm.labelBn} / ${alarm.labelEn}`,
+        channelId: 'alarm_ring_channel',
+        ongoing: true,
+        autoCancel: false,
+        actionTypeId: 'ALARM_ACTION_TYPE',
+        extra: {
+          alarmId: alarm.id,
+        },
+        schedule: {
+          at: nextDate,
+          allowWhileIdle: true,
+        },
+      });
+    }
+
+    if (toSchedule.length > 0) {
+      await LocalNotifications.schedule({ notifications: toSchedule });
+    }
+  } catch (err) {
+    console.warn('Failed to sync native alarm schedules:', err);
+  }
+}
+
 async function trySendSystemNotification(alarm: AlarmItem): Promise<void> {
   await initAlarmNotificationChannel();
 
@@ -320,7 +556,7 @@ async function trySendSystemNotification(alarm: AlarmItem): Promise<void> {
             body: `${alarm.labelBn}\nবন্ধ করতে বা স্ক্রিনে দেখতে এখানে চাপ দিন।`,
             id: 9999,
             channelId: 'alarm_ring_channel',
-            ongoing: true, // Cannot be accidentally cleared until dismissed
+            ongoing: true,
             autoCancel: false,
             actionTypeId: 'ALARM_ACTION_TYPE',
             extra: {
@@ -363,7 +599,7 @@ export async function dismissSystemNotification(): Promise<void> {
 }
 
 // ==========================================
-// Custom Sound (User's uploaded MP3 / Audio)
+// Custom Sound Storage
 // ==========================================
 export function getCustomSoundData(): { name: string; url: string } | null {
   try {
@@ -387,39 +623,25 @@ export function clearCustomSoundData(): void {
   localStorage.removeItem(ALARM_CUSTOM_SOUND_KEY);
 }
 
-// Volume setting (0.1 to 1.0)
+// Volume helpers
 export function getAlarmVolume(): number {
-  try {
-    const v = localStorage.getItem(ALARM_VOLUME_KEY);
-    if (v !== null) return Math.min(1, Math.max(0.1, Number(v)));
-  } catch {
-    // ignore
-  }
-  return 0.8;
+  return getAlarmSettings().volume;
 }
 
 export function setAlarmVolume(volume: number): void {
-  try {
-    localStorage.setItem(ALARM_VOLUME_KEY, String(volume));
-  } catch {
-    // ignore
-  }
+  saveAlarmSettings({ volume: Math.min(1, Math.max(0.1, volume)) });
 }
 
 // ==========================================
 // Ultra-Reliable Dual Audio Player & Synthesizer
-// (HTML5 Audio with Base64 WAV + Web Audio API + Vibration)
+// (WAV synthesis + Web Audio API + Vibration)
 // ==========================================
-
 let audioCtx: AudioContext | null = null;
 let alarmIntervalId: number | null = null;
 let vibrationIntervalId: number | null = null;
 let activeHtmlAudio: HTMLAudioElement | null = null;
 let isAudioUnlocked = false;
 
-/**
- * Pre-unlocks AudioContext and HTML5 audio on first user touch/click
- */
 export function unlockAudio(): void {
   if (isAudioUnlocked || typeof window === 'undefined') return;
   try {
@@ -427,7 +649,6 @@ export function unlockAudio(): void {
     if (ctx && ctx.state === 'suspended') {
       ctx.resume().catch(() => {});
     }
-    // Silent micro audio to satisfy iOS / Android webview autoplay policies
     const silentWav =
       'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAP8A/w==';
     const a = new Audio(silentWav);
@@ -441,7 +662,6 @@ export function unlockAudio(): void {
   }
 }
 
-// Auto-register touch & click listeners on window
 if (typeof window !== 'undefined') {
   const onUserInteraction = () => {
     unlockAudio();
@@ -465,9 +685,6 @@ function getAudioContext(): AudioContext | null {
   return audioCtx;
 }
 
-/**
- * Creates 16-bit PCM Mono WAV Data URI
- */
 function createWavDataUri(sampleRate: number, durationSec: number, sampleFn: (t: number) => number): string {
   const numSamples = Math.floor(sampleRate * durationSec);
   const buffer = new ArrayBuffer(44 + numSamples * 2);
@@ -483,13 +700,13 @@ function createWavDataUri(sampleRate: number, durationSec: number, sampleFn: (t:
   view.setUint32(4, 36 + numSamples * 2, true);
   writeStr(8, 'WAVE');
   writeStr(12, 'fmt ');
-  view.setUint32(16, 16, true); // PCM chunk size
-  view.setUint16(20, 1, true); // Linear PCM
-  view.setUint16(22, 1, true); // Mono
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
   view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true); // Byte rate
-  view.setUint16(32, 2, true); // Block align
-  view.setUint16(34, 16, true); // Bits per sample
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
   writeStr(36, 'data');
   view.setUint32(40, numSamples * 2, true);
 
@@ -510,7 +727,6 @@ function createWavDataUri(sampleRate: number, durationSec: number, sampleFn: (t:
   return 'data:audio/wav;base64,' + btoa(binary);
 }
 
-// Cached WAV sound URIs for instant playback
 const WAV_CACHE: Partial<Record<SoundToneType, string>> = {};
 
 function getWavToneUri(tone: SoundToneType): string {
@@ -520,12 +736,9 @@ function getWavToneUri(tone: SoundToneType): string {
   let uri = '';
 
   if (tone === 'digital') {
-    // Loud classic electronic alarm: Beep-Beep-Beep-Beep
     uri = createWavDataUri(sampleRate, 1.8, (t) => {
-      // 4 beeps in 1.8 seconds
       const cycle = t % 0.45;
       if (cycle < 0.2) {
-        // High frequency piercing square/sine combo
         const f1 = Math.sin(2 * Math.PI * 960 * t);
         const f2 = Math.sin(2 * Math.PI * 1440 * t) * 0.5;
         return (f1 + f2) * 0.7;
@@ -533,7 +746,6 @@ function getWavToneUri(tone: SoundToneType): string {
       return 0;
     });
   } else if (tone === 'radar') {
-    // Sonar radar pulses: Ping - Ping
     uri = createWavDataUri(sampleRate, 1.6, (t) => {
       const cycle = t % 0.8;
       if (cycle < 0.35) {
@@ -544,7 +756,6 @@ function getWavToneUri(tone: SoundToneType): string {
       return 0;
     });
   } else if (tone === 'birds') {
-    // Morning birds chirping
     uri = createWavDataUri(sampleRate, 2.0, (t) => {
       const cycle = t % 1.0;
       if (cycle < 0.5) {
@@ -555,7 +766,6 @@ function getWavToneUri(tone: SoundToneType): string {
       return 0;
     });
   } else if (tone === 'peaceful') {
-    // Soft melodic bell chord
     uri = createWavDataUri(sampleRate, 2.5, (t) => {
       const d1 = Math.exp(-t * 1.5);
       const c5 = Math.sin(2 * Math.PI * 523.25 * t);
@@ -564,23 +774,30 @@ function getWavToneUri(tone: SoundToneType): string {
       return (c5 * 0.4 + e5 * 0.3 + g5 * 0.3) * d1 * 0.8;
     });
   } else if (tone === 'azan') {
-    // Melodic spiritual harmonic prayer chime
     uri = createWavDataUri(sampleRate, 3.5, (t) => {
       const phase = Math.floor(t / 0.8);
       const subT = t % 0.8;
       const decay = Math.exp(-subT * 2.2);
-      const freqs = [349.23, 440.0, 392.0, 349.23, 293.66]; // F4, A4, G4, F4, D4
+      const freqs = [349.23, 440.0, 392.0, 349.23, 293.66];
       const f = freqs[phase % freqs.length];
       const s1 = Math.sin(2 * Math.PI * f * t);
       const s2 = Math.sin(2 * Math.PI * (f * 2) * t) * 0.3;
       return (s1 + s2) * decay * 0.85;
     });
+  } else if (tone === 'classic_bell') {
+    uri = createWavDataUri(sampleRate, 2.0, (t) => {
+      const cycle = t % 0.66;
+      const decay = Math.exp(-cycle * 4.5);
+      const f1 = Math.sin(2 * Math.PI * 784 * t);
+      const f2 = Math.sin(2 * Math.PI * 1568 * t) * 0.4;
+      return (f1 + f2) * decay * 0.8;
+    });
   } else {
-    // Default 'chime': Rich, loud, pleasant alarm chime
+    // Default chime
     uri = createWavDataUri(sampleRate, 2.0, (t) => {
       const cycle = t % 1.0;
       const decay = Math.exp(-cycle * 3.5);
-      const f = cycle < 0.5 ? 880 : 1174.66; // A5 then D6
+      const f = cycle < 0.5 ? 880 : 1174.66;
       const s1 = Math.sin(2 * Math.PI * f * t);
       const s2 = Math.sin(2 * Math.PI * (f * 1.5) * t) * 0.4;
       return (s1 + s2) * decay * 0.85;
@@ -621,28 +838,30 @@ export function playChimeNote(
   }
 }
 
-/**
- * Starts the alarm sound and device vibration with maximum reliability
- */
-export function startAlarmSound(tone: SoundToneType = 'chime') {
+export function startAlarmSound(
+  tone: SoundToneType = 'chime',
+  ascendingVolume: boolean = false,
+  shouldVibrate: boolean = true
+) {
   stopAlarmSound();
   unlockAudio();
 
-  const vol = getAlarmVolume();
+  let targetVol = getAlarmVolume();
+  let startVol = ascendingVolume ? 0.2 : targetVol;
 
-  // 1. Try Custom Audio if user uploaded one
+  // Custom audio
   if (tone === 'custom') {
     const custom = getCustomSoundData();
     if (custom && custom.url) {
       try {
         activeHtmlAudio = new Audio(custom.url);
         activeHtmlAudio.loop = true;
-        activeHtmlAudio.volume = vol;
+        activeHtmlAudio.volume = startVol;
         activeHtmlAudio.play().catch((err) => {
-          console.warn('Custom audio failed, falling back to digital:', err);
-          playWavAudio('digital', vol);
+          console.warn('Custom audio failed, falling back:', err);
+          playWavAudio('chime', startVol);
         });
-        triggerAlarmVibration();
+        if (shouldVibrate) triggerAlarmVibration();
         return;
       } catch (err) {
         console.warn('Custom audio init failed:', err);
@@ -650,14 +869,28 @@ export function startAlarmSound(tone: SoundToneType = 'chime') {
     }
   }
 
-  // 2. Play HTML5 Audio via generated high-volume WAV
-  playWavAudio(tone, vol);
-
-  // 3. Parallel Web Audio API synthesized notes for extra richness
+  playWavAudio(tone, startVol);
   startSynthesizedTone(tone);
 
-  // 4. Start haptic vibration
-  triggerAlarmVibration();
+  if (shouldVibrate) {
+    triggerAlarmVibration();
+  }
+
+  // Handle gradual volume ascension
+  if (ascendingVolume && activeHtmlAudio) {
+    let currentV = startVol;
+    const ascInterval = setInterval(() => {
+      if (!activeHtmlAudio) {
+        clearInterval(ascInterval);
+        return;
+      }
+      currentV = Math.min(targetVol, currentV + 0.05);
+      activeHtmlAudio.volume = currentV;
+      if (currentV >= targetVol) {
+        clearInterval(ascInterval);
+      }
+    }, 2000);
+  }
 }
 
 function playWavAudio(tone: SoundToneType, volume: number) {
@@ -702,6 +935,9 @@ function startSynthesizedTone(tone: SoundToneType) {
       playChimeNote(523.25, 'sine', 0.7, 0.35);
       setTimeout(() => playChimeNote(659.25, 'sine', 0.7, 0.35), 300);
       setTimeout(() => playChimeNote(783.99, 'sine', 0.9, 0.35), 600);
+    } else if (tone === 'classic_bell') {
+      playChimeNote(784, 'triangle', 0.3, 0.45);
+      setTimeout(() => playChimeNote(1046.5, 'triangle', 0.35, 0.5), 200);
     } else {
       // Default Chime
       playChimeNote(880, 'sine', 0.4, 0.4);
@@ -714,9 +950,6 @@ function startSynthesizedTone(tone: SoundToneType) {
   alarmIntervalId = window.setInterval(playSequence, interval);
 }
 
-/**
- * Triggers device vibration pattern (if supported by mobile device)
- */
 function triggerAlarmVibration() {
   if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
     try {
@@ -734,9 +967,6 @@ function triggerAlarmVibration() {
   }
 }
 
-/**
- * Stops alarm audio, synthesizer, and vibration completely
- */
 export function stopAlarmSound() {
   if (alarmIntervalId !== null) {
     clearInterval(alarmIntervalId);
@@ -763,4 +993,3 @@ export function stopAlarmSound() {
     activeHtmlAudio = null;
   }
 }
-
