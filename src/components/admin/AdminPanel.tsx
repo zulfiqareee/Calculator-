@@ -31,8 +31,35 @@ import {
   Link,
   Upload,
   Info,
+  Heart,
+  Cloud,
+  RefreshCw,
+  Eye,
+  EyeOff,
+  Flame,
+  ShieldCheck,
+  X,
 } from 'lucide-react';
-import { Language, CustomTool, CustomToolInput, BookItem, BookChapter, NoteFolder, NoteItem } from '../../types';
+import { Language, CustomTool, CustomToolInput, BookItem, BookChapter, NoteFolder, NoteItem, HealthTipItem, HealthCategory, HealthCategoryItem } from '../../types';
+import {
+  HEALTH_CATEGORIES,
+  getStoredHealthTips,
+  addOrUpdateHealthTip,
+  deleteHealthTip,
+  togglePublishTip,
+  toggleFeaturedTip,
+  togglePopularTip,
+  resetHealthTipsToDefault,
+  getStoredHealthCategories,
+  addOrUpdateHealthCategory,
+  deleteHealthCategory,
+  resetHealthCategoriesToDefault,
+  getFirebaseStatus,
+  getActiveFirebaseConfig,
+  saveManualFirebaseConfig,
+  syncAllLocalTipsToFirestore,
+  fetchHealthTipsFromFirestore,
+} from '../../utils/healthStorage';
 import {
   AUTHORIZED_ADMIN_EMAIL,
   getAdminSession,
@@ -75,7 +102,7 @@ interface Props {
   onRefreshTools?: () => void;
 }
 
-type AdminTab = 'books' | 'quran' | 'notes' | 'tools' | 'backup' | 'security';
+type AdminTab = 'health' | 'books' | 'quran' | 'notes' | 'tools' | 'backup' | 'security';
 
 export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }) => {
   // Auth state
@@ -84,8 +111,68 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }
   const [session, setSession] = useState(getAdminSession());
   const [authError, setAuthError] = useState<string | null>(null);
 
-  // Active Admin Sub-tab
-  const [activeTab, setActiveTab] = useState<AdminTab>('books');
+  // Active Admin Sub-tab (default to health when entering admin to manage CMS)
+  const [activeTab, setActiveTab] = useState<AdminTab>('health');
+
+  // ==========================================
+  // HEALTH TIPS CMS STATE FOR ADMIN
+  // ==========================================
+  // Health Sub-tab: 'articles' or 'categories'
+  const [healthSubTab, setHealthSubTab] = useState<'articles' | 'categories'>('articles');
+  const [healthTips, setHealthTips] = useState<HealthTipItem[]>(getStoredHealthTips());
+  const [healthCategories, setHealthCategories] = useState<HealthCategoryItem[]>(getStoredHealthCategories());
+  const [editingHealthTip, setEditingHealthTip] = useState<HealthTipItem | null>(null);
+  const [isCreatingHealthTip, setIsCreatingHealthTip] = useState<boolean>(false);
+  const [showArticlePreview, setShowArticlePreview] = useState<boolean>(false);
+  const [healthSearchQuery, setHealthSearchQuery] = useState<string>('');
+  const [healthFilterCategory, setHealthFilterCategory] = useState<string>('all');
+  const [healthSuccessMsg, setHealthSuccessMsg] = useState<string | null>(null);
+
+  // Health Form Fields
+  const [htTitleBn, setHtTitleBn] = useState<string>('');
+  const [htTitleEn, setHtTitleEn] = useState<string>('');
+  const [htSummaryBn, setHtSummaryBn] = useState<string>('');
+  const [htSummaryEn, setHtSummaryEn] = useState<string>('');
+  const [htDescBn, setHtDescBn] = useState<string>('');
+  const [htDescEn, setHtDescEn] = useState<string>('');
+  const [htDosBn, setHtDosBn] = useState<string>('');
+  const [htDosEn, setHtDosEn] = useState<string>('');
+  const [htDontsBn, setHtDontsBn] = useState<string>('');
+  const [htDontsEn, setHtDontsEn] = useState<string>('');
+  const [htNutritionsBn, setHtNutritionsBn] = useState<string>('');
+  const [htNutritionsEn, setHtNutritionsEn] = useState<string>('');
+  const [htWarningBn, setHtWarningBn] = useState<string>('');
+  const [htWarningEn, setHtWarningEn] = useState<string>('');
+  const [htCategory, setHtCategory] = useState<string>('nutrition');
+  const [htImage, setHtImage] = useState<string>('');
+  const [htSource, setHtSource] = useState<string>('বিশ্ব স্বাস্থ্য সংস্থা (WHO)');
+  const [htSourceUrl, setHtSourceUrl] = useState<string>('https://www.who.int');
+  const [htAuthor, setHtAuthor] = useState<string>('ডা. মাহমুদুর রহমান');
+  const [htReadTimeBn, setHtReadTimeBn] = useState<string>('৩ মিনিট পাঠ');
+  const [htReadTimeEn, setHtReadTimeEn] = useState<string>('3 min read');
+  const [htIsPublished, setHtIsPublished] = useState<boolean>(true);
+  const [htIsFeatured, setHtIsFeatured] = useState<boolean>(false);
+  const [htIsPopular, setHtIsPopular] = useState<boolean>(false);
+
+  // Category Editor State
+  const [editingCategory, setEditingCategory] = useState<HealthCategoryItem | null>(null);
+  const [isCreatingCategory, setIsCreatingCategory] = useState<boolean>(false);
+  const [catId, setCatId] = useState<string>('');
+  const [catNameBn, setCatNameBn] = useState<string>('');
+  const [catNameEn, setCatNameEn] = useState<string>('');
+  const [catIcon, setCatIcon] = useState<string>('🩺');
+  const [catDescBn, setCatDescBn] = useState<string>('');
+  const [catDescEn, setCatDescEn] = useState<string>('');
+  const [catOrder, setCatOrder] = useState<number>(1);
+  const [catIsActive, setCatIsActive] = useState<boolean>(true);
+
+  // Firebase status & configuration state
+  const [firebaseStatus, setFirebaseStatus] = useState(getFirebaseStatus());
+  const [fbApiKey, setFbApiKey] = useState<string>(getActiveFirebaseConfig()?.apiKey || '');
+  const [fbProjectId, setFbProjectId] = useState<string>(getActiveFirebaseConfig()?.projectId || '');
+  const [isSyncingFirebase, setIsSyncingFirebase] = useState<boolean>(false);
+  const [firebaseSyncResult, setFirebaseSyncResult] = useState<string | null>(null);
+  const [showFirebaseConfigModal, setShowFirebaseConfigModal] = useState<boolean>(false);
 
   // ==========================================
   // QURAN SURAH & AYAH WRITER STATE FOR ADMIN
@@ -572,6 +659,7 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }
       {/* Admin Tab Switcher */}
       <div className="flex overflow-x-auto gap-1.5 p-1 bg-slate-200 dark:bg-slate-800 rounded-xl no-scrollbar">
         {[
+          { id: 'health', label: 'স্বাস্থ্য টিপস (CMS)', icon: Heart },
           { id: 'books', label: 'বই রাইটার', icon: BookOpen },
           { id: 'quran', label: 'আল-কুরআন', icon: Book },
           { id: 'notes', label: 'নোট ও সূত্র খাতা', icon: FileText },
@@ -597,6 +685,1272 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }
           );
         })}
       </div>
+
+      {/* =========================================================================
+          TAB 0: HEALTH TIPS CMS & FIREBASE MANAGEMENT (স্বাস্থ্য টিপস সিএমএস)
+         ========================================================================= */}
+      {activeTab === 'health' && (
+        <div className="flex flex-col gap-4">
+          {/* Cloud & Firebase Sync Card */}
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-slate-900 dark:to-blue-950/40 border border-blue-200 dark:border-blue-900/60 rounded-2xl p-4 shadow-2xs">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-[#0B63F6] text-white flex items-center justify-center shadow-xs">
+                  <Cloud className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Firebase Firestore ক্লাউড ডেটাবেস
+                    </h3>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        firebaseStatus.isConfigured
+                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                          : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                      }`}
+                    >
+                      {firebaseStatus.isConfigured ? 'ক্লাউড সক্রিয়' : 'লোকাল অফলাইন মোড'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    {firebaseStatus.projectId
+                      ? `প্রজেক্ট: ${firebaseStatus.projectId}`
+                      : 'লোকাল স্টোরেজ সক্রিয়। ক্লাউড ব্যাকআপের জন্য কনফিগারেশন সেট করুন।'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Sync Controls */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={async () => {
+                    setIsSyncingFirebase(true);
+                    setFirebaseSyncResult(null);
+                    const res = await syncAllLocalTipsToFirestore();
+                    setIsSyncingFirebase(false);
+                    if (res.success) {
+                      setFirebaseSyncResult(`সফল! ${res.count} টি পরামর্শ Firestore-এ সংরক্ষিত হয়েছে।`);
+                      setFirebaseStatus(getFirebaseStatus());
+                    } else {
+                      setFirebaseSyncResult(`ব্যর্থ: ${res.error}`);
+                    }
+                    setTimeout(() => setFirebaseSyncResult(null), 4000);
+                  }}
+                  disabled={isSyncingFirebase}
+                  className="px-3 py-1.5 bg-[#0B63F6] hover:bg-blue-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-2xs"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingFirebase ? 'animate-spin' : ''}`} />
+                  <span>{isSyncingFirebase ? 'সিঙ্ক হচ্ছে...' : 'Firestore-এ সিঙ্ক'}</span>
+                </button>
+
+                <button
+                  onClick={() => setShowFirebaseConfigModal(true)}
+                  className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition shadow-2xs"
+                >
+                  সেটিংস
+                </button>
+              </div>
+            </div>
+
+            {firebaseSyncResult && (
+              <div className="mt-3 p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-200">
+                {firebaseSyncResult}
+              </div>
+            )}
+          </div>
+
+          {/* Firebase Settings Modal */}
+          {showFirebaseConfigModal && (
+            <div
+              className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+              onClick={() => setShowFirebaseConfigModal(false)}
+            >
+              <div
+                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-5 flex flex-col gap-4 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between border-b pb-3 border-slate-100 dark:border-slate-800">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Cloud className="w-4 h-4 text-[#0B63F6]" />
+                    <span>Firebase Firestore সংযোগ কনফিগারেশন</span>
+                  </h3>
+                  <button
+                    onClick={() => setShowFirebaseConfigModal(false)}
+                    className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                  >
+                    <Check className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  আপনার বিদ্যমান Firebase প্রজেক্টের Web API Key এবং Project ID এখানে প্রদান করুন। অ্যাপটি স্বয়ংক্রিয়ভাবে <code className="text-[#0B63F6]">health_tips</code> কালেকশন থেকে ডাটা সিঙ্ক করবে।
+                </p>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      Firebase Project ID
+                    </label>
+                    <input
+                      type="text"
+                      value={fbProjectId}
+                      onChange={(e) => setFbProjectId(e.target.value)}
+                      placeholder="e.g. smarthub-utility-prod"
+                      className="w-full mt-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      Firebase Web API Key
+                    </label>
+                    <input
+                      type="text"
+                      value={fbApiKey}
+                      onChange={(e) => setFbApiKey(e.target.value)}
+                      placeholder="e.g. AIzaSy..."
+                      className="w-full mt-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    onClick={() => {
+                      saveManualFirebaseConfig(null);
+                      setFirebaseStatus(getFirebaseStatus());
+                      setShowFirebaseConfigModal(false);
+                    }}
+                    className="px-3 py-2 text-xs font-bold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition"
+                  >
+                    রিসেট
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (fbProjectId.trim() && fbApiKey.trim()) {
+                        saveManualFirebaseConfig({
+                          projectId: fbProjectId.trim(),
+                          apiKey: fbApiKey.trim(),
+                        });
+                        setFirebaseStatus(getFirebaseStatus());
+                        setShowFirebaseConfigModal(false);
+                      } else {
+                        alert('অনুগ্রহ করে প্রজেক্ট আইডি ও এপিআই কি পূরণ করুন।');
+                      }
+                    }}
+                    className="px-4 py-2 bg-[#0B63F6] text-white rounded-xl text-xs font-bold transition shadow-xs"
+                  >
+                    সংরক্ষণ করুন
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Success message banner */}
+          {healthSuccessMsg && (
+            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 rounded-xl text-xs font-bold flex items-center justify-between">
+              <span>{healthSuccessMsg}</span>
+              <button onClick={() => setHealthSuccessMsg(null)}>
+                <Check className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Sub-tab Navigation & Statistics */}
+          <div className="flex flex-col gap-3">
+            {/* Health CMS Sub-tabs */}
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setHealthSubTab('articles');
+                    setIsCreatingHealthTip(false);
+                    setEditingHealthTip(null);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                    healthSubTab === 'articles'
+                      ? 'bg-[#0B63F6] text-white shadow-xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                  }`}
+                >
+                  <Heart className="w-3.5 h-3.5" />
+                  <span>আর্টিকেল ও পরামর্শ ({healthTips.length})</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setHealthSubTab('categories');
+                    setIsCreatingCategory(false);
+                    setEditingCategory(null);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                    healthSubTab === 'categories'
+                      ? 'bg-[#0B63F6] text-white shadow-xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>ক্যাটাগরি ব্যবস্থাপনা ({healthCategories.length})</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Content Statistics Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-center">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-bold">মোট আর্টিকেল</span>
+                <span className="text-base font-black text-slate-900 dark:text-white">{healthTips.length}</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-center">
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 block font-bold">প্রকাশিত</span>
+                <span className="text-base font-black text-emerald-700 dark:text-emerald-300">
+                  {healthTips.filter((t) => t.isPublished !== false).length}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-center">
+                <span className="text-[10px] text-rose-600 dark:text-rose-400 block font-bold">ড্রাফট / অপ্রকাশিত</span>
+                <span className="text-base font-black text-rose-700 dark:text-rose-300">
+                  {healthTips.filter((t) => t.isPublished === false).length}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-center">
+                <span className="text-[10px] text-amber-600 dark:text-amber-400 block font-bold">ফিচার্ড</span>
+                <span className="text-base font-black text-amber-700 dark:text-amber-300">
+                  {healthTips.filter((t) => t.isFeatured).length}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 text-center">
+                <span className="text-[10px] text-purple-600 dark:text-purple-400 block font-bold">জনপ্রিয়</span>
+                <span className="text-base font-black text-purple-700 dark:text-purple-300">
+                  {healthTips.filter((t) => t.isPopular).length}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-center">
+                <span className="text-[10px] text-blue-600 dark:text-blue-400 block font-bold">ক্যাটাগরি</span>
+                <span className="text-base font-black text-blue-700 dark:text-blue-300">{healthCategories.length}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Success message banner */}
+          {healthSuccessMsg && (
+            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 rounded-xl text-xs font-bold flex items-center justify-between">
+              <span>{healthSuccessMsg}</span>
+              <button onClick={() => setHealthSuccessMsg(null)}>
+                <Check className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* =========================================================================
+              SUB-TAB 1: ARTICLES MANAGEMENT
+             ========================================================================= */}
+          {healthSubTab === 'articles' && (
+            <>
+              {!isCreatingHealthTip && !editingHealthTip ? (
+                <>
+                  {/* Actions: Add New, Reset Defaults, Category Filter */}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      onClick={() => {
+                        setIsCreatingHealthTip(true);
+                        setEditingHealthTip(null);
+                        setHtTitleBn('');
+                        setHtTitleEn('');
+                        setHtSummaryBn('');
+                        setHtSummaryEn('');
+                        setHtDescBn('');
+                        setHtDescEn('');
+                        setHtDosBn('');
+                        setHtDosEn('');
+                        setHtDontsBn('');
+                        setHtDontsEn('');
+                        setHtNutritionsBn('');
+                        setHtNutritionsEn('');
+                        setHtWarningBn('');
+                        setHtWarningEn('');
+                        setHtCategory(healthCategories[0]?.id || 'nutrition');
+                        setHtImage('');
+                        setHtSource('বিশ্ব স্বাস্থ্য সংস্থা (WHO)');
+                        setHtSourceUrl('https://www.who.int');
+                        setHtAuthor('ডা. মাহমুদুর রহমান');
+                        setHtReadTimeBn('৩ মিনিট পাঠ');
+                        setHtReadTimeEn('3 min read');
+                        setHtIsPublished(true);
+                        setHtIsFeatured(false);
+                        setHtIsPopular(false);
+                      }}
+                      className="px-4 py-2.5 bg-[#0B63F6] hover:bg-blue-600 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>নতুন স্বাস্থ্য পরামর্শ যোগ করুন</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        if (confirm('আপনি কি সকল পরামর্শ ডিফল্ট ভেরিফাইড ডাটাতে রিসেট করতে চান?')) {
+                          const restored = resetHealthTipsToDefault();
+                          setHealthTips(restored);
+                          setHealthSuccessMsg('ডিফল্ট পরামর্শগুলো সফলভাবে রিস্টোর হয়েছে!');
+                          setTimeout(() => setHealthSuccessMsg(null), 3000);
+                        }
+                      }}
+                      className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-semibold transition"
+                    >
+                      ডিফল্ট ডেটায় রিসেট
+                    </button>
+                  </div>
+
+                  {/* Search & Category Filter */}
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      type="text"
+                      value={healthSearchQuery}
+                      onChange={(e) => setHealthSearchQuery(e.target.value)}
+                      placeholder="পরামর্শের শিরোনাম বা কি-ওয়ার্ড দিয়ে খুঁজুন..."
+                      className="flex-1 px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-medium text-slate-900 dark:text-white"
+                    />
+                    <select
+                      value={healthFilterCategory}
+                      onChange={(e) => setHealthFilterCategory(e.target.value)}
+                      className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-medium text-slate-900 dark:text-white"
+                    >
+                      <option value="all">সকল ক্যাটাগরি ({healthTips.length})</option>
+                      {healthCategories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.icon} {c.nameBn} / {c.nameEn}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Articles Grid/List */}
+                  <div className="flex flex-col gap-2.5">
+                    {healthTips
+                      .filter((t) => {
+                        if (healthFilterCategory !== 'all' && t.category !== healthFilterCategory)
+                          return false;
+                        if (!healthSearchQuery.trim()) return true;
+                        const q = healthSearchQuery.toLowerCase();
+                        return (
+                          t.titleBn?.toLowerCase().includes(q) ||
+                          t.titleEn?.toLowerCase().includes(q)
+                        );
+                      })
+                      .map((tip) => {
+                        const catMeta = healthCategories.find((c) => c.id === tip.category);
+                        const isPub = tip.isPublished !== false;
+                        return (
+                          <div
+                            key={tip.id}
+                            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                                <span className="text-xs px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-[#0B63F6] font-bold">
+                                  {catMeta?.icon || '🩺'} {catMeta?.nameBn || tip.category}
+                                </span>
+                                {tip.isFeatured && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-bold flex items-center gap-0.5">
+                                    <Flame className="w-3 h-3" /> ফিচার্ড
+                                  </span>
+                                )}
+                                {tip.isPopular && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-bold flex items-center gap-0.5">
+                                    <Sparkles className="w-3 h-3" /> জনপ্রিয়
+                                  </span>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    const updated = togglePublishTip(tip.id);
+                                    setHealthTips(updated);
+                                  }}
+                                  className={`text-[10px] px-2 py-0.5 rounded-full font-bold transition flex items-center gap-1 ${
+                                    isPub
+                                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                                      : 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
+                                  }`}
+                                >
+                                  {isPub ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                                  <span>{isPub ? 'প্রকাশিত' : 'অপ্রকাশিত'}</span>
+                                </button>
+                              </div>
+
+                              <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                                {tip.titleBn}
+                              </h4>
+                              <p className="text-xs text-slate-400 truncate mt-0.5">
+                                EN: {tip.titleEn}
+                              </p>
+                            </div>
+
+                            {/* Action buttons */}
+                            <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                              {/* Feature toggle */}
+                              <button
+                                onClick={() => {
+                                  const updated = toggleFeaturedTip(tip.id);
+                                  setHealthTips(updated);
+                                }}
+                                className={`p-2 rounded-xl transition ${
+                                  tip.isFeatured
+                                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 bg-slate-100 dark:bg-slate-800'
+                                }`}
+                                title="ফিচার্ড টগল করুন"
+                              >
+                                <Flame className="w-4 h-4" />
+                              </button>
+
+                              {/* Popular toggle */}
+                              <button
+                                onClick={() => {
+                                  const updated = togglePopularTip(tip.id);
+                                  setHealthTips(updated);
+                                }}
+                                className={`p-2 rounded-xl transition ${
+                                  tip.isPopular
+                                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
+                                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 bg-slate-100 dark:bg-slate-800'
+                                }`}
+                                title="জনপ্রিয় টগল করুন"
+                              >
+                                <Sparkles className="w-4 h-4" />
+                              </button>
+
+                              {/* Edit */}
+                              <button
+                                onClick={() => {
+                                  setEditingHealthTip(tip);
+                                  setIsCreatingHealthTip(false);
+                                  setHtTitleBn(tip.titleBn || '');
+                                  setHtTitleEn(tip.titleEn || '');
+                                  setHtSummaryBn(tip.summaryBn || '');
+                                  setHtSummaryEn(tip.summaryEn || '');
+                                  setHtDescBn(tip.detailsBn?.description || '');
+                                  setHtDescEn(tip.detailsEn?.description || '');
+                                  setHtDosBn(tip.detailsBn?.dos?.join('\n') || '');
+                                  setHtDosEn(tip.detailsEn?.dos?.join('\n') || '');
+                                  setHtDontsBn(tip.detailsBn?.donts?.join('\n') || '');
+                                  setHtDontsEn(tip.detailsEn?.donts?.join('\n') || '');
+                                  setHtNutritionsBn(tip.detailsBn?.nutritions?.join(', ') || '');
+                                  setHtNutritionsEn(tip.detailsEn?.nutritions?.join(', ') || '');
+                                  setHtWarningBn(
+                                    tip.detailsBn?.warning || tip.detailsBn?.whenToSeeDoctor || ''
+                                  );
+                                  setHtWarningEn(
+                                    tip.detailsEn?.warning || tip.detailsEn?.whenToSeeDoctor || ''
+                                  );
+                                  setHtCategory(tip.category || 'nutrition');
+                                  setHtImage(tip.image || '');
+                                  setHtSource(tip.sourceName || tip.source || 'বিশ্ব স্বাস্থ্য সংস্থা (WHO)');
+                                  setHtSourceUrl(tip.sourceUrl || 'https://www.who.int');
+                                  setHtAuthor(tip.author || 'ডা. মাহমুদুর রহমান');
+                                  setHtReadTimeBn(tip.readTimeBn || '৩ মিনিট পাঠ');
+                                  setHtReadTimeEn(tip.readTimeEn || '3 min read');
+                                  setHtIsPublished(tip.isPublished !== false);
+                                  setHtIsFeatured(!!tip.isFeatured);
+                                  setHtIsPopular(!!tip.isPopular);
+                                }}
+                                className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-[#0B63F6] hover:bg-blue-100 dark:hover:bg-blue-900/50 transition"
+                                title="সম্পাদনা করুন"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+
+                              {/* Delete */}
+                              <button
+                                onClick={() => {
+                                  if (confirm(`আপনি কি "${tip.titleBn}" মুছে ফেলতে চান?`)) {
+                                    const updated = deleteHealthTip(tip.id);
+                                    setHealthTips(updated);
+                                    setHealthSuccessMsg('পরামর্শ সফলভাবে মুছে ফেলা হয়েছে।');
+                                    setTimeout(() => setHealthSuccessMsg(null), 3000);
+                                  }
+                                }}
+                                className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-900/50 transition"
+                                title="মুছে ফেলুন"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </>
+              ) : (
+                /* CREATE OR EDIT ARTICLE FORM */
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex flex-col gap-4 text-left">
+                  <div className="flex items-center justify-between border-b pb-3 border-slate-100 dark:border-slate-800">
+                    <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                      <Heart className="w-4 h-4 text-[#0B63F6]" />
+                      <span>
+                        {editingHealthTip
+                          ? 'স্বাস্থ্য পরামর্শ সম্পাদনা করুন'
+                          : 'নতুন দ্বিভাষিক স্বাস্থ্য পরামর্শ যোগ করুন'}
+                      </span>
+                    </h3>
+                    <button
+                      onClick={() => {
+                        setIsCreatingHealthTip(false);
+                        setEditingHealthTip(null);
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300"
+                    >
+                      বাতিল
+                    </button>
+                  </div>
+
+                  {/* Category & Status Toggles */}
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        ক্যাটাগরি নির্বাচন করুন *
+                      </label>
+                      <select
+                        value={htCategory}
+                        onChange={(e) => setHtCategory(e.target.value)}
+                        className="w-full mt-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
+                      >
+                        {healthCategories.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.icon} {c.nameBn} / {c.nameEn}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-6">
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 dark:text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={htIsPublished}
+                          onChange={(e) => setHtIsPublished(e.target.checked)}
+                          className="w-4 h-4 accent-[#0B63F6] rounded"
+                        />
+                        <span>প্রকাশিত (Published)</span>
+                      </label>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-6">
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-amber-600 dark:text-amber-400">
+                        <input
+                          type="checkbox"
+                          checked={htIsFeatured}
+                          onChange={(e) => setHtIsFeatured(e.target.checked)}
+                          className="w-4 h-4 accent-amber-500 rounded"
+                        />
+                        <span>ফিচার্ড (Featured)</span>
+                      </label>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-6">
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-purple-600 dark:text-purple-400">
+                        <input
+                          type="checkbox"
+                          checked={htIsPopular}
+                          onChange={(e) => setHtIsPopular(e.target.checked)}
+                          className="w-4 h-4 accent-purple-500 rounded"
+                        />
+                        <span>জনপ্রিয় (Popular)</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Title Inputs */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        বাংলা শিরোনাম (Title Bn) *
+                      </label>
+                      <input
+                        type="text"
+                        value={htTitleBn}
+                        onChange={(e) => setHtTitleBn(e.target.value)}
+                        placeholder="যেমন: সুষম খাদ্য তালিকা ও পুষ্টি চাহিদা"
+                        className="w-full mt-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        English Title (Title En) *
+                      </label>
+                      <input
+                        type="text"
+                        value={htTitleEn}
+                        onChange={(e) => setHtTitleEn(e.target.value)}
+                        placeholder="e.g. Balanced Diet & Nutritional Guidelines"
+                        className="w-full mt-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-900 dark:text-white"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Short Summary Inputs */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        বাংলা সংক্ষিপ্ত বিবরণ (Summary Bn)
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={htSummaryBn}
+                        onChange={(e) => setHtSummaryBn(e.target.value)}
+                        placeholder="তালিকা কার্ডে প্রদর্শনের জন্য ১-২ লাইনের সারসংক্ষেপ..."
+                        className="w-full mt-1 p-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        English Short Summary (Summary En)
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={htSummaryEn}
+                        onChange={(e) => setHtSummaryEn(e.target.value)}
+                        placeholder="Brief 1-2 line overview for article cards..."
+                        className="w-full mt-1 p-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Full Article Content */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        বাংলা পূর্ণাঙ্গ আর্টিকেল (Full Article Bn) *
+                      </label>
+                      <textarea
+                        rows={5}
+                        value={htDescBn}
+                        onChange={(e) => setHtDescBn(e.target.value)}
+                        placeholder="বিস্তারিত বৈজ্ঞানিক স্বাস্থ্য তথ্য ও ব্যাখ্যা লিখুন..."
+                        className="w-full mt-1 p-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        English Full Article (Full Article En) *
+                      </label>
+                      <textarea
+                        rows={5}
+                        value={htDescEn}
+                        onChange={(e) => setHtDescEn(e.target.value)}
+                        placeholder="Detailed scientific health explanation and clinical guidance..."
+                        className="w-full mt-1 p-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Recommendations (Dos) - One per line */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                        করণীয় ও সুপারিশ (বাংলা - প্রতি লাইনে একটি)
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={htDosBn}
+                        onChange={(e) => setHtDosBn(e.target.value)}
+                        placeholder="প্রতিদিন একটি সেদ্ধ ডিম খান&#10;৮ গ্লাস পানি পান করুন"
+                        className="w-full mt-1 p-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                        Recommendations (English - one per line)
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={htDosEn}
+                        onChange={(e) => setHtDosEn(e.target.value)}
+                        placeholder="Eat one whole boiled egg daily&#10;Maintain 2.5L water intake"
+                        className="w-full mt-1 p-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Things to Avoid (Don'ts) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-rose-700 dark:text-rose-400">
+                        যা এড়িয়ে চলবেন (বাংলা - প্রতি লাইনে একটি)
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={htDontsBn}
+                        onChange={(e) => setHtDontsBn(e.target.value)}
+                        placeholder="অতিরিক্ত মিষ্টি বা সোডা বর্জন করুন&#10;অনিয়ন্ত্রিত ওষুধ খাবেন না"
+                        className="w-full mt-1 p-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-rose-700 dark:text-rose-400">
+                        Things to Avoid (English - one per line)
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={htDontsEn}
+                        onChange={(e) => setHtDontsEn(e.target.value)}
+                        placeholder="Avoid carbonated sugary drinks&#10;Never self-medicate antibiotics"
+                        className="w-full mt-1 p-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Beneficial Foods (Nutritions) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-blue-700 dark:text-blue-400">
+                        উপকারী খাদ্য উপাদান (বাংলা - কমা দিয়ে আলাদা করুন)
+                      </label>
+                      <input
+                        type="text"
+                        value={htNutritionsBn}
+                        onChange={(e) => setHtNutritionsBn(e.target.value)}
+                        placeholder="যেমন: লাল চাল, পালং শাক, দেশি মাছ"
+                        className="w-full mt-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-blue-700 dark:text-blue-400">
+                        Beneficial Nutrients (English - comma separated)
+                      </label>
+                      <input
+                        type="text"
+                        value={htNutritionsEn}
+                        onChange={(e) => setHtNutritionsEn(e.target.value)}
+                        placeholder="e.g. Brown Rice, Spinach, Small Fish"
+                        className="w-full mt-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Warning & When to See Doctor */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-amber-700 dark:text-amber-400">
+                        বাংলা সতর্কবার্তা ও জরুরি লক্ষণ (Warning Bn)
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={htWarningBn}
+                        onChange={(e) => setHtWarningBn(e.target.value)}
+                        placeholder="লক্ষণ তীব্র হলে অবিলম্বে বিশেষজ্ঞ ডাক্তার দেখান..."
+                        className="w-full mt-1 p-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-amber-700 dark:text-amber-400">
+                        English Warning & Red Flags (Warning En)
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={htWarningEn}
+                        onChange={(e) => setHtWarningEn(e.target.value)}
+                        placeholder="Seek emergency hospital evaluation if severe symptoms persist..."
+                        className="w-full mt-1 p-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Source, Source URL, Author, Image, Reading Time */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        তথ্যসূত্র (Source Name)
+                      </label>
+                      <input
+                        type="text"
+                        value={htSource}
+                        onChange={(e) => setHtSource(e.target.value)}
+                        placeholder="e.g. বিশ্ব স্বাস্থ্য সংস্থা (WHO)"
+                        className="w-full mt-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        তথ্যসূত্র লিঙ্ক (Source URL)
+                      </label>
+                      <input
+                        type="url"
+                        value={htSourceUrl}
+                        onChange={(e) => setHtSourceUrl(e.target.value)}
+                        placeholder="https://www.who.int"
+                        className="w-full mt-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        চিকিৎসক/লেখক (Author)
+                      </label>
+                      <input
+                        type="text"
+                        value={htAuthor}
+                        onChange={(e) => setHtAuthor(e.target.value)}
+                        placeholder="ডা. মাহমুদুর রহমান"
+                        className="w-full mt-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        ছবি URL (Image URL)
+                      </label>
+                      <input
+                        type="text"
+                        value={htImage}
+                        onChange={(e) => setHtImage(e.target.value)}
+                        placeholder="https://images.unsplash.com/..."
+                        className="w-full mt-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        পড়ার সময় (Read Time Bn / En)
+                      </label>
+                      <input
+                        type="text"
+                        value={htReadTimeBn}
+                        onChange={(e) => {
+                          setHtReadTimeBn(e.target.value);
+                          setHtReadTimeEn(e.target.value.replace(/পাঠ/g, 'read'));
+                        }}
+                        placeholder="৩ মিনিট পাঠ"
+                        className="w-full mt-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Save, Preview & Submit Buttons */}
+                  <div className="pt-3 flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
+                    <button
+                      onClick={() => {
+                        setIsCreatingHealthTip(false);
+                        setEditingHealthTip(null);
+                      }}
+                      className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-600 dark:text-slate-300 transition"
+                    >
+                      বাতিল
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowArticlePreview(true)}
+                      className="px-4 py-2.5 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+                    >
+                      <Eye className="w-4 h-4" />
+                      <span>প্রিভিউ দেখুন (Preview)</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        if (!htTitleBn.trim() || !htTitleEn.trim()) {
+                          alert('দয়া করে বাংলা এবং ইংরেজি উভয় শিরোনাম পূরণ করুন।');
+                          return;
+                        }
+
+                        const tipId =
+                          editingHealthTip?.id ||
+                          `tip-${htCategory}-${Date.now().toString(36)}`;
+
+                        const parseLines = (text: string) =>
+                          text
+                            .split('\n')
+                            .map((l) => l.trim())
+                            .filter((l) => l.length > 0);
+
+                        const parseComma = (text: string) =>
+                          text
+                            .split(',')
+                            .map((l) => l.trim())
+                            .filter((l) => l.length > 0);
+
+                        const updatedItem: HealthTipItem = {
+                          id: tipId,
+                          category: htCategory,
+                          titleBn: htTitleBn.trim(),
+                          titleEn: htTitleEn.trim(),
+                          summaryBn: htSummaryBn.trim() || htTitleBn.trim(),
+                          summaryEn: htSummaryEn.trim() || htTitleEn.trim(),
+                          image:
+                            htImage.trim() ||
+                            'https://images.unsplash.com/photo-1498837167922-ddd27525d352?auto=format&fit=crop&w=700&q=80',
+                          readTimeBn: htReadTimeBn.trim() || '৩ মিনিট পাঠ',
+                          readTimeEn: htReadTimeEn.trim() || '3 min read',
+                          source: htSource.trim() || 'বিশ্ব স্বাস্থ্য সংস্থা (WHO)',
+                          sourceName: htSource.trim() || 'বিশ্ব স্বাস্থ্য সংস্থা (WHO)',
+                          sourceUrl: htSourceUrl.trim() || 'https://www.who.int',
+                          author: htAuthor.trim() || 'ডা. মাহমুদুর রহমান',
+                          publishedAt: new Date().toISOString().split('T')[0],
+                          updatedAt: 'নভেম্বর ২০২৬',
+                          isPublished: htIsPublished,
+                          isFeatured: htIsFeatured,
+                          isPopular: htIsPopular,
+                          detailsBn: {
+                            description: htDescBn.trim() || htSummaryBn.trim(),
+                            dos: parseLines(htDosBn),
+                            donts: parseLines(htDontsBn),
+                            nutritions: parseComma(htNutritionsBn),
+                            warning: htWarningBn.trim(),
+                          },
+                          detailsEn: {
+                            description: htDescEn.trim() || htSummaryEn.trim(),
+                            dos: parseLines(htDosEn),
+                            donts: parseLines(htDontsEn),
+                            nutritions: parseComma(htNutritionsEn),
+                            warning: htWarningEn.trim(),
+                          },
+                        };
+
+                        const updatedList = addOrUpdateHealthTip(updatedItem);
+                        setHealthTips(updatedList);
+                        setIsCreatingHealthTip(false);
+                        setEditingHealthTip(null);
+                        setHealthSuccessMsg(
+                          editingHealthTip
+                            ? 'পরামর্শ সফলভাবে হালনাগাদ করা হয়েছে!'
+                            : 'নতুন পরামর্শ সফলভাবে তৈরি ও সংরক্ষিত হয়েছে!'
+                        );
+                        setTimeout(() => setHealthSuccessMsg(null), 3000);
+                      }}
+                      className="px-5 py-2.5 bg-[#0B63F6] hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5"
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>সংরক্ষণ করুন (Save Article)</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* =========================================================================
+              SUB-TAB 2: CATEGORY MANAGEMENT
+             ========================================================================= */}
+          {healthSubTab === 'categories' && (
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <button
+                  onClick={() => {
+                    setIsCreatingCategory(true);
+                    setEditingCategory(null);
+                    setCatId(`cat-${Date.now().toString(36)}`);
+                    setCatNameBn('');
+                    setCatNameEn('');
+                    setCatIcon('🩺');
+                    setCatDescBn('');
+                    setCatDescEn('');
+                    setCatOrder(healthCategories.length + 1);
+                    setCatIsActive(true);
+                  }}
+                  className="px-4 py-2.5 bg-[#0B63F6] hover:bg-blue-600 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>নতুন ক্যাটাগরি তৈরি করুন</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (confirm('সকল ক্যাটাগরি ডিফল্ট ৮টি বিভাগে রিসেট করবেন?')) {
+                      const restored = resetHealthCategoriesToDefault();
+                      setHealthCategories(restored);
+                      setHealthSuccessMsg('ক্যাটাগরি ডিফল্ট মান অনুযায়ী রিসেট করা হয়েছে!');
+                      setTimeout(() => setHealthSuccessMsg(null), 3000);
+                    }
+                  }}
+                  className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-semibold transition"
+                >
+                  ডিফল্ট ৮ ক্যাটাগরিতে রিসেট
+                </button>
+              </div>
+
+              {/* Category Edit Form */}
+              {(isCreatingCategory || editingCategory) && (
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex flex-col gap-3 text-left">
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-[#0B63F6]" />
+                    <span>{editingCategory ? 'ক্যাটাগরি সম্পাদনা' : 'নতুন ক্যাটাগরি'}</span>
+                  </h4>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">আইকন (Emoji)</label>
+                      <input
+                        type="text"
+                        value={catIcon}
+                        onChange={(e) => setCatIcon(e.target.value)}
+                        className="w-full mt-1 px-3 py-2 text-base bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">আইডি (Unique ID)</label>
+                      <input
+                        type="text"
+                        value={catId}
+                        disabled={!!editingCategory}
+                        onChange={(e) => setCatId(e.target.value)}
+                        className="w-full mt-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl disabled:opacity-50"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">ক্রম (Display Order)</label>
+                      <input
+                        type="number"
+                        value={catOrder}
+                        onChange={(e) => setCatOrder(parseInt(e.target.value, 10) || 1)}
+                        className="w-full mt-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 pt-6">
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 dark:text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={catIsActive}
+                          onChange={(e) => setCatIsActive(e.target.checked)}
+                          className="w-4 h-4 accent-[#0B63F6] rounded"
+                        />
+                        <span>সক্রিয় (Active)</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">বাংলা নাম (Name Bn) *</label>
+                      <input
+                        type="text"
+                        value={catNameBn}
+                        onChange={(e) => setCatNameBn(e.target.value)}
+                        placeholder="যেমন: পুষ্টি ও খাদ্যাভ্যাস"
+                        className="w-full mt-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">English Name (Name En) *</label>
+                      <input
+                        type="text"
+                        value={catNameEn}
+                        onChange={(e) => setCatNameEn(e.target.value)}
+                        placeholder="e.g. Nutrition & Diet"
+                        className="w-full mt-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">বাংলা বিবরণ (Description Bn)</label>
+                      <input
+                        type="text"
+                        value={catDescBn}
+                        onChange={(e) => setCatDescBn(e.target.value)}
+                        placeholder="সংক্ষিপ্ত এক লাইনের বিবরণ..."
+                        className="w-full mt-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">English Description (Description En)</label>
+                      <input
+                        type="text"
+                        value={catDescEn}
+                        onChange={(e) => setCatDescEn(e.target.value)}
+                        placeholder="Short one-line description..."
+                        className="w-full mt-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                    <button
+                      onClick={() => {
+                        setIsCreatingCategory(false);
+                        setEditingCategory(null);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-600 dark:text-slate-300"
+                    >
+                      বাতিল
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!catNameBn.trim() || !catNameEn.trim() || !catId.trim()) {
+                          alert('দয়া করে ক্যাটাগরির আইডি এবং উভয় ভাষায় নাম প্রদান করুন।');
+                          return;
+                        }
+                        const newCat: HealthCategoryItem = {
+                          id: catId.trim(),
+                          nameBn: catNameBn.trim(),
+                          nameEn: catNameEn.trim(),
+                          icon: catIcon.trim() || '🩺',
+                          descriptionBn: catDescBn.trim(),
+                          descriptionEn: catDescEn.trim(),
+                          order: catOrder,
+                          isActive: catIsActive,
+                        };
+                        const updated = addOrUpdateHealthCategory(newCat);
+                        setHealthCategories(updated);
+                        setIsCreatingCategory(false);
+                        setEditingCategory(null);
+                        setHealthSuccessMsg('ক্যাটাগরি সফলভাবে সংরক্ষিত হয়েছে!');
+                        setTimeout(() => setHealthSuccessMsg(null), 3000);
+                      }}
+                      className="px-4 py-2 bg-[#0B63F6] text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5"
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>সংরক্ষণ করুন</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Categories List */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {healthCategories.map((c) => (
+                  <div
+                    key={c.id}
+                    className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl flex items-center justify-between gap-3 shadow-2xs"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-2xl p-2 bg-slate-100 dark:bg-slate-800 rounded-xl shrink-0">
+                        {c.icon}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                            {c.nameBn}
+                          </h4>
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                              c.isActive
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                                : 'bg-slate-200 text-slate-600 dark:bg-slate-800'
+                            }`}
+                          >
+                            {c.isActive ? 'সক্রিয়' : 'নিষ্ক্রিয়'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-400 truncate">EN: {c.nameEn}</p>
+                        <span className="text-[10px] text-slate-400">ক্রম: {c.order} | ID: {c.id}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => {
+                          setEditingCategory(c);
+                          setIsCreatingCategory(false);
+                          setCatId(c.id);
+                          setCatNameBn(c.nameBn);
+                          setCatNameEn(c.nameEn);
+                          setCatIcon(c.icon);
+                          setCatDescBn(c.descriptionBn);
+                          setCatDescEn(c.descriptionEn);
+                          setCatOrder(c.order);
+                          setCatIsActive(c.isActive);
+                        }}
+                        className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-[#0B63F6] hover:bg-blue-100 dark:hover:bg-blue-900/50 transition"
+                        title="সম্পাদনা"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm(`আপনি কি "${c.nameBn}" ক্যাটাগরিটি মুছে ফেলতে চান?`)) {
+                            const updated = deleteHealthCategory(c.id);
+                            setHealthCategories(updated);
+                            setHealthSuccessMsg('ক্যাটাগরি মুছে ফেলা হয়েছে।');
+                            setTimeout(() => setHealthSuccessMsg(null), 3000);
+                          }
+                        }}
+                        className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-900/50 transition"
+                        title="মুছে ফেলুন"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* =========================================================================
+              MODAL: ARTICLE PREVIEW BEFORE PUBLISH
+             ========================================================================= */}
+          {showArticlePreview && (
+            <div
+              className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4"
+              onClick={() => setShowArticlePreview(false)}
+            >
+              <div
+                className="bg-[#071B35] text-white border border-[#153D55] rounded-3xl max-w-xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="p-4 border-b border-[#112B48] bg-[#112B48] flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Eye className="w-4 h-4 text-[#69DCC0]" />
+                    <h3 className="text-sm font-bold text-white">আর্টিকেল প্রিভিউ (Live Preview)</h3>
+                  </div>
+                  <button
+                    onClick={() => setShowArticlePreview(false)}
+                    className="p-1 text-[#8FA9C4] hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="p-5 overflow-y-auto space-y-4">
+                  {/* Bengali Section Preview */}
+                  <div className="p-4 rounded-2xl bg-[#112B48] border border-[#153D55] space-y-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#153D55] text-[#69DCC0]">
+                      বাংলা প্রিভিউ
+                    </span>
+                    <h4 className="text-base font-bold text-white">{htTitleBn || 'শিরোনাম দেওয়া হয়নি'}</h4>
+                    <p className="text-xs text-[#8FA9C4]">{htSummaryBn || 'সংক্ষিপ্ত সারসংক্ষেপ...'}</p>
+                    <div className="text-xs text-[#8FA9C4] border-t border-[#153D55] pt-2 whitespace-pre-wrap">
+                      {htDescBn || 'পূর্ণাঙ্গ আর্টিকেল বর্ণনা...'}
+                    </div>
+                    {htWarningBn && (
+                      <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-300 text-xs font-semibold">
+                        ⚠️ {htWarningBn}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* English Section Preview */}
+                  <div className="p-4 rounded-2xl bg-[#112B48] border border-[#153D55] space-y-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#153D55] text-[#69DCC0]">
+                      English Preview
+                    </span>
+                    <h4 className="text-base font-bold text-white">{htTitleEn || 'No English Title'}</h4>
+                    <p className="text-xs text-[#8FA9C4]">{htSummaryEn || 'Short summary...'}</p>
+                    <div className="text-xs text-[#8FA9C4] border-t border-[#153D55] pt-2 whitespace-pre-wrap">
+                      {htDescEn || 'Full article description...'}
+                    </div>
+                    {htWarningEn && (
+                      <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-300 text-xs font-semibold">
+                        ⚠️ {htWarningEn}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-3 border-t border-[#112B48] bg-[#112B48] flex justify-end">
+                  <button
+                    onClick={() => setShowArticlePreview(false)}
+                    className="px-4 py-2 bg-[#69DCC0] text-[#071B35] font-black text-xs rounded-xl"
+                  >
+                    প্রিভিউ বন্ধ করুন
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* =========================================================================
           TAB 1: BOOKS & GUIDES WRITER (বই ও গাইড রাইটার)
@@ -2047,6 +3401,7 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }
           <button
             onClick={() => {
               const fullBackup = {
+                healthTips: getStoredHealthTips(),
                 books: getStoredBooks(),
                 notes: getStoredNotes(),
                 folders: getStoredFolders(),

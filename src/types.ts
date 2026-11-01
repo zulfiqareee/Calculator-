@@ -18,11 +18,32 @@ export type ToolId =
   | 'alarm'
   | string;
 
-export type HealthAudience = 'child' | 'elderly' | 'general' | 'women' | 'firstaid';
+export type HealthCategory =
+  | 'nutrition'
+  | 'fitness'
+  | 'mental'
+  | 'hygiene'
+  | 'firstaid'
+  | 'prevention'
+  | 'family'
+  | 'seasonal';
+
+export type HealthAudience = HealthCategory | 'child' | 'elderly' | 'general' | 'women';
+
+export interface HealthCategoryItem {
+  id: string;
+  nameBn: string;
+  nameEn: string;
+  icon: string;
+  descriptionBn: string;
+  descriptionEn: string;
+  order: number;
+  isActive: boolean;
+}
 
 export interface HealthTipItem {
   id: string;
-  category: HealthAudience;
+  category: HealthCategory | string;
   titleBn: string;
   titleEn: string;
   summaryBn: string;
@@ -30,18 +51,30 @@ export interface HealthTipItem {
   image: string;
   readTimeBn: string;
   readTimeEn: string;
+  source?: string;
+  sourceName?: string;
+  sourceUrl?: string;
+  author?: string;
+  publishedAt?: string;
+  updatedAt?: string;
+  isPublished?: boolean;
+  isFeatured?: boolean;
+  isPopular?: boolean;
+  keywords?: string[];
   detailsBn: {
     description: string;
     dos: string[];
-    donts: string[];
+    donts?: string[];
     nutritions?: string[];
+    warning?: string;
     whenToSeeDoctor?: string;
   };
   detailsEn: {
     description: string;
     dos: string[];
-    donts: string[];
+    donts?: string[];
     nutritions?: string[];
+    warning?: string;
     whenToSeeDoctor?: string;
   };
 }
