@@ -146,19 +146,6 @@ export const TOOLS_LIST: ToolItem[] = [
     gradient: 'from-emerald-600 to-teal-800',
     accentColor: 'text-emerald-600',
   },
-  {
-    id: 'alarm',
-    category: 'daily',
-    titleEn: 'Smart Alarm & Reminder',
-    titleBn: 'স্মার্ট অ্যালার্ম ও রিমাইন্ডার',
-    descEn: 'Offline alarm with custom tones, repeat days, snooze & digital clock.',
-    descBn: 'মধুর সুর সহ নির্ভরযোগ্য অফলাইন অ্যালার্ম, স্নুজ, পুনরাবৃত্তি ও ডিজিটাল ঘড়ি।',
-    badgeEn: 'Alarm',
-    badgeBn: 'অ্যালার্ম',
-    iconName: 'Bell',
-    gradient: 'from-indigo-600 to-purple-700',
-    accentColor: 'text-indigo-600',
-  },
 ];
 
 export const UI_TEXT = {
@@ -228,7 +215,7 @@ export const UI_TEXT = {
       title: 'About SmartHub – All-in-One Tools',
       version: 'Version 1.0.0 (Offline-First)',
       developer: 'Independent Android Developer Project',
-      description: 'SmartHub – All-in-One Tools is designed for high-performance offline calculations, holy Quran reading, smart alarms, and utility management with zero server costs.',
+      description: 'SmartHub – All-in-One Tools is designed for high-performance offline calculations, holy Quran reading, and utility management with zero server costs.',
       features: [
         '100% Offline-first: zero backend, no cloud dependency, zero hosting bills.',
         'No registration or personal data collection.',

@@ -15,7 +15,6 @@ export type ToolId =
   | 'prayer-times'
   | 'health-tips'
   | 'quran-pdf'
-  | 'alarm'
   | string;
 
 export type HealthCategory =

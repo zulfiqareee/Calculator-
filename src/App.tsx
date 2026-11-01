@@ -58,12 +58,6 @@ import {
 import { getStoredCustomTools } from './utils/customToolsStorage';
 import { AUTHORIZED_ADMIN_EMAIL } from './utils/adminAuth';
 import { TOOLS_LIST, UI_TEXT, formatNumber } from './i18n/translations';
-import {
-  AlarmItem,
-  subscribeToAlarmTrigger,
-  checkAndTriggerDueAlarms,
-} from './utils/alarmStorage';
-import { AlarmRingingOverlay } from './components/tools/AlarmRingingOverlay';
 
 // Standard Tools
 import { BasicCalculator } from './components/tools/BasicCalculator';
@@ -79,7 +73,6 @@ import { PrayerTimesView } from './components/tools/PrayerTimesView';
 import { CompactHomeWeatherWidget } from './components/tools/CompactHomeWeatherWidget';
 import { HealthTipsView } from './components/tools/HealthTipsView';
 import { QuranPdfReader } from './components/tools/QuranPdfReader';
-import { SmartAlarmClock } from './components/tools/SmartAlarmClock';
 
 // Hero Banner & Views
 import { AdminPanel } from './components/admin/AdminPanel';
@@ -113,25 +106,6 @@ export default function App() {
   const [exitToastVisible, setExitToastVisible] = useState<boolean>(false);
   const lastBackPressRef = React.useRef<number>(0);
 
-  // Global Alarm State & Monitor across all screens and tabs
-  const [globalRingingAlarm, setGlobalRingingAlarm] = useState<AlarmItem | null>(null);
-
-  React.useEffect(() => {
-    // 1. Subscribe to active ringing alarm changes
-    const unsubscribe = subscribeToAlarmTrigger((alarm) => {
-      setGlobalRingingAlarm(alarm);
-    });
-
-    // 2. Check due alarms every second
-    const timer = setInterval(() => {
-      checkAndTriggerDueAlarms();
-    }, 1000);
-
-    return () => {
-      unsubscribe();
-      clearInterval(timer);
-    };
-  }, []);
 
   const activeToolIdRef = React.useRef(activeToolId);
   const specialViewRef = React.useRef(specialView);
@@ -427,8 +401,6 @@ export default function App() {
         return <HealthTipsView lang={lang} onOpenBmi={() => openTool('bmi-calorie')} />;
       case 'quran-pdf':
         return <QuranPdfReader lang={lang} />;
-      case 'alarm':
-        return <SmartAlarmClock lang={lang} />;
       default:
         return null;
     }
@@ -1221,10 +1193,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Global Ringing Alarm Fullscreen Display - Guaranteed visible anywhere in the app */}
-      {globalRingingAlarm && (
-        <AlarmRingingOverlay alarm={globalRingingAlarm} lang={lang} />
-      )}
 
       {/* Android Double-Tap Back Exit Toast Notification */}
       {exitToastVisible && (
