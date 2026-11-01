@@ -25,7 +25,13 @@ import {
 } from 'lucide-react';
 import { Language } from '../../types';
 import { QuranSurah, QuranAyah, getStoredSurahs, addOrUpdateSurah } from '../../utils/quranStorage';
-import { renderTajweedBengaliText, arabicToBengaliTajweed, TAJWEED_RULES } from '../../utils/tajweedHelper';
+import {
+  renderTajweedBengaliText,
+  arabicToBengaliTajweed,
+  cleanBengaliPronunciation,
+  quranTransToBengali,
+  TAJWEED_RULES,
+} from '../../utils/tajweedHelper';
 
 interface Props {
   lang: Language;
@@ -38,9 +44,10 @@ export const QuranPdfReader: React.FC<Props> = ({ lang }) => {
   const [filterType, setFilterType] = useState<'all' | 'মাক্কী' | 'মাদানী' | 'juz'>('all');
   const [selectedJuz, setSelectedJuz] = useState<number>(1);
   const [copiedAyah, setCopiedAyah] = useState<number | null>(null);
-  const [fontSize, setFontSize] = useState<number>(22); // Arabic font size
+  const [fontSize, setFontSize] = useState<number>(24); // Arabic font size
   const [isLoadingOnline, setIsLoadingOnline] = useState<boolean>(false);
   const [onlineFetchSuccess, setOnlineFetchSuccess] = useState<string | null>(null);
+  const [showPronunciation, setShowPronunciation] = useState<boolean>(true);
   const [enableTajweedHighlight, setEnableTajweedHighlight] = useState<boolean>(true);
   const [showTajweedModal, setShowTajweedModal] = useState<boolean>(false);
   const [bookmarkedSurahId, setBookmarkedSurahId] = useState<string | null>(() => {
@@ -69,14 +76,15 @@ export const QuranPdfReader: React.FC<Props> = ({ lang }) => {
     }
   };
 
-  // Fetch complete verses online from Al-Quran Cloud API
+  // Fetch complete verses online from Al-Quran Cloud API with authentic Arabic and Bengali
   const handleFetchFullSurahOnline = async () => {
     if (!selectedSurah) return;
     setIsLoadingOnline(true);
     setOnlineFetchSuccess(null);
     try {
+      // Fetch Uthmani Arabic, Muhiuddin Khan Bengali translation, and International Transliteration
       const resp = await fetch(
-        `https://api.alquran.cloud/v1/surah/${selectedSurah.surahNumber}/editions/quran-uthmani,bn.bengali`
+        `https://api.alquran.cloud/v1/surah/${selectedSurah.surahNumber}/editions/quran-uthmani,bn.bengali,en.transliteration`
       );
       if (!resp.ok) {
         throw new Error('Network error or API unavailable');
@@ -85,14 +93,67 @@ export const QuranPdfReader: React.FC<Props> = ({ lang }) => {
       if (json.code === 200 && Array.isArray(json.data) && json.data.length >= 2) {
         const arAyahs = json.data[0].ayahs;
         const bnAyahs = json.data[1].ayahs;
+        const enAyahs = json.data[2]?.ayahs || [];
+
+        // Build a map of existing ayahs to preserve curated authentic pronunciations
+        const existingAyahMap = new Map<number, QuranAyah>();
+        (selectedSurah.ayahs || []).forEach((a) => {
+          if (a.pronunciation && a.pronunciation.trim()) {
+            existingAyahMap.set(a.ayahNumber, a);
+          }
+        });
+
+        // Helper to strip prepended Bismillah on Ayah 1 for Surahs 2-114
+        const stripBismillah = (text: string) => {
+          const cleaned = text.replace(/^\uFEFF/, '').trim();
+          const words = cleaned.split(/\s+/);
+          if (words.length >= 4) {
+            const first4 = words
+              .slice(0, 4)
+              .map((w) => w.replace(/[\u064B-\u065F\u0670\u06E1\u06D6-\u06ED]/g, '').replace(/[ٱإأآ]/g, 'ا'))
+              .join(' ');
+            if (first4 === 'بسم الله الرحمن الرحيم') {
+              return words.slice(4).join(' ').trim();
+            }
+          }
+          return cleaned;
+        };
 
         const newAyahs: QuranAyah[] = arAyahs.map((arItem: any, idx: number) => {
           const bnItem = bnAyahs[idx];
+          const enItem = enAyahs[idx];
+          const ayahNum = arItem.numberInSurah;
+
+          // 1. Clean Arabic text without leading BOM or duplicated Bismillah prefix
+          let cleanAr = String(arItem.text || '').replace(/^\uFEFF/, '').trim();
+          if (selectedSurah.surahNumber !== 1 && ayahNum === 1) {
+            cleanAr = stripBismillah(cleanAr);
+          }
+
+          // 2. Clean Bengali translation
+          const banglaText = bnItem ? String(bnItem.text || '').trim() : '';
+
+          // 3. Clean, authentic Bengali pronunciation
+          let pron = '';
+          const existing = existingAyahMap.get(ayahNum);
+          if (existing && existing.pronunciation) {
+            pron = cleanBengaliPronunciation(existing.pronunciation);
+          } else if (enItem && enItem.text) {
+            let enText = String(enItem.text).trim();
+            if (selectedSurah.surahNumber !== 1 && ayahNum === 1) {
+              enText = enText.replace(/^Bismillaahir\s+Rahmaanir\s+Raheem\s*/i, '').trim();
+            }
+            pron = quranTransToBengali(enText);
+          } else {
+            pron = arabicToBengaliTajweed(cleanAr);
+          }
+          pron = cleanBengaliPronunciation(pron);
+
           return {
-            ayahNumber: arItem.numberInSurah,
-            arabic: arItem.text,
-            pronunciation: arabicToBengaliTajweed(arItem.text),
-            bangla: bnItem ? bnItem.text : '',
+            ayahNumber: ayahNum,
+            arabic: cleanAr,
+            pronunciation: pron,
+            bangla: banglaText,
           };
         });
 
@@ -106,10 +167,10 @@ export const QuranPdfReader: React.FC<Props> = ({ lang }) => {
         setSelectedSurah(updated);
         setOnlineFetchSuccess(
           lang === 'bn'
-            ? `মাশাআল্লাহ! সম্পূর্ণ ${toBn(newAyahs.length)}টি আয়াত সফলভাবে সংরক্ষিত হয়েছে।`
-            : `Success! All ${newAyahs.length} ayahs saved offline.`
+            ? `মাশাআল্লাহ! সম্পূর্ণ ${toBn(newAyahs.length)}টি আয়াত বিশুদ্ধ আরবি ও বাংলা উচ্চারণ-অনুবাদ সহ সংরক্ষিত হয়েছে।`
+            : `Success! All ${newAyahs.length} ayahs saved offline with authentic Arabic text & Bengali translation.`
         );
-        setTimeout(() => setOnlineFetchSuccess(null), 4000);
+        setTimeout(() => setOnlineFetchSuccess(null), 5000);
       }
     } catch (e) {
       console.error('Failed to fetch full surah online:', e);
@@ -333,11 +394,25 @@ export const QuranPdfReader: React.FC<Props> = ({ lang }) => {
                 className={`p-1.5 rounded-lg transition ${
                   enableTajweedHighlight
                     ? 'text-emerald-700 bg-emerald-100 dark:bg-emerald-900/60'
-                    : 'text-slate-400 hover:bg-slate-100'
+                    : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
                 title={lang === 'bn' ? 'টান ও তাজবীদ কালার কোড অন/অফ' : 'Toggle Tajweed color highlights'}
               >
-                {enableTajweedHighlight ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                <Sliders className="w-4 h-4" />
+              </button>
+
+              {/* Show/Hide Pronunciation toggle */}
+              <button
+                onClick={() => setShowPronunciation(!showPronunciation)}
+                className={`px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition ${
+                  showPronunciation
+                    ? 'text-emerald-700 bg-emerald-100 dark:bg-emerald-900/60'
+                    : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+                title={lang === 'bn' ? (showPronunciation ? 'উচ্চারণ লুকান' : 'উচ্চারণ দেখান') : 'Toggle Bengali Pronunciation'}
+              >
+                {showPronunciation ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span className="text-[11px] font-bold hidden sm:inline">{lang === 'bn' ? 'উচ্চারণ' : 'Pron.'}</span>
               </button>
 
               <button
@@ -506,28 +581,28 @@ export const QuranPdfReader: React.FC<Props> = ({ lang }) => {
                   </div>
 
                   {/* Arabic Text */}
-                  <div className="text-right">
+                  <div className="text-right py-1">
                     <p
                       dir="rtl"
-                      style={{ fontSize: `${fontSize}px`, lineHeight: 1.9 }}
-                      className="font-arabic font-bold text-slate-900 dark:text-emerald-50 tracking-wide select-text"
+                      style={{ fontSize: `${fontSize}px`, lineHeight: 2.2 }}
+                      className="font-arabic font-normal text-slate-900 dark:text-emerald-50 tracking-wide select-text leading-loose"
                     >
                       {ayah.arabic}
-                      <span className="inline-block mx-1.5 text-emerald-600 dark:text-emerald-400 font-bold text-sm">
+                      <span className="inline-block mx-2 text-emerald-600 dark:text-emerald-400 font-bold text-sm">
                         ۝{toBn(ayah.ayahNumber)}
                       </span>
                     </p>
                   </div>
 
-                  {/* Pronunciation (Bangla) with Tajweed Highlights - ALWAYS SHOWN */}
-                  {(() => {
-                    const pronText = (ayah.pronunciation && ayah.pronunciation.trim()) || arabicToBengaliTajweed(ayah.arabic);
+                  {/* Pronunciation (Bangla) with Tajweed Highlights */}
+                  {showPronunciation && (() => {
+                    const pronText = cleanBengaliPronunciation(ayah.pronunciation || '');
                     if (!pronText) return null;
                     return (
                       <div className="text-xs text-slate-800 dark:text-slate-200 bg-emerald-50/60 dark:bg-emerald-950/25 p-3 rounded-2xl leading-relaxed border border-emerald-100/80 dark:border-emerald-900/40">
                         <div className="flex items-center justify-between mb-1.5">
                           <strong className="text-emerald-700 dark:text-emerald-400 font-bold text-[11px] flex items-center gap-1">
-                            <span>{lang === 'bn' ? 'বাংলা উচ্চারণ (টান ও তাজবীদ সহ):' : 'Bengali Pronunciation (Tajweed Marked):'}</span>
+                            <span>{lang === 'bn' ? 'বাংলা উচ্চারণ (সহজ ও নির্ভুল):' : 'Bengali Pronunciation:'}</span>
                           </strong>
                           <button
                             onClick={() => setShowTajweedModal(true)}

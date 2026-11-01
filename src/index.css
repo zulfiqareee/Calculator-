@@ -6,6 +6,7 @@
   :root {
     --font-bengali: 'Hind Siliguri', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
     --font-latin: 'Plus Jakarta Sans', 'Hind Siliguri', system-ui, -apple-system, sans-serif;
+    --font-arabic: 'Amiri Quran', 'Amiri', 'Scheherazade New', 'Lateef', 'Traditional Arabic', 'Noto Naskh Arabic', serif;
   }
 
   body {
@@ -17,6 +18,17 @@
   /* Bengali text styling support */
   [lang="bn"], body {
     font-family: var(--font-bengali);
+  }
+
+  /* Authentic Arabic Quran Typography */
+  .font-arabic, [dir="rtl"].font-arabic {
+    font-family: var(--font-arabic) !important;
+    font-feature-settings: "cv01" on, "cv02" on, "locl" on, "calt" on, "liga" on;
+    font-variant-ligatures: common-ligatures contextual;
+    text-rendering: optimizeLegibility;
+    direction: rtl;
+    line-height: 2.2;
+    word-spacing: 0.15em;
   }
 
   /* Essential for mobile typing & IME composition in Bengali (Avro, Ridmik, Gboard) */
