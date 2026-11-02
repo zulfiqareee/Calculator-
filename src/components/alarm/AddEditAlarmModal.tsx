@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Bell,
   X,
@@ -6,6 +6,7 @@ import {
   Smartphone,
   Play,
   Square,
+  Upload,
 } from 'lucide-react';
 import { Language } from '../../types';
 import {
@@ -15,6 +16,7 @@ import {
   startAlarmAudioPlayback,
   stopAlarmAudioPlayback,
   getCustomSoundData,
+  saveCustomSoundData,
   unlockAudio,
 } from '../../utils/alarmEngine';
 
@@ -43,7 +45,9 @@ export const AddEditAlarmModal: React.FC<Props> = ({
   onClose,
 }) => {
   const settings = getAlarmSettings();
-  const customSound = getCustomSoundData();
+  const [customSound, setCustomSound] = useState(getCustomSoundData());
+  const [customUploadMsg, setCustomUploadMsg] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Form states
   const [selectedHour, setSelectedHour] = useState<number>(6);
@@ -57,6 +61,32 @@ export const AddEditAlarmModal: React.FC<Props> = ({
   const [snoozeEnabled, setSnoozeEnabled] = useState<boolean>(true);
   const [snoozeMins, setSnoozeMins] = useState<number>(5);
   const [previewingTone, setPreviewingTone] = useState<SoundToneType | null>(null);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      alert(lang === 'bn' ? 'অডিও ফাইলটি ১০ মেগাবাইটের কম হতে হবে।' : 'File must be under 10MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      if (result) {
+        saveCustomSoundData(file.name, result);
+        setCustomSound({ name: file.name, url: result });
+        setTone('custom');
+        setCustomUploadMsg(
+          lang === 'bn'
+            ? `"${file.name}" রিংটোন হিসেবে নির্বাচিত হয়েছে!`
+            : `"${file.name}" selected as ringtone!`
+        );
+        setTimeout(() => setCustomUploadMsg(null), 3500);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   useEffect(() => {
     if (alarm) {
@@ -472,6 +502,31 @@ export const AddEditAlarmModal: React.FC<Props> = ({
                 </div>
               )}
             </div>
+
+            {/* Upload Ringtone from Phone Storage / Files Button */}
+            <div className="mt-2.5">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="audio/*"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full py-2.5 px-3.5 rounded-2xl bg-neutral-900 border border-neutral-800 hover:border-[#0B63F6] text-xs font-bold text-neutral-300 hover:text-white flex items-center justify-center gap-2 transition active:scale-98"
+              >
+                <Upload className="w-4 h-4 text-[#0B63F6]" />
+                <span>{lang === 'bn' ? 'ফোন ফাইল / স্টোরেজ থেকে রিংটোন নিন' : 'Pick Ringtone from Device Files'}</span>
+              </button>
+            </div>
+
+            {customUploadMsg && (
+              <div className="mt-2 p-2 rounded-xl bg-emerald-600/90 text-white text-[11px] font-bold text-center animate-fade-in">
+                {customUploadMsg}
+              </div>
+            )}
           </div>
 
           {/* Vibration & Snooze ON/OFF */}

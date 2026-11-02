@@ -161,24 +161,39 @@ export const CompactHomeWeatherWidget: React.FC<Props> = ({ lang, onOpenDetails 
   };
 
   useEffect(() => {
+    let targetLat = 23.8103;
+    let targetLon = 90.4125;
+    let targetName = lang === 'bn' ? 'ঢাকা (Dhaka)' : 'Dhaka, Bangladesh';
+    let isGps = false;
+
+    try {
+      const saved = localStorage.getItem('user_gps_coords');
+      if (saved) {
+        const p = JSON.parse(saved);
+        targetLat = p.lat;
+        targetLon = p.lon;
+        targetName = p.name || (lang === 'bn' ? 'বর্তমান জিপিএস অবস্থান' : 'Live GPS');
+        isGps = true;
+      }
+    } catch {}
+
     if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          fetchWeather(
-            pos.coords.latitude,
-            pos.coords.longitude,
-            lang === 'bn' ? 'বর্তমান জিপিএস অবস্থান' : 'Current GPS Location',
-            true
-          );
+          const locLabel = lang === 'bn' ? 'বর্তমান জিপিএস অবস্থান' : 'Live GPS';
+          fetchWeather(pos.coords.latitude, pos.coords.longitude, locLabel, true);
+          try {
+            localStorage.setItem(
+              'user_gps_coords',
+              JSON.stringify({ lat: pos.coords.latitude, lon: pos.coords.longitude, name: locLabel })
+            );
+          } catch {}
         },
         () => {
-          // Default Dhaka
-          fetchWeather(23.8103, 90.4125, lang === 'bn' ? 'ঢাকা (Dhaka)' : 'Dhaka, Bangladesh', false);
+          fetchWeather(targetLat, targetLon, targetName, isGps);
         },
-        { timeout: 6000 }
+        { timeout: 7000 }
       );
-    } else {
-      fetchWeather(23.8103, 90.4125, lang === 'bn' ? 'ঢাকা (Dhaka)' : 'Dhaka, Bangladesh', false);
     }
   }, [lang]);
 

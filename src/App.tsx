@@ -73,6 +73,8 @@ import { PrayerTimesView } from './components/tools/PrayerTimesView';
 import { CompactHomeWeatherWidget } from './components/tools/CompactHomeWeatherWidget';
 import { HealthTipsView } from './components/tools/HealthTipsView';
 import { QuranPdfReader } from './components/tools/QuranPdfReader';
+import { CompassTool } from './components/tools/CompassTool';
+import { PermissionManagerModal } from './components/permissions/PermissionManagerModal';
 import { AlarmMainView } from './components/alarm/AlarmMainView';
 import { AlarmRingingScreen } from './components/alarm/AlarmRingingScreen';
 import {
@@ -130,6 +132,16 @@ export default function App() {
   }, []);
 
 
+  const [showPermissionModal, setShowPermissionModal] = useState<boolean>(false);
+  const showPermissionModalRef = React.useRef(showPermissionModal);
+  React.useEffect(() => { showPermissionModalRef.current = showPermissionModal; }, [showPermissionModal]);
+
+  // Hierarchical back action registration from active tool sub-views (e.g. Health article detail, Quran Surah reader)
+  const activeBackActionRef = React.useRef<(() => boolean) | null>(null);
+  const registerBackAction = React.useCallback((handler: (() => boolean) | null) => {
+    activeBackActionRef.current = handler;
+  }, []);
+
   const activeToolIdRef = React.useRef(activeToolId);
   const specialViewRef = React.useRef(specialView);
   const isDrawerOpenRef = React.useRef(isDrawerOpen);
@@ -143,6 +155,22 @@ export default function App() {
   React.useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
 
   const handleAppBack = React.useCallback(() => {
+    // 0. If global ringing alarm is active, prevent back dismissal
+    if (globalRingingAlarm) {
+      return;
+    }
+
+    // 0.2 If Permission Manager Modal is open, close it
+    if (showPermissionModalRef.current) {
+      setShowPermissionModal(false);
+      return;
+    }
+
+    // 0.5 Hierarchical Sub-View Back: If the active sub-component registered a handler (e.g. health article, reading screen), run it first!
+    if (activeBackActionRef.current && activeBackActionRef.current()) {
+      return; // Handled internally by child component (stepped back 1 level)
+    }
+
     // 1. If Drawer is open, close it
     if (isDrawerOpenRef.current) {
       setIsDrawerOpen(false);
@@ -151,6 +179,7 @@ export default function App() {
 
     // 2. If an active tool is open, close it and return to home
     if (activeToolIdRef.current) {
+      activeBackActionRef.current = null;
       setActiveToolId(null);
       return;
     }
@@ -306,6 +335,7 @@ export default function App() {
   };
 
   const openTool = (id: ToolId) => {
+    activeBackActionRef.current = null;
     setActiveToolId(id);
     setSpecialView('none');
     addStoredRecent(id);
@@ -315,6 +345,11 @@ export default function App() {
   };
 
   const closeTool = () => {
+    // If the child tool has an open modal/subview, step back inside it first!
+    if (activeBackActionRef.current && activeBackActionRef.current()) {
+      return;
+    }
+    activeBackActionRef.current = null;
     setActiveToolId(null);
   };
 
@@ -421,9 +456,22 @@ export default function App() {
       case 'prayer-times':
         return <PrayerTimesView lang={lang} />;
       case 'health-tips':
-        return <HealthTipsView lang={lang} onOpenBmi={() => openTool('bmi-calorie')} />;
+        return (
+          <HealthTipsView
+            lang={lang}
+            onOpenBmi={() => openTool('bmi-calorie')}
+            onRegisterBackAction={registerBackAction}
+          />
+        );
       case 'quran-pdf':
-        return <QuranPdfReader lang={lang} />;
+        return (
+          <QuranPdfReader
+            lang={lang}
+            onRegisterBackAction={registerBackAction}
+          />
+        );
+      case 'compass':
+        return <CompassTool lang={lang} />;
       case 'alarm':
         return <AlarmMainView lang={lang} />;
       default:
@@ -861,6 +909,27 @@ export default function App() {
                       <ChevronRight className="w-4 h-4 text-slate-400" />
                     </button>
 
+                    {/* App Permissions Control Button */}
+                    <button
+                      onClick={() => setShowPermissionModal(true)}
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl flex items-center justify-between shadow-xs active:scale-98 transition text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center">
+                          <Sliders className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white block">
+                            {lang === 'bn' ? 'অ্যাপ পারমিশন নিয়ন্ত্রণ' : 'App Permissions Manager'}
+                          </span>
+                          <span className="text-[11px] text-slate-400 block">
+                            {lang === 'bn' ? 'GPS লোকেশন, নোটিফিকেশন ও অডিও ফাইল অনুমতি' : 'GPS location, notifications & device audio permissions'}
+                          </span>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-400" />
+                    </button>
+
                     {/* About & Policy */}
                     <button
                       onClick={() => setSettingsSubView('about')}
@@ -1184,7 +1253,27 @@ export default function App() {
                   <span>{lang === 'bn' ? 'আল-কুরআনুল কারীম' : 'Holy Quran'}</span>
                 </button>
 
+                <button
+                  onClick={() => {
+                    openTool('compass');
+                    setIsDrawerOpen(false);
+                  }}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-left"
+                >
+                  <Compass className="w-4 h-4 text-amber-500" />
+                  <span>{lang === 'bn' ? 'ডিজিটাল কম্পাস ও দিকদর্শন' : 'Digital Compass'}</span>
+                </button>
 
+                <button
+                  onClick={() => {
+                    setShowPermissionModal(true);
+                    setIsDrawerOpen(false);
+                  }}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-left"
+                >
+                  <Sliders className="w-4 h-4 text-indigo-500" />
+                  <span>{lang === 'bn' ? 'অ্যাপ পারমিশন নিয়ন্ত্রণ' : 'App Permissions'}</span>
+                </button>
 
                 {/* Exclusive Admin Panel Link */}
                 <button
@@ -1218,11 +1307,17 @@ export default function App() {
         </div>
       )}
 
-
       {/* Global Ringing Alarm Screen - Strictly NO ADS */}
       {globalRingingAlarm && (
         <AlarmRingingScreen alarm={globalRingingAlarm} lang={lang} />
       )}
+
+      {/* Android Permissions Manager Modal */}
+      <PermissionManagerModal
+        isOpen={showPermissionModal}
+        onClose={() => setShowPermissionModal(false)}
+        lang={lang}
+      />
 
       {/* Android Double-Tap Back Exit Toast Notification */}
       {exitToastVisible && (

@@ -159,6 +159,19 @@ export const TOOLS_LIST: ToolItem[] = [
     gradient: 'from-blue-600 to-indigo-700',
     accentColor: 'text-[#0B63F6]',
   },
+  {
+    id: 'compass',
+    category: 'utility',
+    titleEn: 'Digital Compass & Direction',
+    titleBn: 'ডিজিটাল কম্পাস ও দিকদর্শন',
+    descEn: 'Accurate 360° sensor compass with cardinal directions (N/S/E/W) and Qibla indicator.',
+    descBn: 'মোবাইল সেন্সর সমর্থিত নির্ভুল ৩৬০° দিক নির্ণায়ক কম্পাস ও কিবলা দিকদর্শন।',
+    badgeEn: 'Sensors',
+    badgeBn: 'কম্পাস',
+    iconName: 'Compass',
+    gradient: 'from-amber-500 to-orange-700',
+    accentColor: 'text-amber-500',
+  },
 ];
 
 export const UI_TEXT = {

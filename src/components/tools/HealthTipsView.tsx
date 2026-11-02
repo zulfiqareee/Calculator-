@@ -15,6 +15,7 @@ import {
   XCircle,
   Clock,
   ArrowRight,
+  ArrowLeft,
   Volume2,
   VolumeX,
   History,
@@ -58,9 +59,10 @@ import { copyToClipboard } from '../../utils/clipboard';
 interface Props {
   lang?: Language;
   onOpenBmi?: () => void;
+  onRegisterBackAction?: (handler: (() => boolean) | null) => void;
 }
 
-export const HealthTipsView: React.FC<Props> = ({ onOpenBmi }) => {
+export const HealthTipsView: React.FC<Props> = ({ onOpenBmi, onRegisterBackAction }) => {
   // 1. Language state: default Bengali, isolated to Health Tips section
   const [healthLang, setHealthLangState] = useState<'bn' | 'en'>(getHealthLanguage());
 
@@ -133,6 +135,44 @@ export const HealthTipsView: React.FC<Props> = ({ onOpenBmi }) => {
     const updated = toggleSaveHealthTip(id);
     setSavedTips(updated);
   };
+
+  // Close Article Modal
+  const closeArticle = () => {
+    stopSpeakingArticle();
+    setIsSpeaking(false);
+    setSelectedTip(null);
+  };
+
+  // Hierarchical back action registration for Android back button and top app back button
+  useEffect(() => {
+    if (!onRegisterBackAction) return;
+
+    onRegisterBackAction(() => {
+      // Step 1: If an article is open, close article modal so user is back in the list to read the next tip!
+      if (selectedTip) {
+        closeArticle();
+        return true; // handled
+      }
+      // Step 2: If history modal is open, close it
+      if (showHistoryModal) {
+        setShowHistoryModal(false);
+        return true; // handled
+      }
+      // Step 3: If filtered by category or search, reset back to all categories
+      if (selectedCategory !== 'all' || searchQuery !== '' || onlySaved) {
+        setSelectedCategory('all');
+        setSearchQuery('');
+        setOnlySaved(false);
+        return true; // handled
+      }
+      // Step 4: Nothing inside HealthTipsView, let main App handle back (close tool)
+      return false;
+    });
+
+    return () => {
+      onRegisterBackAction(null);
+    };
+  }, [selectedTip, showHistoryModal, selectedCategory, searchQuery, onlySaved, onRegisterBackAction]);
 
   // Open Article Detail & Record History
   const handleOpenArticle = (tip: HealthTipItem) => {
@@ -904,14 +944,24 @@ SmartHub – All-in-One Tools`;
             className="bg-[#071B35] border border-[#153D55] rounded-3xl max-w-2xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 text-white"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal Top Header with Title, Category, Reading Time, Controls */}
-            <div className="p-4 sm:p-5 border-b border-[#112B48] bg-[#112B48] flex items-center justify-between gap-3">
+            {/* Modal Top Header with Dedicated Back Button, Category, Reading Time, Controls */}
+            <div className="p-3 sm:p-4 border-b border-[#112B48] bg-[#112B48] flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
+                {/* Dedicated Back to List Button */}
+                <button
+                  onClick={closeArticle}
+                  className="px-2.5 py-1.5 rounded-xl bg-[#071B35] border border-[#153D55] text-white hover:text-[#69DCC0] hover:border-[#69DCC0] transition flex items-center gap-1.5 text-xs font-bold shrink-0 shadow-xs"
+                  title={isBn ? 'পূর্ববর্তী তালিকায় ফিরুন' : 'Back to list'}
+                >
+                  <ArrowLeft className="w-4 h-4 text-[#69DCC0]" />
+                  <span className="hidden xs:inline">{isBn ? 'পেছনে' : 'Back'}</span>
+                </button>
+
                 <span className="px-2.5 py-1 rounded-xl bg-[#071B35] text-[#69DCC0] border border-[#153D55] font-bold text-xs flex items-center gap-1 shrink-0">
                   <span>{getCategoryLabel(selectedTip.category).icon}</span>
-                  <span className="truncate max-w-[120px]">{getCategoryLabel(selectedTip.category).name}</span>
+                  <span className="truncate max-w-[100px] sm:max-w-[140px]">{getCategoryLabel(selectedTip.category).name}</span>
                 </span>
-                <span className="text-xs text-[#8FA9C4] font-medium shrink-0 flex items-center gap-1">
+                <span className="text-xs text-[#8FA9C4] font-medium shrink-0 hidden sm:flex items-center gap-1">
                   <Clock className="w-3 h-3 text-[#69DCC0]" />
                   <span>{isBn ? selectedTip.readTimeBn : selectedTip.readTimeEn}</span>
                 </span>
@@ -1159,7 +1209,7 @@ SmartHub – All-in-One Tools`;
             </div>
 
             {/* Modal Bottom Footer */}
-            <div className="p-4 border-t border-[#112B48] bg-[#112B48] flex items-center justify-between gap-3">
+            <div className="p-3.5 sm:p-4 border-t border-[#112B48] bg-[#112B48] flex items-center justify-between gap-3">
               <a
                 href="tel:16263"
                 className="flex items-center gap-1.5 text-xs font-bold text-rose-400 hover:text-rose-300"
@@ -1169,14 +1219,11 @@ SmartHub – All-in-One Tools`;
               </a>
 
               <button
-                onClick={() => {
-                  stopSpeakingArticle();
-                  setIsSpeaking(false);
-                  setSelectedTip(null);
-                }}
-                className="px-5 py-2 rounded-xl bg-[#69DCC0] hover:bg-[#58c9ad] text-[#071B35] font-black text-xs transition shadow-md"
+                onClick={closeArticle}
+                className="px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl bg-[#69DCC0] hover:bg-[#58c9ad] text-[#071B35] font-black text-xs flex items-center gap-1.5 transition shadow-md active:scale-95"
               >
-                {isBn ? 'বন্ধ করুন' : 'Close'}
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>{isBn ? 'পূর্ববর্তী তালিকায় ফিরুন (পরের টিপস পড়ুন)' : 'Back to List (Read Next Tip)'}</span>
               </button>
             </div>
           </div>

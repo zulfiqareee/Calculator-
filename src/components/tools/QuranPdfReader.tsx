@@ -35,9 +35,10 @@ import {
 
 interface Props {
   lang: Language;
+  onRegisterBackAction?: (handler: (() => boolean) | null) => void;
 }
 
-export const QuranPdfReader: React.FC<Props> = ({ lang }) => {
+export const QuranPdfReader: React.FC<Props> = ({ lang, onRegisterBackAction }) => {
   const [surahs, setSurahs] = useState<QuranSurah[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedSurah, setSelectedSurah] = useState<QuranSurah | null>(null);
@@ -53,6 +54,32 @@ export const QuranPdfReader: React.FC<Props> = ({ lang }) => {
   const [bookmarkedSurahId, setBookmarkedSurahId] = useState<string | null>(() => {
     return localStorage.getItem('smart_quran_bookmark_surah') || null;
   });
+
+  // Hierarchical back action registration
+  useEffect(() => {
+    if (!onRegisterBackAction) return;
+
+    onRegisterBackAction(() => {
+      if (showTajweedModal) {
+        setShowTajweedModal(false);
+        return true;
+      }
+      if (selectedSurah) {
+        setSelectedSurah(null);
+        return true;
+      }
+      if (searchQuery !== '' || filterType !== 'all') {
+        setSearchQuery('');
+        setFilterType('all');
+        return true;
+      }
+      return false;
+    });
+
+    return () => {
+      onRegisterBackAction(null);
+    };
+  }, [selectedSurah, showTajweedModal, searchQuery, filterType, onRegisterBackAction]);
 
   useEffect(() => {
     const list = getStoredSurahs();
