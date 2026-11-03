@@ -100,12 +100,11 @@ interface Props {
   lang: Language;
   onOpenTool?: (toolId: string) => void;
   onRefreshTools?: () => void;
-  onOpenVideoStudio?: () => void;
 }
 
 type AdminTab = 'health' | 'books' | 'quran' | 'notes' | 'tools' | 'backup' | 'security';
 
-export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools, onOpenVideoStudio }) => {
+export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }) => {
   // Auth state
   const [emailInput, setEmailInput] = useState<string>('zulfiqar1hasan@gmail.com');
   const [passInput, setPassInput] = useState<string>('');
@@ -656,36 +655,6 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools, 
           <span>লগআউট</span>
         </button>
       </div>
- 
-      {/* AI Video Studio Launch Banner */}
-      {onOpenVideoStudio && (
-        <div className="bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 p-4 rounded-2xl border border-purple-500/40 text-white flex items-center justify-between shadow-md">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-500/30 border border-purple-400/40 flex items-center justify-center text-purple-300">
-              <Sparkles className="w-5 h-5 text-purple-300" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-extrabold text-sm block">
-                  {lang === 'bn' ? '🎬 এআই ভিডিও স্টুডিও' : '🎬 AI Video Studio'}
-                </span>
-                <span className="text-[10px] bg-red-500/80 px-1.5 py-0.2 rounded font-bold">
-                  YouTube & FB
-                </span>
-              </div>
-              <span className="text-[11px] text-purple-200 block">
-                {lang === 'bn' ? 'স্বয়ংক্রিয় স্ক্রিপ্ট, ভয়েস, দৃশ্য ও ভিডিও পাবলিশার' : 'Auto scripts, voice, animated visuals & publisher'}
-              </span>
-            </div>
-          </div>
-          <button
-            onClick={onOpenVideoStudio}
-            className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-95 text-white font-bold text-xs shadow-md transition shrink-0"
-          >
-            {lang === 'bn' ? 'স্টুডিও খুলুন' : 'Open Studio'}
-          </button>
-        </div>
-      )}
 
       {/* Admin Tab Switcher */}
       <div className="flex overflow-x-auto gap-1.5 p-1 bg-slate-200 dark:bg-slate-800 rounded-xl no-scrollbar">

@@ -43,7 +43,6 @@ import {
   HeartPulse,
   Bell,
   BellRing,
-  Video,
 } from 'lucide-react';
 import { Language, ThemeMode, ToolCategory, ToolId, ToolItem, CustomTool } from './types';
 import {
@@ -93,14 +92,13 @@ import {
 import { AdminPanel } from './components/admin/AdminPanel';
 import { BookReaderView } from './components/books/BookReaderView';
 import { NotepadView } from './components/notes/NotepadView';
-import { AiVideoStudioMain } from './components/video_studio/AiVideoStudioMain';
 import { AdMobBanner } from './components/admob/AdMobBanner';
 import { AdMobManager } from './components/admob/AdMobManager';
 import { HistoryView } from './components/HistoryView';
 import { AboutPolicy } from './components/AboutPolicy';
 
 type BottomTab = 'home' | 'favorites' | 'recents' | 'settings';
-type SpecialView = 'none' | 'books' | 'notes' | 'video-studio';
+type SpecialView = 'none' | 'books' | 'notes';
 
 export default function App() {
   const [lang, setLang] = useState<Language>(getStoredLanguage());
@@ -607,13 +605,8 @@ export default function App() {
           MAIN SCROLLABLE CONTENT AREA
          ========================================================================= */}
       <main className="flex-1 px-4 py-4 pb-28">
-        {/* 1. SPECIAL VIEW: AI VIDEO STUDIO (PRIVATE ADMIN) */}
-        {specialView === 'video-studio' ? (
-          <AiVideoStudioMain
-            lang={lang}
-            onBackToApp={() => setSpecialView('none')}
-          />
-        ) : specialView === 'books' ? (
+        {/* 1. SPECIAL VIEW: BOOKS READER */}
+        {specialView === 'books' ? (
           <BookReaderView
             lang={lang}
             onBack={() => setSpecialView('none')}
@@ -906,32 +899,6 @@ export default function App() {
                       <ChevronRight className="w-5 h-5 text-white/80" />
                     </button>
 
-                    {/* Private AI Video Studio (Owner / Admin Exclusive) */}
-                    <button
-                      onClick={() => setSpecialView('video-studio')}
-                      className="bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white p-4 rounded-2xl flex items-center justify-between border border-purple-500/40 shadow-md active:scale-98 transition text-left"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-purple-500/30 border border-purple-400/40 flex items-center justify-center text-purple-300">
-                          <Video className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-sm block">
-                              {lang === 'bn' ? '🎬 এআই ভিডিও স্টুডিও' : '🎬 AI Video Studio'}
-                            </span>
-                            <span className="text-[10px] bg-red-500 px-1.5 py-0.2 rounded font-bold text-white">
-                              Owner Only
-                            </span>
-                          </div>
-                          <span className="text-[11px] text-purple-200 block">
-                            {lang === 'bn' ? 'ইউটিউব শর্টস ও ফেসবুক রিলস ভিডিও নির্মাতা ও পাবলিশার' : 'YouTube Shorts & Facebook Reels AI Studio'}
-                          </span>
-                        </div>
-                      </div>
-                      <ChevronRight className="w-5 h-5 text-purple-300/80" />
-                    </button>
-
                     {/* Books & Reference Guide Button */}
                     <button
                       onClick={() => setSpecialView('books')}
@@ -1076,7 +1043,6 @@ export default function App() {
                       lang={lang}
                       onOpenTool={(toolId) => openTool(toolId)}
                       onRefreshTools={refreshCustomTools}
-                      onOpenVideoStudio={() => setSpecialView('video-studio')}
                     />
                   </div>
                 )}
@@ -1375,19 +1341,6 @@ export default function App() {
                 >
                   <Lock className="w-4 h-4 text-[#0B63F6]" />
                   <span>{lang === 'bn' ? 'অ্যাডমিন প্যানেল (জুলফিকার)' : 'Admin Panel (Personal)'}</span>
-                </button>
-
-                {/* Exclusive AI Video Studio Link */}
-                <button
-                  onClick={() => {
-                    closeTool();
-                    setSpecialView('video-studio');
-                    setIsDrawerOpen(false);
-                  }}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800/40 transition text-left"
-                >
-                  <Video className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                  <span>{lang === 'bn' ? '🎬 এআই ভিডিও স্টুডিও (Admin)' : '🎬 AI Video Studio (Admin)'}</span>
                 </button>
               </div>
             </div>
