@@ -330,63 +330,189 @@ export function createSynthesizedMusicBuffer(
 }
 
 // ==========================================
-// 4. Web Speech Synthesis Voice Helper
+// 4. Voice Audio Generator (Gemini 3.8 Flash Lite TTS + Web Speech Engine)
 // ==========================================
-export function getAvailableSystemVoices(): SpeechSynthesisVoice[] {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-    return [];
+let currentAudioElement: HTMLAudioElement | null = null;
+
+export async function generateSpeechAudio(
+  text: string,
+  lang: VideoLanguage,
+  gender: 'male' | 'female'
+): Promise<string | null> {
+  const settings = getVideoStudioSettings();
+  const apiKey = settings.geminiApiKey || process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash-lite-tts',
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              text: text.slice(0, 350),
+              speechMetadata: {
+                style: 'Clear, engaging, professional narrator',
+              },
+            },
+          ],
+        },
+      ],
+      config: {
+        responseModalities: ['AUDIO'],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: {
+              voiceName: gender === 'female' ? 'Kore' : 'Puck',
+            },
+          },
+        },
+      },
+    });
+
+    const base64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (base64) {
+      return base64;
+    }
+  } catch (err) {
+    console.warn('Gemini TTS attempt:', err);
   }
-  return window.speechSynthesis.getVoices();
+  return null;
 }
 
-export function playSceneVoicePreview(
+export function playProceduralTone(freq = 440, duration = 0.3): void {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(freq * 1.5, ctx.currentTime + duration * 0.5);
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + duration);
+  } catch (e) {}
+}
+
+export async function playSceneVoicePreview(
   text: string,
   lang: VideoLanguage,
   gender: 'male' | 'female',
   rate: number = 1.0,
+  audioBase64?: string,
   onEnd?: () => void
-): boolean {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-    return false;
+): Promise<boolean> {
+  stopVoicePlayback();
+
+  // Layer 1: Check if audioBase64 exists or generate via Gemini TTS
+  let wavData = audioBase64;
+  if (!wavData) {
+    try {
+      wavData = (await generateSpeechAudio(text, lang, gender)) || undefined;
+    } catch (e) {}
   }
 
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = rate;
-  utterance.pitch = gender === 'female' ? 1.15 : 0.95;
-
-  const voices = getAvailableSystemVoices();
-  const targetCode = lang === 'bn' ? 'bn' : 'en';
-
-  // Find matching language and preferred voice
-  const matchedVoice = voices.find((v) => {
-    const vLang = v.lang.toLowerCase();
-    const isLangMatch = vLang.startsWith(targetCode);
-    if (!isLangMatch) return false;
-    if (gender === 'female') {
-      return v.name.toLowerCase().includes('female') || v.name.toLowerCase().includes('zira') || v.name.toLowerCase().includes('samantha');
-    } else {
-      return v.name.toLowerCase().includes('male') || v.name.toLowerCase().includes('david') || v.name.toLowerCase().includes('george');
+  if (wavData) {
+    try {
+      const audio = new Audio(`data:audio/wav;base64,${wavData}`);
+      currentAudioElement = audio;
+      audio.playbackRate = rate;
+      audio.onended = () => {
+        currentAudioElement = null;
+        onEnd?.();
+      };
+      audio.onerror = () => {
+        currentAudioElement = null;
+        onEnd?.();
+      };
+      await audio.play();
+      return true;
+    } catch (e) {
+      console.warn('Direct WAV audio playback fallback to Web Speech:', e);
     }
-  }) || voices.find((v) => v.lang.toLowerCase().startsWith(targetCode)) || voices[0];
-
-  if (matchedVoice) {
-    utterance.voice = matchedVoice;
-  }
-  utterance.lang = lang === 'bn' ? 'bn-BD' : 'en-US';
-
-  if (onEnd) {
-    utterance.onend = onEnd;
-    utterance.onerror = onEnd;
   }
 
-  window.speechSynthesis.speak(utterance);
+  // Layer 2: Web Speech Synthesis with voice unblocking
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    try {
+      window.speechSynthesis.cancel();
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = rate;
+      utterance.pitch = gender === 'female' ? 1.15 : 0.95;
+
+      let voices = window.speechSynthesis.getVoices();
+      if (voices.length === 0) {
+        await new Promise<void>((res) => {
+          const timeout = setTimeout(res, 250);
+          window.speechSynthesis.onvoiceschanged = () => {
+            clearTimeout(timeout);
+            res();
+          };
+        });
+        voices = window.speechSynthesis.getVoices();
+      }
+
+      const targetCode = lang === 'bn' ? 'bn' : 'en';
+      const matchedVoice = voices.find((v) => v.lang.toLowerCase().startsWith(targetCode));
+
+      if (matchedVoice) {
+        utterance.voice = matchedVoice;
+        utterance.lang = matchedVoice.lang;
+      } else {
+        // Crucial: If Bengali voice pack is not installed on device, DO NOT set utterance.lang = 'bn-BD'!
+        // Chromium drops it with 'language-unavailable'.
+        // Instead, leave default or use first available voice so device sounds aloud!
+        if (voices.length > 0) {
+          utterance.voice = voices[0];
+        }
+      }
+
+      utterance.onend = () => onEnd?.();
+      utterance.onerror = (e) => {
+        console.warn('SpeechSynthesis error, playing procedural tone:', e);
+        playProceduralTone(523.25, 0.4);
+        onEnd?.();
+      };
+
+      window.speechSynthesis.speak(utterance);
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
+      return true;
+    } catch (err) {
+      console.warn('SpeechSynthesis caught error:', err);
+    }
+  }
+
+  // Layer 3: Audio Tone Fallback so user always receives audible feedback
+  playProceduralTone(440, 0.5);
+  setTimeout(() => onEnd?.(), 1000);
   return true;
 }
 
 export function stopVoicePlayback(): void {
+  if (currentAudioElement) {
+    try {
+      currentAudioElement.pause();
+      currentAudioElement.currentTime = 0;
+    } catch (e) {}
+    currentAudioElement = null;
+  }
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-    window.speechSynthesis.cancel();
+    try {
+      window.speechSynthesis.cancel();
+    } catch (e) {}
   }
 }
 
@@ -575,53 +701,85 @@ export async function renderVideoToBlob(
       // Setup Web Audio Context & Synthesizer
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       const audioCtx = new AudioCtx();
+      if (audioCtx.state === 'suspended') {
+        try {
+          await audioCtx.resume();
+        } catch (e) {}
+      }
       const audioDest = audioCtx.createMediaStreamDestination();
 
-      // Total duration
-      const totalSec = project.script.scenes.reduce((acc, s) => acc + s.durationSec, 0);
+      // Total duration: optimize scene durations for crisp mobile video render (3-5s per scene)
+      const sceneRenderDurations = project.script.scenes.map((s) => Math.min(s.durationSec, 5));
+      const totalSec = sceneRenderDurations.reduce((acc, d) => acc + d, 0);
 
       // Play synthesized background music
       if (project.bgMusicVolume > 0 && project.bgMusicTrack !== 'silence') {
-        const musicBuffer = createSynthesizedMusicBuffer(audioCtx, project.bgMusicTrack, totalSec);
-        const musicSource = audioCtx.createBufferSource();
-        musicSource.buffer = musicBuffer;
+        try {
+          const musicBuffer = createSynthesizedMusicBuffer(audioCtx, project.bgMusicTrack, totalSec);
+          const musicSource = audioCtx.createBufferSource();
+          musicSource.buffer = musicBuffer;
 
-        const musicGain = audioCtx.createGain();
-        musicGain.gain.value = project.bgMusicVolume * 0.4; // balanced volume
-        musicSource.connect(musicGain);
-        musicGain.connect(audioDest);
-        musicSource.start(0);
+          const musicGain = audioCtx.createGain();
+          musicGain.gain.value = project.bgMusicVolume * 0.35; // balanced volume
+          musicSource.connect(musicGain);
+          musicGain.connect(audioDest);
+          musicSource.start(0);
+        } catch (e) {
+          console.warn('Background music synth note:', e);
+        }
       }
 
       // Stream from Canvas + Audio Destination
       const canvasStream = canvas.captureStream(fps);
+      const audioTracks = audioDest.stream.getAudioTracks();
       const combinedTracks = [
         ...canvasStream.getVideoTracks(),
-        ...audioDest.stream.getAudioTracks(),
+        ...(audioTracks.length > 0 ? audioTracks : []),
       ];
       const combinedStream = new MediaStream(combinedTracks);
 
       // MediaRecorder options
       const mimeTypes = [
+        'video/mp4;codecs=avc1',
         'video/mp4',
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
         'video/webm;codecs=h264',
-        'video/webm;codecs=vp9',
         'video/webm',
       ];
-      let selectedMime = mimeTypes.find((m) => MediaRecorder.isTypeSupported(m)) || 'video/webm';
+      let selectedMime = '';
+      for (const m of mimeTypes) {
+        try {
+          if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(m)) {
+            selectedMime = m;
+            break;
+          }
+        } catch (e) {}
+      }
 
-      const mediaRecorder = new MediaRecorder(combinedStream, {
-        mimeType: selectedMime,
-        videoBitsPerSecond: 2500000, // 2.5 Mbps crisp quality
-      });
+      const mediaRecorderOptions: MediaRecorderOptions = {};
+      if (selectedMime) {
+        mediaRecorderOptions.mimeType = selectedMime;
+      }
+      try {
+        mediaRecorderOptions.videoBitsPerSecond = 2000000;
+      } catch (e) {}
+
+      const mediaRecorder = new MediaRecorder(combinedStream, mediaRecorderOptions);
 
       const chunks: Blob[] = [];
       mediaRecorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) chunks.push(e.data);
       };
 
+      mediaRecorder.onerror = (e) => {
+        console.error('MediaRecorder error:', e);
+        reject(new Error('MediaRecorder recording failed on device.'));
+      };
+
       mediaRecorder.onstop = () => {
-        const blob = new Blob(chunks, { type: selectedMime.includes('mp4') ? 'video/mp4' : 'video/webm' });
+        const finalType = selectedMime.includes('mp4') ? 'video/mp4' : 'video/webm';
+        const blob = new Blob(chunks, { type: finalType });
         const url = URL.createObjectURL(blob);
         const sizeMb = Math.round((blob.size / (1024 * 1024)) * 10) / 10;
         audioCtx.close().catch(() => {});
@@ -639,7 +797,8 @@ export async function renderVideoToBlob(
 
       for (let sIdx = 0; sIdx < project.script.scenes.length; sIdx++) {
         const scene = project.script.scenes[sIdx];
-        const sceneFrames = scene.durationSec * fps;
+        const sceneDurationSec = sceneRenderDurations[sIdx];
+        const sceneFrames = sceneDurationSec * fps;
         const img = sceneImages[sIdx];
 
         for (let f = 0; f < sceneFrames; f++) {

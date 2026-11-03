@@ -52,6 +52,27 @@ export default defineConfig(({ command }) => {
         '@': path.resolve('.'),
       },
     },
+    define: {
+      'process.env.GEMINI_API_KEY': JSON.stringify(process.env.GEMINI_API_KEY || ''),
+      'process.env.VITE_GEMINI_API_KEY': JSON.stringify(process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || ''),
+      'process.env.APP_URL': JSON.stringify(process.env.APP_URL || ''),
+    },
+    build: {
+      chunkSizeWarningLimit: 1200,
+      rollupOptions: {
+        output: {
+          manualChunks(id: string) {
+            if (id.includes('node_modules')) {
+              if (id.includes('lucide-react')) return 'vendor-lucide';
+              if (id.includes('firebase')) return 'vendor-firebase';
+              if (id.includes('@google/genai')) return 'vendor-genai';
+              if (id.includes('react')) return 'vendor-react';
+              return 'vendor';
+            }
+          },
+        },
+      },
+    },
     server: {
       port: 3000,
       host: '0.0.0.0',

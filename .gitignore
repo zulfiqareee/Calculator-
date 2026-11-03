@@ -1,6 +1,7 @@
 node_modules/
 build/
 dist/
+dev-dist/
 coverage/
 .gradle/
 .idea/
@@ -11,3 +12,9 @@ coverage/
 !.env.example
 android/app/build/
 android/.gradle/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+.aistudio/
+public/assets/aistudio/
+smarttools-upload-keystore.jks

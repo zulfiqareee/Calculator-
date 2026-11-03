@@ -96,9 +96,11 @@ export const VideoCreationWizard: React.FC<Props> = ({
   const [isRendering, setIsRendering] = useState<boolean>(false);
   const [renderProgress, setRenderProgress] = useState<number>(0);
   const [renderStage, setRenderStage] = useState<string>('');
+  const [renderError, setRenderError] = useState<string | null>(null);
   const [renderedBlob, setRenderBlob] = useState<Blob | null>(null);
   const [renderedBlobUrl, setRenderBlobUrl] = useState<string | null>(initialProject?.renderedVideoBlobUrl || null);
   const [renderedSizeMb, setRenderedSizeMb] = useState<number>(initialProject?.renderedVideoSizeMb || 0);
+  const [isPlayingSampleVoice, setIsPlayingSampleVoice] = useState<boolean>(false);
 
   // SEO & Thumbnail
   const [isGeneratingSEO, setIsGeneratingSEO] = useState<boolean>(false);
@@ -134,7 +136,7 @@ export const VideoCreationWizard: React.FC<Props> = ({
   // ----------------------------------------------------
   // Voice Preview Handler
   // ----------------------------------------------------
-  const handlePreviewVoice = (sceneIdx: number) => {
+  const handlePreviewVoice = async (sceneIdx: number) => {
     if (!script) return;
     if (previewingVoiceIdx === sceneIdx) {
       stopVoicePlayback();
@@ -143,9 +145,40 @@ export const VideoCreationWizard: React.FC<Props> = ({
     }
     const scene = script.scenes[sceneIdx];
     setPreviewingVoiceIdx(sceneIdx);
-    playSceneVoicePreview(scene.narrationText, videoLang, voiceGender, voiceSpeed, () => {
-      setPreviewingVoiceIdx(null);
-    });
+    await playSceneVoicePreview(
+      scene.narrationText,
+      videoLang,
+      voiceGender,
+      voiceSpeed,
+      scene.audioWavBase64,
+      () => {
+        setPreviewingVoiceIdx(null);
+      }
+    );
+  };
+
+  const handleTestSampleVoice = async () => {
+    if (isPlayingSampleVoice) {
+      stopVoicePlayback();
+      setIsPlayingSampleVoice(false);
+      return;
+    }
+    setIsPlayingSampleVoice(true);
+    const sampleText =
+      videoLang === 'bn'
+        ? 'এটি স্মার্টহাব এআই ভিডিও স্টুডিওর ভয়েস নমুনা। আপনার তৈরি করা ভিডিওর প্রতিটি দৃশ্য এই আকর্ষণীয় কণ্ঠে উচ্চারিত হবে।'
+        : 'This is a sample voice of SmartHub AI Video Studio. Each scene of your video will be narrated with this clear tone.';
+
+    await playSceneVoicePreview(
+      sampleText,
+      videoLang,
+      voiceGender,
+      voiceSpeed,
+      undefined,
+      () => {
+        setIsPlayingSampleVoice(false);
+      }
+    );
   };
 
   // ----------------------------------------------------
@@ -153,9 +186,11 @@ export const VideoCreationWizard: React.FC<Props> = ({
   // ----------------------------------------------------
   const handleStartRender = async () => {
     if (!script) return;
+    setRenderError(null);
+    setCurrentStep(5);
     setIsRendering(true);
-    setRenderProgress(0);
-    setRenderStage(isBn ? 'রেন্ডারিং শুরু হচ্ছে...' : 'Starting render...');
+    setRenderProgress(5);
+    setRenderStage(isBn ? 'ভিজ্যুয়াল দৃশ্য ও অডিও প্রস্তুত হচ্ছে...' : 'Preparing visuals & audio...');
 
     try {
       const currentProject: VideoProject = {
@@ -201,10 +236,9 @@ export const VideoCreationWizard: React.FC<Props> = ({
         currentProject.metadataSEO = seo;
         saveVideoProject(currentProject);
       });
-
-      setCurrentStep(5);
     } catch (err: any) {
-      alert((isBn ? 'ভিডিও রেন্ডারিং ব্যর্থ হয়েছে: ' : 'Render failed: ') + err.message);
+      console.error('Render error:', err);
+      setRenderError(err?.message || (isBn ? 'ভিডিও রেন্ডারিংয়ে সমস্যা হয়েছে।' : 'Video rendering failed.'));
     } finally {
       setIsRendering(false);
     }
@@ -615,6 +649,24 @@ export const VideoCreationWizard: React.FC<Props> = ({
             />
           </div>
 
+          {/* Test Sample Voice Button */}
+          <button
+            type="button"
+            onClick={handleTestSampleVoice}
+            className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border transition ${
+              isPlayingSampleVoice
+                ? 'bg-rose-600/30 border-rose-500 text-rose-300 animate-pulse'
+                : 'bg-slate-800 hover:bg-slate-700/80 border-slate-700 text-[#69DCC0]'
+            }`}
+          >
+            <Volume2 className="w-4 h-4" />
+            <span>
+              {isPlayingSampleVoice
+                ? (isBn ? 'ভয়েস বাজছে... (থামাতে ক্লিক করুন)' : 'Playing voice... (Click to stop)')
+                : (isBn ? '🔊 ভয়েস টেস্ট করুন (শুনুন কেমন শোনাবে)' : '🔊 Test Voice Preview')}
+            </span>
+          </button>
+
           {/* Background Music Selector */}
           <div>
             <label className="text-xs font-bold text-slate-300 block mb-1.5 flex items-center gap-1.5">
@@ -755,10 +807,19 @@ export const VideoCreationWizard: React.FC<Props> = ({
           {/* Render Action Button */}
           <button
             onClick={handleStartRender}
-            className="w-full py-4 rounded-2xl bg-gradient-to-r from-red-600 via-purple-600 to-indigo-600 hover:opacity-95 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition active:scale-98 shadow-xl shadow-purple-500/25"
+            disabled={isRendering}
+            className="w-full py-4 rounded-2xl bg-gradient-to-r from-red-600 via-purple-600 to-indigo-600 hover:opacity-95 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition active:scale-98 shadow-xl shadow-purple-500/25 disabled:opacity-50"
           >
-            <Film className="w-4 h-4" />
-            <span>{isBn ? 'ভিডিও রেন্ডার করুন (Create MP4)' : 'Render Video (Export MP4)'}</span>
+            {isRendering ? (
+              <RefreshCw className="w-4 h-4 animate-spin text-white" />
+            ) : (
+              <Film className="w-4 h-4" />
+            )}
+            <span>
+              {isRendering
+                ? (isBn ? 'ভিডিও রেন্ডারিং শুরু হচ্ছে...' : 'Starting render...')
+                : (isBn ? 'ভিডিও রেন্ডার করুন (Create MP4)' : 'Render Video (Export MP4)')}
+            </span>
           </button>
         </div>
       )}
@@ -777,6 +838,8 @@ export const VideoCreationWizard: React.FC<Props> = ({
                 <h3 className="text-base font-black">
                   {isRendering
                     ? (isBn ? 'ভিডিও তৈরি হচ্ছে...' : 'Rendering MP4...')
+                    : renderError
+                    ? (isBn ? 'রেন্ডারিং ত্রুটি' : 'Render Failed')
                     : (isBn ? 'ভিডিও প্রস্তুত সম্পন্ন!' : 'Video Ready!')}
                 </h3>
                 <p className="text-xs text-slate-400">
@@ -785,6 +848,32 @@ export const VideoCreationWizard: React.FC<Props> = ({
               </div>
             </div>
           </div>
+
+          {/* Render Error Alert */}
+          {renderError && (
+            <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs space-y-2">
+              <div className="flex items-center gap-2 font-bold text-rose-400">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{isBn ? 'রেন্ডারিং ব্যর্থ হয়েছে:' : 'Render Error:'}</span>
+              </div>
+              <p className="text-[11px] leading-relaxed">{renderError}</p>
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  onClick={handleStartRender}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-md"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>{isBn ? 'আবার চেষ্টা করুন' : 'Retry Render'}</span>
+                </button>
+                <button
+                  onClick={() => setCurrentStep(4)}
+                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition"
+                >
+                  {isBn ? 'সেটিংস পরিবর্তন করুন' : 'Change Settings'}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Render Progress Bar */}
           {isRendering ? (

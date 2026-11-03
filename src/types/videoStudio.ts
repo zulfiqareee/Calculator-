@@ -19,6 +19,7 @@ export interface VideoScene {
   visualDescription: string;
   imagePrompt: string;
   visualImageUrl?: string;
+  audioWavBase64?: string;
   transitionType: 'fade' | 'zoom' | 'slide' | 'dissolve';
   cameraMotion: 'zoom_in' | 'zoom_out' | 'pan_left' | 'pan_right' | 'subtle_drift';
 }
