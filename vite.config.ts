@@ -53,6 +53,8 @@ export default defineConfig(({ command }) => {
       },
     },
     server: {
+      port: 3000,
+      host: '0.0.0.0',
       // Disable Vite 8 console forwarding over WebSocket to prevent client.send errors when WS is closed
       forwardConsole: false,
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

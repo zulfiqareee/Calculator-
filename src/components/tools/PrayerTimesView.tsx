@@ -148,11 +148,14 @@ export const PrayerTimesView: React.FC<Props> = ({ lang }) => {
 
   // Listen to mobile compass orientation
   useEffect(() => {
-    const handleOrientation = (e: DeviceOrientationEvent) => {
+    let unmounted = false;
+
+    const handleOrientation = (e: any) => {
+      if (unmounted) return;
       let h: number | null = null;
-      if ((e as any).webkitCompassHeading !== undefined) {
-        h = (e as any).webkitCompassHeading;
-      } else if (e.alpha !== null) {
+      if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
+        h = e.webkitCompassHeading;
+      } else if (e.alpha !== null && !isNaN(e.alpha)) {
         h = 360 - e.alpha;
       }
 
@@ -169,12 +172,17 @@ export const PrayerTimesView: React.FC<Props> = ({ lang }) => {
       }
     };
 
-    if (typeof window !== 'undefined' && 'DeviceOrientationEvent' in window) {
+    if (typeof window !== 'undefined') {
+      if ('ondeviceorientationabsolute' in window) {
+        window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+      }
       window.addEventListener('deviceorientation', handleOrientation, true);
     }
 
     return () => {
+      unmounted = true;
       if (typeof window !== 'undefined') {
+        window.removeEventListener('deviceorientationabsolute', handleOrientation, true);
         window.removeEventListener('deviceorientation', handleOrientation, true);
       }
     };

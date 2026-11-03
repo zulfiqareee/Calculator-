@@ -12053,7 +12053,7 @@ var __vitePreload = function preload(baseModule, deps, importerUrl) {
 	});
 };
 // node_modules/@capacitor/app/dist/esm/index.js
-var App$1 = registerPlugin("App", { web: () => __vitePreload(() => import("./web-h3F3sj2P.js").then((m) => new m.AppWeb()), []) });
+var App$1 = registerPlugin("App", { web: () => __vitePreload(() => import("./web-Cv2kiN-Z.js").then((m) => new m.AppWeb()), []) });
 // node_modules/lucide-react/dist/esm/shared/src/utils.js
 /**
 * @license lucide-react v0.546.0 - ISC
@@ -13413,6 +13413,54 @@ var List = createLucideIcon("list", [
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var LocateFixed = createLucideIcon("locate-fixed", [
+	["line", {
+		x1: "2",
+		x2: "5",
+		y1: "12",
+		y2: "12",
+		key: "bvdh0s"
+	}],
+	["line", {
+		x1: "19",
+		x2: "22",
+		y1: "12",
+		y2: "12",
+		key: "1tbv5k"
+	}],
+	["line", {
+		x1: "12",
+		x2: "12",
+		y1: "2",
+		y2: "5",
+		key: "11lu5j"
+	}],
+	["line", {
+		x1: "12",
+		x2: "12",
+		y1: "19",
+		y2: "22",
+		key: "x3vr5v"
+	}],
+	["circle", {
+		cx: "12",
+		cy: "12",
+		r: "7",
+		key: "fim9np"
+	}],
+	["circle", {
+		cx: "12",
+		cy: "12",
+		r: "3",
+		key: "1v7zrd"
+	}]
+]);
+/**
+* @license lucide-react v0.546.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var LockOpen = createLucideIcon("lock-open", [["rect", {
 	width: "18",
 	height: "11",
@@ -13803,6 +13851,19 @@ var RotateCcw = createLucideIcon("rotate-ccw", [["path", {
 }], ["path", {
 	d: "M3 3v5h5",
 	key: "1xhq8a"
+}]]);
+/**
+* @license lucide-react v0.546.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var RotateCw = createLucideIcon("rotate-cw", [["path", {
+	d: "M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8",
+	key: "1p45f6"
+}], ["path", {
+	d: "M21 3v5h-5",
+	key: "1q7to0"
 }]]);
 /**
 * @license lucide-react v0.546.0 - ISC
@@ -19144,6 +19205,55 @@ BMI স্কোর: ${bmi.toFixed(1)} (${bmiCat.labelBn})
 	});
 };
 // src/utils/permissionManager.ts
+var PERMISSION_ONBOARDING_KEY = "smarthub_permissions_onboarded_v2";
+var USER_GPS_COORDS_KEY = "user_gps_coords";
+/**
+* Checks whether user has gone through initial permission setup
+*/
+function isOnboardingCompleted() {
+	if (typeof window === "undefined") return true;
+	return localStorage.getItem(PERMISSION_ONBOARDING_KEY) === "true";
+}
+function setOnboardingCompleted(completed = true) {
+	if (typeof window === "undefined") return;
+	localStorage.setItem(PERMISSION_ONBOARDING_KEY, completed ? "true" : "false");
+}
+/**
+* Get cached GPS coordinates if available
+*/
+function getCachedGpsCoords() {
+	if (typeof window === "undefined") return null;
+	try {
+		const raw = localStorage.getItem(USER_GPS_COORDS_KEY);
+		if (!raw) return null;
+		return JSON.parse(raw);
+	} catch {
+		return null;
+	}
+}
+/**
+* Cache GPS coordinates
+*/
+function setCachedGpsCoords(lat, lon, name) {
+	if (typeof window === "undefined") return;
+	try {
+		localStorage.setItem(USER_GPS_COORDS_KEY, JSON.stringify({
+			lat,
+			lon,
+			name,
+			updatedAt: Date.now()
+		}));
+	} catch {}
+}
+/**
+* Approximate magnetic declination based on Latitude & Longitude
+* Returns degree difference between Magnetic North and True North
+*/
+function estimateMagneticDeclination(lat, lon) {
+	const dLat = lat - 23.8;
+	const declination = -.15 + (lon - 90.4) * .06 - dLat * .02;
+	return Math.round(declination * 10) / 10;
+}
 /**
 * Checks current browser / mobile permission states
 */
@@ -19151,7 +19261,7 @@ async function checkAppPermissions() {
 	const result = {
 		location: "prompt",
 		notification: "prompt",
-		audioStorage: "prompt"
+		audioStorage: "granted"
 	};
 	if (typeof navigator !== "undefined" && "permissions" in navigator && navigator.permissions?.query) try {
 		result.location = (await navigator.permissions.query({ name: "geolocation" })).state;
@@ -19174,21 +19284,25 @@ function requestLocationPermission() {
 			return;
 		}
 		navigator.geolocation.getCurrentPosition((pos) => {
+			const lat = pos.coords.latitude;
+			const lon = pos.coords.longitude;
+			const locationName = `GPS (${lat.toFixed(3)}° N, ${lon.toFixed(3)}° E)`;
+			setCachedGpsCoords(lat, lon, locationName);
 			resolve({
-				lat: pos.coords.latitude,
-				lon: pos.coords.longitude,
-				locationName: `GPS: ${pos.coords.latitude.toFixed(2)}° N, ${pos.coords.longitude.toFixed(2)}° E`
+				lat,
+				lon,
+				locationName
 			});
 		}, (err) => {
 			let msg = "লোকেশন পারমিশন পাওয়া যায়নি।";
-			if (err.code === err.PERMISSION_DENIED) msg = "লোকেশন পারমিশন প্রত্যাখ্যান করা হয়েছে। ফোন সেটিংসে গিয়ে অনুমতি দিন।";
-			else if (err.code === err.POSITION_UNAVAILABLE) msg = "জিপিএস সিগন্যাল পাওয়া যাচ্ছে না। খোলামেলা জায়গায় চেষ্টা করুন।";
-			else if (err.code === err.TIMEOUT) msg = "লোকেশন রিকোয়েস্টের সময়সীমা শেষ হয়েছে। আবার চেষ্টা করুন।";
+			if (err.code === err.PERMISSION_DENIED) msg = "লোকেশন পারমিশন প্রত্যাখ্যাত। আপনার ফোন সেটিংসে গিয়ে জিপিএস এক্সেস দিন।";
+			else if (err.code === err.POSITION_UNAVAILABLE) msg = "জিপিএস সিগন্যাল পাওয়া যাচ্ছে না। অনুগ্রহ করে খোলা জায়গায় বা ওয়াইফাই সংযোগে চেষ্টা করুন।";
+			else if (err.code === err.TIMEOUT) msg = "লোকেশন পেতে সময় বেশি লেগেছে। অনুগ্রহ করে পুনরায় চেষ্টা করুন।";
 			reject(new Error(msg));
 		}, {
 			enableHighAccuracy: true,
-			timeout: 1e4,
-			maximumAge: 6e4
+			timeout: 12e3,
+			maximumAge: 3e4
 		});
 	});
 }
@@ -19682,51 +19796,121 @@ function calculateQiblaAngle(lat, lon) {
 	const x = Math.cos(phi) * Math.tan(kaabaLat) - Math.sin(phi) * Math.cos(kaabaLon - lambda);
 	return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
-var CompassTool = ({ lang, userLat = 23.8103, userLon = 90.4125 }) => {
+var CompassTool = ({ lang, userLat, userLon }) => {
+	const isBn = lang === "bn";
+	const cachedGps = getCachedGpsCoords();
+	const [currentCoords, setCurrentCoords] = (0, import_react.useState)({
+		lat: userLat || cachedGps?.lat || 23.8103,
+		lon: userLon || cachedGps?.lon || 90.4125,
+		name: cachedGps?.name || (userLat ? `GPS: ${userLat.toFixed(2)}°, ${userLon?.toFixed(2)}°` : void 0)
+	});
+	const [gpsGranted, setGpsGranted] = (0, import_react.useState)(!!cachedGps || !!userLat);
+	const [isLocating, setIsLocating] = (0, import_react.useState)(false);
+	const [gpsError, setGpsError] = (0, import_react.useState)(null);
 	const [heading, setHeading] = (0, import_react.useState)(0);
 	const [hasSensor, setHasSensor] = (0, import_react.useState)(false);
-	const [sensorPermissionRequested, setSensorPermissionRequested] = (0, import_react.useState)(false);
+	const [sensorType, setSensorType] = (0, import_react.useState)("manual");
+	const [tiltPitch, setTiltPitch] = (0, import_react.useState)(0);
+	const [tiltRoll, setTiltRoll] = (0, import_react.useState)(0);
+	const [isTilted, setIsTilted] = (0, import_react.useState)(false);
+	const [calibrationOffset, setCalibrationOffset] = (0, import_react.useState)(0);
 	const [showQiblaOnDial, setShowQiblaOnDial] = (0, import_react.useState)(true);
-	const [manualHeading, setManualHeading] = (0, import_react.useState)(0);
-	const [isManualMode, setIsManualMode] = (0, import_react.useState)(false);
-	const isBn = lang === "bn";
-	const qiblaAngle = Math.round(calculateQiblaAngle(userLat, userLon));
-	const currentHeading = isManualMode ? manualHeading : heading;
-	(0, import_react.useEffect)(() => {
-		let handleOrientation = (e) => {
-			let compassHeading = null;
-			if (e.webkitCompassHeading !== void 0) compassHeading = e.webkitCompassHeading;
-			else if (e.alpha !== null) compassHeading = 360 - e.alpha;
-			if (compassHeading !== null && !isNaN(compassHeading)) {
-				setHasSensor(true);
-				const norm = Math.round((compassHeading + 360) % 360);
-				setHeading(norm);
-				if ((norm <= 2 || norm >= 358) && typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(15);
-			}
-		};
-		if (typeof window !== "undefined" && "DeviceOrientationEvent" in window) window.addEventListener("deviceorientation", handleOrientation, true);
-		return () => {
-			if (typeof window !== "undefined") window.removeEventListener("deviceorientation", handleOrientation, true);
-		};
-	}, []);
-	const requestOrientationPermission = async () => {
-		setSensorPermissionRequested(true);
-		if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") try {
-			if (await DeviceOrientationEvent.requestPermission() === "granted") setHasSensor(true);
-		} catch (e) {
-			console.warn("Orientation permission error:", e);
+	const [showCalibrationHelp, setShowCalibrationHelp] = (0, import_react.useState)(false);
+	const [showManualAdjustment, setShowManualAdjustment] = (0, import_react.useState)(false);
+	const magneticDeclination = estimateMagneticDeclination(currentCoords.lat, currentCoords.lon);
+	const qiblaAngle = Math.round(calculateQiblaAngle(currentCoords.lat, currentCoords.lon));
+	const handleRequestGps = async () => {
+		setIsLocating(true);
+		setGpsError(null);
+		try {
+			const res = await requestLocationPermission();
+			setCurrentCoords({
+				lat: res.lat,
+				lon: res.lon,
+				name: res.locationName
+			});
+			setGpsGranted(true);
+			setCachedGpsCoords(res.lat, res.lon, res.locationName);
+		} catch (err) {
+			setGpsError(err.message || (isBn ? "জিপিএস লোকেশন পাওয়া যায়নি।" : "Location request failed."));
+		} finally {
+			setIsLocating(false);
 		}
 	};
+	(0, import_react.useEffect)(() => {
+		if (!cachedGps && !userLat && typeof navigator !== "undefined" && "geolocation" in navigator) navigator.geolocation.getCurrentPosition((pos) => {
+			const lat = pos.coords.latitude;
+			const lon = pos.coords.longitude;
+			const name = `GPS: ${lat.toFixed(2)}° N, ${lon.toFixed(2)}° E`;
+			setCurrentCoords({
+				lat,
+				lon,
+				name
+			});
+			setGpsGranted(true);
+			setCachedGpsCoords(lat, lon, name);
+		}, () => {}, {
+			enableHighAccuracy: true,
+			timeout: 6e3
+		});
+	}, []);
+	(0, import_react.useEffect)(() => {
+		let unmounted = false;
+		const handleOrientationAbsolute = (e) => {
+			if (unmounted) return;
+			if (e.alpha !== null && !isNaN(e.alpha)) {
+				setHasSensor(true);
+				setSensorType("absolute");
+				const rawDeg = (360 - e.alpha) % 360;
+				setHeading(Math.round(rawDeg));
+			}
+			if (e.beta !== null && e.gamma !== null) {
+				setTiltPitch(Math.round(e.beta));
+				setTiltRoll(Math.round(e.gamma));
+				setIsTilted(Math.abs(e.beta) > 30 || Math.abs(e.gamma) > 30);
+			}
+		};
+		const handleOrientationStandard = (e) => {
+			if (unmounted) return;
+			if (e.webkitCompassHeading !== void 0 && e.webkitCompassHeading !== null) {
+				setHasSensor(true);
+				setSensorType("absolute");
+				setHeading(Math.round(e.webkitCompassHeading));
+			} else if (sensorType !== "absolute" && e.alpha !== null && !isNaN(e.alpha)) {
+				setHasSensor(true);
+				setSensorType("standard");
+				const rawDeg = (360 - e.alpha) % 360;
+				setHeading(Math.round(rawDeg));
+			}
+			if (e.beta !== null && e.gamma !== null) {
+				setTiltPitch(Math.round(e.beta));
+				setTiltRoll(Math.round(e.gamma));
+				setIsTilted(Math.abs(e.beta) > 30 || Math.abs(e.gamma) > 30);
+			}
+		};
+		if (typeof window !== "undefined") {
+			if ("ondeviceorientationabsolute" in window) window.addEventListener("deviceorientationabsolute", handleOrientationAbsolute, true);
+			window.addEventListener("deviceorientation", handleOrientationStandard, true);
+		}
+		return () => {
+			unmounted = true;
+			if (typeof window !== "undefined") {
+				window.removeEventListener("deviceorientationabsolute", handleOrientationAbsolute, true);
+				window.removeEventListener("deviceorientation", handleOrientationStandard, true);
+			}
+		};
+	}, [sensorType]);
+	const calibratedHeading = Math.round((heading + calibrationOffset + 360) % 360);
 	const getDirectionName = (deg) => {
 		const directionsBn = [
-			"উত্তর (N)",
-			"উত্তর-পূর্ব (NE)",
-			"পূর্ব (E)",
-			"দক্ষিণ-পূর্ব (SE)",
-			"দক্ষিণ (S)",
-			"দক্ষিণ-পশ্চিম (SW)",
-			"পশ্চিম (W)",
-			"উত্তর-পশ্চিম (NW)"
+			"উত্তর (North)",
+			"উত্তর-পূর্ব (North-East)",
+			"পূর্ব (East)",
+			"দক্ষিণ-পূর্ব (South-East)",
+			"দক্ষিণ (South)",
+			"দক্ষিণ-পশ্চিম (South-West)",
+			"পশ্চিম (West)",
+			"উত্তর-পশ্চিম (North-West)"
 		];
 		const directionsEn = [
 			"North (N)",
@@ -19741,168 +19925,313 @@ var CompassTool = ({ lang, userLat = 23.8103, userLon = 90.4125 }) => {
 		const index = Math.round(deg / 45) % 8;
 		return isBn ? directionsBn[index] : directionsEn[index];
 	};
-	const qiblaDiff = Math.abs(currentHeading - qiblaAngle);
+	const qiblaDiff = Math.abs(calibratedHeading - qiblaAngle);
 	const isFacingQibla = qiblaDiff <= 4 || qiblaDiff >= 356;
+	const isFacingNorth = calibratedHeading <= 3 || calibratedHeading >= 357;
+	const lastVibrateRef = (0, import_react.useRef)(0);
+	(0, import_react.useEffect)(() => {
+		if ((isFacingNorth || isFacingQibla) && typeof navigator !== "undefined" && navigator.vibrate) {
+			const now = Date.now();
+			if (now - lastVibrateRef.current > 1500) {
+				navigator.vibrate(25);
+				lastVibrateRef.current = now;
+			}
+		}
+	}, [isFacingNorth, isFacingQibla]);
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-		className: "flex flex-col gap-4 max-w-lg mx-auto w-full select-none pb-6",
+		className: "flex flex-col gap-4 max-w-lg mx-auto w-full select-none pb-8",
 		children: [
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-				className: "p-4 sm:p-5 rounded-3xl bg-gradient-to-br from-slate-900 via-[#0B1E36] to-slate-900 text-white border border-slate-800 shadow-xl flex flex-col items-center text-center relative overflow-hidden",
+				className: `p-4 rounded-3xl border transition ${gpsGranted ? "bg-[#0B1E36] border-blue-500/30 text-white" : "bg-amber-950/30 border-amber-500/50 text-amber-200"} shadow-lg space-y-2`,
 				children: [
-					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-						className: "absolute top-3 right-3 flex items-center gap-1.5",
-						children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
-							onClick: () => setShowQiblaOnDial(!showQiblaOnDial),
-							className: `px-2.5 py-1 rounded-xl text-[11px] font-bold transition flex items-center gap-1 ${showQiblaOnDial ? "bg-emerald-600 text-white shadow-xs" : "bg-slate-800 text-slate-400 hover:text-white"}`,
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "🕋" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isBn ? "কেবলা সূচক" : "Qibla" })]
-						})
-					}),
-					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-						className: "text-[11px] font-bold text-blue-400 uppercase tracking-widest mb-1 flex items-center gap-1",
-						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Compass, { className: "w-3.5 h-3.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isBn ? "ডিজিটাল কম্পাস ও দিকদর্শন" : "Digital Magnetic Compass" })]
-					}),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "my-2",
-						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h2", {
-							className: "text-4xl sm:text-5xl font-black text-white font-mono tracking-tight",
-							children: [formatNumber(currentHeading, lang), "°"]
-						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-							className: "text-sm sm:text-base font-bold text-amber-400 mt-1",
-							children: getDirectionName(currentHeading)
-						})]
-					}),
-					showQiblaOnDial && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: `w-full mt-2 p-2.5 rounded-2xl border transition-all flex items-center justify-between text-xs font-bold ${isFacingQibla ? "bg-emerald-500/20 border-emerald-400 text-emerald-200 animate-pulse" : "bg-slate-800/60 border-slate-700/80 text-slate-300"}`,
+						className: "flex items-center justify-between gap-2",
 						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							className: "flex items-center gap-2",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-								className: "text-base",
-								children: "🕋"
-							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-								className: "text-left",
-								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-									className: "block text-[11px] text-slate-400",
-									children: isBn ? "মক্কা মুকাররমার দিকে কেবলা কোণ:" : "Qibla Bearing:"
-								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-									className: "font-mono text-sm text-amber-300",
-									children: [
-										formatNumber(qiblaAngle, lang),
-										"° ",
-										isBn ? "পশ্চিম-দক্ষিণ" : "W"
-									]
-								})]
-							})]
-						}), isFacingQibla ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-							className: "px-2 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-bold",
-							children: isBn ? "✓ সঠিক কেবলা" : "Facing Qibla"
-						}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-							className: "text-[11px] text-slate-400",
-							children: isBn ? `${formatNumber(Math.min(qiblaDiff, 360 - qiblaDiff), lang)}° ঘুরুন` : `Turn ${Math.min(qiblaDiff, 360 - qiblaDiff)}°`
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: `w-8 h-8 rounded-xl flex items-center justify-center ${gpsGranted ? "bg-blue-600/30 text-[#69DCC0]" : "bg-amber-500/20 text-amber-400"}`,
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MapPin, { className: "w-4 h-4" })
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "text-xs font-bold block text-white",
+								children: isBn ? "আপনার বর্তমান অবস্থান (GPS):" : "Current Location (GPS):"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+								className: "text-[11px] text-blue-200/80 font-mono",
+								children: [
+									currentCoords.lat.toFixed(4),
+									"° N, ",
+									currentCoords.lon.toFixed(4),
+									"° E"
+								]
+							})] })]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							onClick: handleRequestGps,
+							disabled: isLocating,
+							className: `px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 shrink-0 ${gpsGranted ? "bg-blue-900/60 hover:bg-blue-800 text-blue-200 border border-blue-700/60" : "bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md font-extrabold"}`,
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(LocateFixed, { className: `w-3.5 h-3.5 ${isLocating ? "animate-spin" : ""}` }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isLocating ? isBn ? "খোঁজা হচ্ছে..." : "Locating..." : gpsGranted ? isBn ? "লোকেশন রিফ্রেশ" : "Refresh GPS" : isBn ? "জিপিএস এক্সেস দিন" : "Enable GPS" })]
 						})]
+					}),
+					!gpsGranted && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "text-[11px] text-amber-300/90 leading-relaxed pt-1 border-t border-amber-500/20 flex items-center gap-1.5",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(TriangleAlert, { className: "w-3.5 h-3.5 shrink-0 text-amber-400" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isBn ? "সতর্কতা: সঠিক উত্তর ও কেবলার দিক গণনার জন্য জিপিএস পারমিশন আবশ্যক।" : "Notice: GPS location permission is required for true heading and Qibla accuracy." })]
+					}),
+					gpsError && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+						className: "text-[11px] text-rose-300 bg-rose-950/40 p-2 rounded-xl border border-rose-500/40",
+						children: gpsError
 					})
 				]
 			}),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-				className: "relative w-72 h-72 sm:w-80 sm:h-80 mx-auto flex items-center justify-center",
+				className: `p-5 sm:p-6 rounded-3xl text-white border shadow-2xl flex flex-col items-center relative overflow-hidden transition ${isFacingQibla ? "bg-gradient-to-b from-[#082824] via-[#071B35] to-[#082824] border-emerald-500/60 ring-2 ring-emerald-500/40" : isFacingNorth ? "bg-gradient-to-b from-[#1E112A] via-[#071B35] to-[#1E112A] border-rose-500/60 ring-2 ring-rose-500/40" : "bg-gradient-to-b from-[#071B35] via-[#0B2544] to-[#071B35] border-[#153D55]"}`,
 				children: [
-					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: `absolute inset-0 rounded-full transition-all duration-300 ${isFacingQibla ? "ring-4 ring-emerald-500/80 shadow-[0_0_35px_rgba(16,185,129,0.4)]" : currentHeading <= 2 || currentHeading >= 358 ? "ring-4 ring-rose-500/80 shadow-[0_0_30px_rgba(244,63,94,0.3)]" : "ring-1 ring-slate-300 dark:ring-slate-800 shadow-md"}` }),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "relative w-full h-full rounded-full bg-slate-900 border-4 border-slate-800 shadow-inner overflow-hidden transition-transform duration-200 ease-out",
-						style: { transform: `rotate(${-currentHeading}deg)` },
+						className: "w-full flex items-center justify-between gap-2 mb-3 z-10",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-1.5",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `w-2.5 h-2.5 rounded-full ${hasSensor ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}` }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "text-[11px] font-bold text-slate-300",
+								children: hasSensor ? sensorType === "absolute" ? isBn ? "ম্যাগনেটোমিটার সক্রিয়" : "Magnetometer Active" : isBn ? "সেন্সর যুক্ত" : "Sensor Connected" : isBn ? "সেন্সর ক্যালিব্রেশন প্রয়োজন" : "Sensor Calibrating"
+							})]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-2",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+								onClick: () => setShowQiblaOnDial(!showQiblaOnDial),
+								className: `px-2.5 py-1 rounded-xl text-[11px] font-bold transition flex items-center gap-1 ${showQiblaOnDial ? "bg-emerald-600 text-white shadow-xs" : "bg-slate-800 text-slate-400 hover:text-white"}`,
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "🕋" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isBn ? "কেবলা" : "Qibla" })]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								onClick: () => setShowCalibrationHelp(!showCalibrationHelp),
+								className: "p-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300",
+								title: isBn ? "ক্যালিব্রেশন সহায়তা" : "Calibration Guide",
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Info, { className: "w-4 h-4" })
+							})]
+						})]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "flex flex-col items-center text-center my-1 z-10",
 						children: [
-							Array.from({ length: 36 }).map((_, i) => {
-								const deg = i * 10;
-								const isMajor = deg % 90 === 0;
-								const isMid = deg % 30 === 0;
-								return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-									className: "absolute inset-0 flex justify-center",
-									style: { transform: `rotate(${deg}deg)` },
-									children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: `w-0.5 rounded-full ${isMajor ? "h-4 bg-amber-400" : isMid ? "h-3 bg-slate-400" : "h-1.5 bg-slate-600"}` })
-								}, deg);
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-baseline gap-1",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-5xl sm:text-6xl font-black font-mono tracking-tight text-white drop-shadow-md",
+									children: formatNumber(calibratedHeading, lang)
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-3xl font-black text-[#69DCC0]",
+									children: "°"
+								})]
 							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-								className: "absolute top-4 left-1/2 -translate-x-1/2 text-rose-500 font-black text-sm tracking-widest",
-								children: isBn ? "উ" : "N"
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "text-sm sm:text-base font-extrabold text-[#69DCC0] mt-0.5 tracking-wide",
+								children: getDirectionName(calibratedHeading)
 							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-								className: "absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 font-bold text-sm",
-								children: isBn ? "পূ" : "E"
-							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-								className: "absolute bottom-4 left-1/2 -translate-x-1/2 text-slate-300 font-bold text-sm",
-								children: isBn ? "দ" : "S"
-							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-								className: "absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 font-bold text-sm",
-								children: isBn ? "প" : "W"
-							}),
-							showQiblaOnDial && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-								className: "absolute inset-0 flex justify-center pointer-events-none",
-								style: { transform: `rotate(${qiblaAngle}deg)` },
-								children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "flex flex-col items-center pt-2",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-										className: "text-lg filter drop-shadow",
-										children: "🕋"
-									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-1 h-14 bg-emerald-400 rounded-full shadow-md" })]
-								})
-							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-								className: "absolute inset-0 m-auto w-12 h-12 rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center shadow-lg",
-								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-4 h-4 rounded-full bg-amber-400 shadow-xs" })
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "text-[11px] text-slate-400 mt-0.5",
+								children: isBn ? `চৌম্বক বিচ্যুতি: ${magneticDeclination}° | কাবার কোণ: ${qiblaAngle}°` : `Declination: ${magneticDeclination}° | Kaaba: ${qiblaAngle}°`
 							})
 						]
 					}),
-					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-						className: "absolute -top-3 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center pointer-events-none",
-						children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-0 h-0 border-l-[9px] border-l-transparent border-r-[9px] border-r-transparent border-t-[14px] border-t-rose-500 filter drop-shadow" })
+					isTilted && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "my-2 px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[11px] font-bold flex items-center gap-1.5 z-10 animate-pulse",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(TriangleAlert, { className: "w-3.5 h-3.5 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isBn ? "সঠিক ফলাফলের জন্য ফোনটি সমতল (Flat) রাখুন" : "Keep device flat for accurate reading" })]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "relative w-64 h-64 sm:w-72 sm:h-72 my-4 flex items-center justify-center",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "absolute inset-0 rounded-full border-4 border-[#153D55] bg-[#07182E] shadow-2xl transition-transform duration-100 ease-out flex items-center justify-center",
+							style: { transform: `rotate(${-calibratedHeading}deg)` },
+							children: [
+								[
+									0,
+									30,
+									60,
+									90,
+									120,
+									150,
+									180,
+									210,
+									240,
+									270,
+									300,
+									330
+								].map((deg) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "absolute inset-0 flex justify-center",
+									style: { transform: `rotate(${deg}deg)` },
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: `w-0.5 ${deg % 90 === 0 ? "h-4 bg-white font-black" : "h-2 bg-slate-500"}` })
+								}, deg)),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "absolute top-4 font-black text-rose-500 text-lg tracking-wider",
+									children: isBn ? "উ" : "N"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "absolute right-4 font-black text-amber-400 text-lg tracking-wider",
+									children: isBn ? "পূ" : "E"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "absolute bottom-4 font-black text-sky-400 text-lg tracking-wider",
+									children: isBn ? "দ" : "S"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "absolute left-4 font-black text-emerald-400 text-lg tracking-wider",
+									children: isBn ? "প" : "W"
+								}),
+								showQiblaOnDial && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "absolute inset-0 flex justify-center pointer-events-none",
+									style: { transform: `rotate(${qiblaAngle}deg)` },
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "flex flex-col items-center",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "px-1.5 py-0.5 rounded bg-emerald-500 text-black font-black text-[10px] flex items-center gap-0.5 shadow-md",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "🕋" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												className: "hidden xs:inline",
+												children: "কিবলা"
+											})]
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-1 h-12 bg-gradient-to-b from-emerald-400 to-transparent" })]
+									})
+								})
+							]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "absolute inset-0 flex flex-col items-center justify-between pointer-events-none z-20 py-2",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[16px] border-t-rose-500 drop-shadow-lg" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "relative w-12 h-12 rounded-full bg-slate-900 border-2 border-slate-700 flex items-center justify-center shadow-xl",
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: `w-3.5 h-3.5 rounded-full transition-transform duration-75 ${isTilted ? "bg-amber-400" : "bg-emerald-400 shadow-md shadow-emerald-500/50"}`,
+										style: { transform: `translate(${Math.max(-14, Math.min(14, tiltRoll / 2))}px, ${Math.max(-14, Math.min(14, tiltPitch / 2))}px)` }
+									})
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[12px] border-b-slate-600" })
+							]
+						})]
+					}),
+					isFacingQibla && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "mt-2 px-4 py-2 rounded-2xl bg-emerald-500 text-slate-950 font-black text-xs flex items-center gap-2 shadow-lg animate-bounce z-10",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "🕋" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isBn ? "সঠিক কেবলার দিক! আপনি মক্কার দিকে আছেন।" : "Aligned with Qibla (Mecca)!" })]
+					}),
+					isFacingNorth && !isFacingQibla && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "mt-2 px-4 py-1.5 rounded-2xl bg-rose-500 text-white font-black text-xs flex items-center gap-2 shadow-lg z-10",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleCheck, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isBn ? "সঠিক ভৌগোলিক উত্তর দিক (True North)" : "Exact True North Alignment" })]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "w-full pt-4 mt-2 border-t border-[#153D55] flex items-center justify-between text-xs z-10",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							onClick: () => setShowManualAdjustment(!showManualAdjustment),
+							className: "text-slate-400 hover:text-white flex items-center gap-1.5 font-bold",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(SlidersVertical, { className: "w-3.5 h-3.5 text-[#69DCC0]" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isBn ? "দিক সমন্বয় ও ফাইন টিউন" : "Fine-Tune Calibration" })]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							className: "text-[11px] text-slate-400 font-mono",
+							children: isBn ? `অফসেট: ${calibrationOffset > 0 ? "+" : ""}${calibrationOffset}°` : `Offset: ${calibrationOffset}°`
+						})]
+					}),
+					showManualAdjustment && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "w-full mt-3 p-3.5 rounded-2xl bg-[#112B48] border border-[#153D55] space-y-2 z-10 animate-fade-in",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center justify-between text-xs text-slate-300",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isBn ? "ম্যানুয়াল অফসেট (± ডিগ্রি):" : "Manual Rotation Offset:" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									onClick: () => setCalibrationOffset(0),
+									className: "text-[10px] text-[#69DCC0] hover:underline",
+									children: isBn ? "রিসেট (০°)" : "Reset (0°)"
+								})]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								type: "range",
+								min: "-180",
+								max: "180",
+								value: calibrationOffset,
+								onChange: (e) => setCalibrationOffset(parseInt(e.target.value, 10)),
+								className: "w-full accent-[#69DCC0] cursor-pointer"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+								className: "text-[10px] text-slate-400 leading-snug",
+								children: isBn ? "যদি ফোনের কভার বা মেটালের কারণে কম্পাস সামান্য বাঁকা দেখায়, তবে স্লাইডার দিয়ে সঠিক করে নিন।" : "Adjust if magnetic phone cases or interference slightly offset the heading."
+							})
+						]
 					})
 				]
 			}),
+			showCalibrationHelp && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "p-4 rounded-3xl bg-slate-900 border border-slate-800 text-white shadow-xl space-y-3 animate-fade-in",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex items-center justify-between border-b border-slate-800 pb-2",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "flex items-center gap-2",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(RotateCw, { className: "w-4 h-4 text-[#69DCC0]" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h4", {
+							className: "text-xs sm:text-sm font-bold",
+							children: isBn ? "কম্পাস নির্ভুল করার নির্দেশিকা (Calibration)" : "Compass Calibration Guide"
+						})]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						onClick: () => setShowCalibrationHelp(false),
+						className: "text-xs text-slate-400 hover:text-white",
+						children: "✕"
+					})]
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "space-y-2 text-xs text-slate-300 leading-relaxed",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+							className: "flex items-start gap-2",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "font-bold text-[#69DCC0]",
+								children: "১."
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isBn ? "ফোনটিকে হাতের তালুতে সমতল (Flat) রাখুন। হেলানো অবস্থায় কম্পাসের চুম্বকীয় সেন্সর ভুল তথ্য দিতে পারে।" : "Keep the phone flat on your palm. Tilting causes magnetometer distortion." })]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+							className: "flex items-start gap-2",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "font-bold text-[#69DCC0]",
+								children: "২."
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isBn ? "সেন্সর সক্রিয় করতে ফোনটিকে ইংরেজি \"8\" (আট) আকারের ভঙ্গিতে বাতাসে ২-৩ বার ঘোরান।" : "Calibrate the compass by waving your phone in a figure-8 motion 2-3 times." })]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+							className: "flex items-start gap-2",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "font-bold text-[#69DCC0]",
+								children: "৩."
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isBn ? "ধাতব বস্তু, চুম্বকীয় ফোন কভার, ল্যাপটপ বা স্পিকার থেকে ফোনটি কিছুটা দূরে রাখুন।" : "Stay away from strong electromagnetic fields, magnets, and heavy metals." })]
+						})
+					]
+				})]
+			}),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-				className: "p-4 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3 shadow-xs",
+				className: "grid grid-cols-2 sm:grid-cols-4 gap-2.5",
 				children: [
 					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "flex items-center justify-between text-xs",
-						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-300",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Navigation, { className: "w-4 h-4 text-[#0B63F6]" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isBn ? "সেন্সর অবস্থা:" : "Compass Sensor:" })]
+						className: "p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs text-center",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							className: "text-xs font-bold text-rose-500 block",
+							children: isBn ? "উত্তর (North)" : "North"
 						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-							className: `px-2.5 py-0.5 rounded-full text-[11px] font-bold ${hasSensor ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300" : "bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300"}`,
-							children: hasSensor ? isBn ? "সক্রিয় (Magnetic Active)" : "Active" : isBn ? "ম্যানুয়াল / ওয়েব মোড" : "Manual/Web"
+							className: "text-sm font-black font-mono text-slate-900 dark:text-white",
+							children: "০° / ৩৬০°"
 						})]
-					}),
-					!hasSensor && !sensorPermissionRequested && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-						onClick: requestOrientationPermission,
-						className: "w-full py-2.5 rounded-2xl bg-[#0B63F6] hover:bg-blue-700 text-white font-bold text-xs transition",
-						children: isBn ? "কম্পাস সেন্সর পারমিশন দিন" : "Grant Compass Sensor Permission"
 					}),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "pt-2 border-t border-slate-100 dark:border-slate-800",
-						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "flex items-center justify-between text-xs mb-1.5",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-								className: "text-slate-500 font-semibold",
-								children: isBn ? "ম্যানুয়াল ডায়াল ঘূর্ণন:" : "Manual Rotation Slider:"
-							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-								className: "font-mono font-bold text-[#0B63F6]",
-								children: [manualHeading, "°"]
-							})]
-						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
-							type: "range",
-							min: "0",
-							max: "360",
-							value: manualHeading,
-							onChange: (e) => {
-								setIsManualMode(true);
-								setManualHeading(Number(e.target.value));
-							},
-							className: "w-full accent-[#0B63F6] cursor-pointer"
+						className: "p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs text-center",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							className: "text-xs font-bold text-amber-500 block",
+							children: isBn ? "পূর্ব (East)" : "East"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							className: "text-sm font-black font-mono text-slate-900 dark:text-white",
+							children: "৯০°"
 						})]
 					}),
-					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-						className: "text-[11px] text-slate-400 leading-relaxed",
-						children: isBn ? "টিপস: ফোনের সঠিক দিক পেতে ফোনটিকে সমতলে রাখুন এবং শূন্যে ইংরেজি ‘8’ অক্ষরের মতো কয়েকবার ঘোরান (Calibration)।" : "Tip: Hold device flat and rotate in figure-8 motion for highest compass accuracy."
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs text-center",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							className: "text-xs font-bold text-sky-500 block",
+							children: isBn ? "দক্ষিণ (South)" : "South"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							className: "text-sm font-black font-mono text-slate-900 dark:text-white",
+							children: "১৮০°"
+						})]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs text-center",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							className: "text-xs font-bold text-emerald-500 block",
+							children: isBn ? "পশ্চিম (West)" : "West"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							className: "text-sm font-black font-mono text-slate-900 dark:text-white",
+							children: "২৭০°"
+						})]
 					})
 				]
 			})
@@ -20065,10 +20394,12 @@ var PrayerTimesView = ({ lang }) => {
 		return () => clearInterval(timer);
 	}, []);
 	(0, import_react.useEffect)(() => {
+		let unmounted = false;
 		const handleOrientation = (e) => {
+			if (unmounted) return;
 			let h = null;
-			if (e.webkitCompassHeading !== void 0) h = e.webkitCompassHeading;
-			else if (e.alpha !== null) h = 360 - e.alpha;
+			if (e.webkitCompassHeading !== void 0 && e.webkitCompassHeading !== null) h = e.webkitCompassHeading;
+			else if (e.alpha !== null && !isNaN(e.alpha)) h = 360 - e.alpha;
 			if (h !== null && !isNaN(h)) {
 				setHasCompassSensor(true);
 				const norm = Math.round((h + 360) % 360);
@@ -20077,9 +20408,16 @@ var PrayerTimesView = ({ lang }) => {
 				if ((diff <= 3 || diff >= 357) && typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(20);
 			}
 		};
-		if (typeof window !== "undefined" && "DeviceOrientationEvent" in window) window.addEventListener("deviceorientation", handleOrientation, true);
+		if (typeof window !== "undefined") {
+			if ("ondeviceorientationabsolute" in window) window.addEventListener("deviceorientationabsolute", handleOrientation, true);
+			window.addEventListener("deviceorientation", handleOrientation, true);
+		}
 		return () => {
-			if (typeof window !== "undefined") window.removeEventListener("deviceorientation", handleOrientation, true);
+			unmounted = true;
+			if (typeof window !== "undefined") {
+				window.removeEventListener("deviceorientationabsolute", handleOrientation, true);
+				window.removeEventListener("deviceorientation", handleOrientation, true);
+			}
 		};
 	}, [qiblaAngle]);
 	(0, import_react.useEffect)(() => {
@@ -55294,7 +55632,7 @@ var QuranPdfReader = ({ lang, onRegisterBackAction }) => {
 	});
 };
 // src/components/permissions/PermissionManagerModal.tsx
-var PermissionManagerModal = ({ isOpen = true, lang, onClose, onLocationGranted }) => {
+var PermissionManagerModal = ({ isOpen = true, isFirstLaunch = false, lang, onClose, onLocationGranted }) => {
 	if (!isOpen) return null;
 	const [perms, setPerms] = (0, import_react.useState)({
 		location: "prompt",
@@ -55304,8 +55642,11 @@ var PermissionManagerModal = ({ isOpen = true, lang, onClose, onLocationGranted 
 	const [loadingAction, setLoadingAction] = (0, import_react.useState)(null);
 	const [toastMessage, setToastMessage] = (0, import_react.useState)(null);
 	const isBn = lang === "bn";
-	(0, import_react.useEffect)(() => {
+	const refreshPerms = () => {
 		checkAppPermissions().then(setPerms);
+	};
+	(0, import_react.useEffect)(() => {
+		refreshPerms();
 	}, []);
 	const handleRequestLocation = async () => {
 		setLoadingAction("location");
@@ -55316,7 +55657,7 @@ var PermissionManagerModal = ({ isOpen = true, lang, onClose, onLocationGranted 
 				...prev,
 				location: "granted"
 			}));
-			setToastMessage(isBn ? "জিপিএস লোকেশন পারমিশন সফলভাবে গৃহীত হয়েছে!" : "Location permission granted!");
+			setToastMessage(isBn ? "✓ জিপিএস লোকেশন পারমিশন অনুমোদিত হয়েছে!" : "✓ Location permission granted!");
 			if (onLocationGranted) onLocationGranted(res.lat, res.lon);
 		} catch (err) {
 			setToastMessage(err.message || (isBn ? "পারমিশন পাওয়া যায়নি।" : "Permission failed."));
@@ -55338,7 +55679,7 @@ var PermissionManagerModal = ({ isOpen = true, lang, onClose, onLocationGranted 
 				...prev,
 				notification: granted ? "granted" : "denied"
 			}));
-			if (granted) setToastMessage(isBn ? "নোটিফিকেশন পারমিশন সফল হয়েছে!" : "Notification permission granted!");
+			if (granted) setToastMessage(isBn ? "✓ নোটিফিকেশন পারমিশন সফল হয়েছে!" : "✓ Notification permission granted!");
 			else setToastMessage(isBn ? "নোটিফিকেশন পারমিশন দেওয়া হয়নি।" : "Notification permission denied.");
 		} catch {
 			setToastMessage(isBn ? "পারমিশন গ্রহণ ব্যর্থ হয়েছে।" : "Failed to request permission.");
@@ -55347,14 +55688,39 @@ var PermissionManagerModal = ({ isOpen = true, lang, onClose, onLocationGranted 
 			setTimeout(() => setToastMessage(null), 4e3);
 		}
 	};
+	const handleRequestAll = async () => {
+		setLoadingAction("all");
+		setToastMessage(null);
+		try {
+			try {
+				const res = await requestLocationPermission();
+				if (onLocationGranted) onLocationGranted(res.lat, res.lon);
+			} catch (e) {
+				console.warn("Location request error in batch:", e);
+			}
+			try {
+				await requestNotificationPermission$1();
+			} catch (e) {
+				console.warn("Notification request error in batch:", e);
+			}
+			await checkAppPermissions().then(setPerms);
+			setToastMessage(isBn ? "পারমিশন আপডেট সম্পন্ন হয়েছে।" : "Permissions updated.");
+		} finally {
+			setLoadingAction(null);
+		}
+	};
+	const handleFinish = () => {
+		setOnboardingCompleted(true);
+		onClose();
+	};
 	const items = [
 		{
 			id: "location",
 			icon: MapPin,
-			titleBn: "জিপিএস অবস্থান পারমিশন (GPS Location)",
-			titleEn: "GPS Location Permission",
-			descBn: "আপনার বর্তমান এলাকার সঠিক রিয়েল-টাইম আবহাওয়া, নামাজের সময় ও কেবলার দিক নির্ণয়ের জন্য ব্যবহৃত হয়।",
-			descEn: "Used for exact local live weather forecast, prayer timings, and Qibla compass bearing.",
+			titleBn: "১. জিপিএস লোকেশন এক্সেস (GPS Location)",
+			titleEn: "1. GPS Location Access",
+			descBn: "কম্পাসের সঠিক উত্তর দিক ও কিবলা নির্ণয় এবং আপনার এলাকার লাইভ আবহাওয়া ও সঠিক নামাজের সময়সূচীর জন্য অপরিহার্য।",
+			descEn: "Required for accurate compass True North, Qibla heading, real-time live weather and prayer times.",
 			status: perms.location,
 			onRequest: handleRequestLocation,
 			color: "text-[#0B63F6] bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900"
@@ -55362,10 +55728,10 @@ var PermissionManagerModal = ({ isOpen = true, lang, onClose, onLocationGranted 
 		{
 			id: "notification",
 			icon: Bell,
-			titleBn: "অ্যালার্ম ও নোটিফিকেশন পারমিশন (Notifications)",
-			titleEn: "Alarm & Notification Alert",
-			descBn: "অ্যালার্ম রিং হওয়া ও নামাজের ওয়াক্তের সময় আপনাকে সতর্কবার্তা জানানোর জন্য প্রয়োজনীয়।",
-			descEn: "Required for alarm ringtone alerts and timely prayer notifications.",
+			titleBn: "২. নোটিফিকেশন ও অ্যালার্ট (Notifications)",
+			titleEn: "2. Notifications & Alerts",
+			descBn: "সময়মতো স্মার্ট অ্যালার্ম রিং হওয়া, সেহরি ও ইফতারের সতর্কতা এবং ওয়াক্তের নোটিফিকেশন পাওয়ার জন্য প্রয়োজন।",
+			descEn: "Required for timely alarm firing, Sehri/Iftar reminders, and daily prayer alerts.",
 			status: perms.notification,
 			onRequest: handleRequestNotification,
 			color: "text-amber-600 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900"
@@ -55373,43 +55739,59 @@ var PermissionManagerModal = ({ isOpen = true, lang, onClose, onLocationGranted 
 		{
 			id: "audio",
 			icon: Music,
-			titleBn: "স্টোরেজ ও অডিও ফাইল পারমিশন (Audio Storage)",
-			titleEn: "Custom Audio & File Storage",
-			descBn: "ফোনের মেমোরি থেকে আপনার পছন্দের গান, গজল বা রিংটোন সরাসরি অ্যালার্মে সেট করার সুবিধা।",
-			descEn: "Allows choosing custom songs, azan or ringtones directly from device storage for alarms.",
+			titleBn: "৩. ফোন স্টোরেজ ও অডিও ফাইল (Audio Files)",
+			titleEn: "3. Device Audio & Storage",
+			descBn: "আপনার ফোন মেমরি বা মেমরি কার্ড থেকে যেকোনো প্রিয় গজল, রিংটোন বা আজানের অডিও ফাইল অ্যালার্মে সেট করার সুবিধা।",
+			descEn: "Allows picking custom MP3/WAV/Audio ringtones or azan from your device storage for alarms.",
 			status: perms.audioStorage,
 			onRequest: null,
 			color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900"
 		}
 	];
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-		className: "fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in select-none",
+		className: "fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fade-in select-none",
 		children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 			className: "w-full max-w-lg rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-5 sm:p-6 text-slate-900 dark:text-white max-h-[92vh] overflow-y-auto space-y-4",
 			children: [
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-					className: "flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3",
+					className: "flex items-start justify-between border-b border-slate-100 dark:border-slate-800 pb-3",
 					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "flex items-center gap-2.5",
+						className: "flex items-center gap-3",
 						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-							className: "w-10 h-10 rounded-2xl bg-[#0B63F6]/10 text-[#0B63F6] flex items-center justify-center",
-							children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Shield, { className: "w-5 h-5" })
-						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
-							className: "text-base font-bold",
-							children: isBn ? "অ্যাপ পারমিশন নিয়ন্ত্রণ ও সুরক্ষা" : "App Permissions & Privacy"
+							className: "w-11 h-11 rounded-2xl bg-[#0B63F6] text-white flex items-center justify-center shadow-md",
+							children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Shield, { className: "w-6 h-6 stroke-[2.2]" })
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-1.5",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
+								className: "text-base sm:text-lg font-black text-slate-900 dark:text-white",
+								children: isFirstLaunch ? isBn ? "অ্যাপ পারমিশন অনুমোদন" : "Device Permissions Setup" : isBn ? "অ্যাপ পারমিশন নিয়ন্ত্রণ" : "App Permissions"
+							}), isFirstLaunch && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/30",
+								children: isBn ? "প্রথম লঞ্চ" : "Startup"
+							})]
 						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 							className: "text-xs text-slate-500 dark:text-slate-400",
-							children: isBn ? "প্লে-স্টোর স্ট্যান্ডার্ড ডাটা নিরাপত্তা" : "Play Store compliant privacy controls"
+							children: isBn ? "প্লে-স্টোর স্ট্যান্ডার্ড অনুযায়ী ডিভাইসের গোপনীয়তা সুরক্ষিত" : "Play Store compliant on-device privacy guarantee"
 						})] })]
-					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+					}), !isFirstLaunch && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 						onClick: onClose,
 						className: "p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition",
 						children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(X$1, { className: "w-5 h-5" })
 					})]
 				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					className: "p-3.5 rounded-2xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 text-xs text-slate-700 dark:text-blue-200 leading-relaxed",
+					children: isBn ? "স্মার্টহাবের ওয়েদার, সঠিক কম্পাস, কিবলা দিকদর্শন এবং অ্যালার্ম ঘড়ি সঠিকভাবে চলার জন্য নিচে উল্লেখিত ডিভাইস এক্সেসগুলো দেওয়া প্রয়োজন।" : "For SmartHub to accurately provide live weather, compass heading, Qibla direction, and custom alarms, please grant the following device permissions."
+				}),
 				toastMessage && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-					className: "p-3 rounded-2xl bg-blue-600 text-white text-xs font-bold text-center animate-fade-in",
+					className: "p-3 rounded-2xl bg-[#0B63F6] text-white text-xs font-bold text-center animate-fade-in shadow-md",
 					children: toastMessage
+				}),
+				(perms.location !== "granted" || perms.notification !== "granted") && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+					onClick: handleRequestAll,
+					disabled: loadingAction === "all",
+					className: "w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#0B63F6] to-blue-700 hover:from-blue-600 hover:to-blue-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 active:scale-98 transition disabled:opacity-60",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Sparkles, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: loadingAction === "all" ? isBn ? "অনুমতি গ্রহণ করা হচ্ছে..." : "Requesting permissions..." : isBn ? "এক ক্লিকে সকল প্রয়োজনীয় পারমিশন মঞ্জুর করুন" : "Grant All Required Permissions" })]
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 					className: "space-y-3",
@@ -55418,38 +55800,48 @@ var PermissionManagerModal = ({ isOpen = true, lang, onClose, onLocationGranted 
 						const isGranted = item.status === "granted";
 						const isDenied = item.status === "denied";
 						return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 space-y-2.5",
+							className: `p-3.5 sm:p-4 rounded-2xl border transition ${isGranted ? "border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/30 dark:bg-emerald-950/20" : "border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40"} space-y-2`,
 							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-								className: "flex items-start justify-between gap-3",
-								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "flex items-center gap-2.5",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-										className: `w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${item.color}`,
-										children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Icon, { className: "w-4 h-4" })
-									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
-										className: "text-xs sm:text-sm font-bold text-slate-900 dark:text-white",
-										children: isBn ? item.titleBn : item.titleEn
-									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-										className: "flex items-center gap-1.5 mt-0.5",
-										children: isGranted ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-											className: "text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1",
-											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleCheck, { className: "w-3.5 h-3.5" }), isBn ? "অনুমতি দেওয়া হয়েছে (Granted)" : "Granted"]
-										}) : isDenied ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-											className: "text-[11px] font-bold text-rose-500 flex items-center gap-1",
-											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleX, { className: "w-3.5 h-3.5" }), isBn ? "প্রত্যাখ্যাত (Denied)" : "Denied"]
-										}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-											className: "text-[11px] font-bold text-amber-500 flex items-center gap-1",
-											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleAlert, { className: "w-3.5 h-3.5" }), isBn ? "অনুমতি প্রয়োজন (Requires Permission)" : "Not granted"]
-										})
-									})] })]
-								}), item.onRequest && !isGranted && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-									onClick: item.onRequest,
-									disabled: loadingAction === item.id,
-									className: "px-3 py-1.5 rounded-xl bg-[#0B63F6] hover:bg-blue-700 active:scale-95 text-white text-xs font-bold shrink-0 transition disabled:opacity-50",
-									children: loadingAction === item.id ? isBn ? "যাচাই হচ্ছে..." : "Checking..." : isBn ? "অনুমতি দিন" : "Allow"
-								})]
+								className: "flex items-start justify-between gap-2.5",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "flex items-center gap-2.5 min-w-0",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+											className: `w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${item.color}`,
+											children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Icon, { className: "w-4 h-4" })
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "min-w-0",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
+												className: "text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate",
+												children: isBn ? item.titleBn : item.titleEn
+											}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+												className: "flex items-center gap-1.5 mt-0.5",
+												children: isGranted ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+													className: "text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1",
+													children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleCheck, { className: "w-3.5 h-3.5" }), isBn ? "অনুমোদিত (Granted)" : "Granted"]
+												}) : isDenied ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+													className: "text-[11px] font-bold text-rose-500 flex items-center gap-1",
+													children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleX, { className: "w-3.5 h-3.5" }), isBn ? "প্রত্যাখ্যাত (Denied)" : "Denied"]
+												}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+													className: "text-[11px] font-bold text-amber-500 flex items-center gap-1",
+													children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleAlert, { className: "w-3.5 h-3.5" }), isBn ? "অনুমতি প্রয়োজন (Pending)" : "Action required"]
+												})
+											})]
+										})]
+									}),
+									item.onRequest && !isGranted && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+										onClick: item.onRequest,
+										disabled: loadingAction === item.id,
+										className: "px-3.5 py-1.5 rounded-xl bg-[#0B63F6] hover:bg-blue-700 active:scale-95 text-white text-xs font-bold shrink-0 transition disabled:opacity-50 shadow-xs",
+										children: loadingAction === item.id ? isBn ? "যাচাই হচ্ছে..." : "Verifying..." : isBn ? "অনুমতি দিন" : "Allow"
+									}),
+									!item.onRequest && isGranted && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0",
+										children: isBn ? "সক্রিয়" : "Active"
+									})
+								]
 							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-								className: "text-xs text-slate-500 dark:text-slate-400 leading-relaxed",
+								className: "text-xs text-slate-500 dark:text-slate-400 leading-relaxed pl-1",
 								children: isBn ? item.descBn : item.descEn
 							})]
 						}, item.id);
@@ -55457,12 +55849,12 @@ var PermissionManagerModal = ({ isOpen = true, lang, onClose, onLocationGranted 
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 					className: "p-3 rounded-2xl bg-slate-100 dark:bg-slate-800/80 text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2",
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Lock, { className: "w-4 h-4 text-emerald-600 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isBn ? "গুগল প্লে-স্টোর পলিসি অনুযায়ী আপনার ব্যক্তিগত ডেটা বা লোকেশন কোথাও শেয়ার বা বিক্রি করা হয় না।" : "Per Google Play policies, your location and private data are kept on-device and never sold." })]
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Lock, { className: "w-4 h-4 text-emerald-600 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isBn ? "গুগল প্লে-স্টোর পলিসি অনুযায়ী কোনো ব্যক্তিগত ফাইল বা অবস্থান অনলাইনে পাঠানো বা শেয়ার করা হয় না।" : "Per Google Play policies, location and files remain on-device and are never shared." })]
 				}),
-				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-					onClick: onClose,
-					className: "w-full py-3 rounded-2xl bg-slate-900 dark:bg-slate-800 text-white font-bold text-xs hover:bg-slate-800 transition active:scale-98",
-					children: isBn ? "ঠিক আছে" : "Done"
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+					onClick: handleFinish,
+					className: "w-full py-3.5 rounded-2xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition active:scale-98 shadow-md",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isFirstLaunch ? isBn ? "স্মার্টহাবে প্রবেশ করুন" : "Continue to SmartHub" : isBn ? "সম্পন্ন (Done)" : "Done" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ArrowRight, { className: "w-4 h-4" })]
 				})
 			]
 		})
@@ -55483,7 +55875,7 @@ var Weekday;
 	Weekday[Weekday["Saturday"] = 7] = "Saturday";
 })(Weekday || (Weekday = {}));
 // node_modules/@capacitor/local-notifications/dist/esm/index.js
-var LocalNotifications = registerPlugin("LocalNotifications", { web: () => __vitePreload(() => import("./web-DO9rjVMJ.js").then((m) => new m.LocalNotificationsWeb()), []) });
+var LocalNotifications = registerPlugin("LocalNotifications", { web: () => __vitePreload(() => import("./web-DUS3fuGK.js").then((m) => new m.LocalNotificationsWeb()), []) });
 // src/utils/alarmEngine.ts
 /**
 * SmartHub - Real Android-Reliable Alarm Engine
@@ -63409,7 +63801,22 @@ function App() {
 			clearInterval(timer);
 		};
 	}, []);
-	const [showPermissionModal, setShowPermissionModal] = (0, import_react.useState)(false);
+	const [showPermissionModal, setShowPermissionModal] = (0, import_react.useState)(() => {
+		return !isOnboardingCompleted();
+	});
+	const [isFirstLaunchPermission, setIsFirstLaunchPermission] = (0, import_react.useState)(() => {
+		return !isOnboardingCompleted();
+	});
+	const [userGpsCoords, setUserGpsCoords] = (0, import_react.useState)(() => {
+		return getCachedGpsCoords();
+	});
+	const handleLocationGranted = (lat, lon) => {
+		setUserGpsCoords({
+			lat,
+			lon
+		});
+		setCachedGpsCoords(lat, lon);
+	};
 	const showPermissionModalRef = import_react.useRef(showPermissionModal);
 	import_react.useEffect(() => {
 		showPermissionModalRef.current = showPermissionModal;
@@ -63644,7 +64051,11 @@ function App() {
 				lang,
 				onRegisterBackAction: registerBackAction
 			});
-			case "compass": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CompassTool, { lang });
+			case "compass": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CompassTool, {
+				lang,
+				userLat: userGpsCoords?.lat,
+				userLon: userGpsCoords?.lon
+			});
 			case "alarm": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AlarmMainView, { lang });
 			default: return null;
 		}
@@ -63804,6 +64215,32 @@ function App() {
 							!searchQuery && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CompactHomeWeatherWidget, {
 								lang,
 								onOpenDetails: () => openTool("weather")
+							}),
+							!userGpsCoords && !searchQuery && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "p-3.5 rounded-2xl bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-blue-500/10 border border-blue-500/30 flex items-center justify-between gap-3 shadow-xs",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center gap-2.5 min-w-0",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "w-8 h-8 rounded-xl bg-[#0B63F6] text-white flex items-center justify-center shrink-0 shadow-xs",
+										children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MapPin, { className: "w-4 h-4" })
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "min-w-0",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-xs font-bold text-slate-900 dark:text-white block truncate",
+											children: lang === "bn" ? "সঠিক আবহাওয়া ও কম্পাসের জন্য জিপিএস" : "Enable GPS Location"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-[11px] text-slate-500 dark:text-blue-200 block truncate",
+											children: lang === "bn" ? "লাইভ লোকেশন এক্সেস চালু করুন" : "Tap to grant location access"
+										})]
+									})]
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									onClick: () => {
+										setIsFirstLaunchPermission(false);
+										setShowPermissionModal(true);
+									},
+									className: "px-3 py-1.5 bg-[#0B63F6] hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shrink-0 transition active:scale-95 shadow-xs",
+									children: lang === "bn" ? "অনুমতি দিন" : "Grant"
+								})]
 							}),
 							!searchQuery && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 								className: "grid grid-cols-2 gap-2.5",
@@ -64266,7 +64703,12 @@ function App() {
 			}),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(PermissionManagerModal, {
 				isOpen: showPermissionModal,
-				onClose: () => setShowPermissionModal(false),
+				isFirstLaunch: isFirstLaunchPermission,
+				onClose: () => {
+					setShowPermissionModal(false);
+					setIsFirstLaunchPermission(false);
+				},
+				onLocationGranted: handleLocationGranted,
 				lang
 			}),
 			exitToastVisible && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {

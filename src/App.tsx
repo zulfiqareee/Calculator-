@@ -75,6 +75,11 @@ import { HealthTipsView } from './components/tools/HealthTipsView';
 import { QuranPdfReader } from './components/tools/QuranPdfReader';
 import { CompassTool } from './components/tools/CompassTool';
 import { PermissionManagerModal } from './components/permissions/PermissionManagerModal';
+import {
+  isOnboardingCompleted,
+  getCachedGpsCoords,
+  setCachedGpsCoords,
+} from './utils/permissionManager';
 import { AlarmMainView } from './components/alarm/AlarmMainView';
 import { AlarmRingingScreen } from './components/alarm/AlarmRingingScreen';
 import {
@@ -132,7 +137,21 @@ export default function App() {
   }, []);
 
 
-  const [showPermissionModal, setShowPermissionModal] = useState<boolean>(false);
+  const [showPermissionModal, setShowPermissionModal] = useState<boolean>(() => {
+    return !isOnboardingCompleted();
+  });
+  const [isFirstLaunchPermission, setIsFirstLaunchPermission] = useState<boolean>(() => {
+    return !isOnboardingCompleted();
+  });
+  const [userGpsCoords, setUserGpsCoords] = useState<{ lat: number; lon: number } | null>(() => {
+    return getCachedGpsCoords();
+  });
+
+  const handleLocationGranted = (lat: number, lon: number) => {
+    setUserGpsCoords({ lat, lon });
+    setCachedGpsCoords(lat, lon);
+  };
+
   const showPermissionModalRef = React.useRef(showPermissionModal);
   React.useEffect(() => { showPermissionModalRef.current = showPermissionModal; }, [showPermissionModal]);
 
@@ -471,7 +490,13 @@ export default function App() {
           />
         );
       case 'compass':
-        return <CompassTool lang={lang} />;
+        return (
+          <CompassTool
+            lang={lang}
+            userLat={userGpsCoords?.lat}
+            userLon={userGpsCoords?.lon}
+          />
+        );
       case 'alarm':
         return <AlarmMainView lang={lang} />;
       default:
@@ -693,6 +718,34 @@ export default function App() {
                     lang={lang}
                     onOpenDetails={() => openTool('weather')}
                   />
+                )}
+
+                {/* GPS Location Permission Banner if not yet active */}
+                {!userGpsCoords && !searchQuery && (
+                  <div className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-blue-500/10 border border-blue-500/30 flex items-center justify-between gap-3 shadow-xs">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-xl bg-[#0B63F6] text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <MapPin className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-xs font-bold text-slate-900 dark:text-white block truncate">
+                          {lang === 'bn' ? 'সঠিক আবহাওয়া ও কম্পাসের জন্য জিপিএস' : 'Enable GPS Location'}
+                        </span>
+                        <span className="text-[11px] text-slate-500 dark:text-blue-200 block truncate">
+                          {lang === 'bn' ? 'লাইভ লোকেশন এক্সেস চালু করুন' : 'Tap to grant location access'}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setIsFirstLaunchPermission(false);
+                        setShowPermissionModal(true);
+                      }}
+                      className="px-3 py-1.5 bg-[#0B63F6] hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shrink-0 transition active:scale-95 shadow-xs"
+                    >
+                      {lang === 'bn' ? 'অনুমতি দিন' : 'Grant'}
+                    </button>
+                  </div>
                 )}
 
                 {/* Quick Shortcuts: Books & Notepad */}
@@ -1315,7 +1368,12 @@ export default function App() {
       {/* Android Permissions Manager Modal */}
       <PermissionManagerModal
         isOpen={showPermissionModal}
-        onClose={() => setShowPermissionModal(false)}
+        isFirstLaunch={isFirstLaunchPermission}
+        onClose={() => {
+          setShowPermissionModal(false);
+          setIsFirstLaunchPermission(false);
+        }}
+        onLocationGranted={handleLocationGranted}
         lang={lang}
       />
 
