@@ -30,6 +30,7 @@ import {
   getStoredSocialAccounts,
 } from '../../utils/multiAiStudioStorage';
 import { getAllProviders } from '../../utils/aiProviderRegistry';
+import { downloadBlobFile } from '../../utils/multiAiVideoEngine';
 import { VideoCreationWizard } from './VideoCreationWizard';
 import { AiProviderManagerModal } from '../admin/AiProviderManagerModal';
 import { SocialAccountsModal } from './SocialAccountsModal';
@@ -72,6 +73,7 @@ export const AiVideoStudioMain: React.FC<AiVideoStudioMainProps> = ({
   const [showProviderManager, setShowProviderManager] = useState<boolean>(false);
   const [showSocialModal, setShowSocialModal] = useState<boolean>(false);
   const [publishingProject, setPublishingProject] = useState<VideoProject | null>(null);
+  const [previewingVideoProject, setPreviewingVideoProject] = useState<VideoProject | null>(null);
 
   // Data states
   const [projects, setProjects] = useState<VideoProject[]>([]);
@@ -390,14 +392,28 @@ export const AiVideoStudioMain: React.FC<AiVideoStudioMainProps> = ({
 
                       <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                         {proj.renderedVideoBlobUrl && (
-                          <a
-                            href={proj.renderedVideoBlobUrl}
-                            download={`smarthub_${proj.title.slice(0, 15)}_${proj.format}.mp4`}
-                            title="MP4 ডাউনলোড"
-                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                          </a>
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setPreviewingVideoProject(proj)}
+                              title="ভিডিও দেখুন"
+                              className="p-1.5 rounded-lg bg-emerald-600/30 hover:bg-emerald-600 text-emerald-300 hover:text-white transition cursor-pointer"
+                            >
+                              <Play className="w-3.5 h-3.5 fill-current" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const filename = `smarthub_${(proj.title || 'video').slice(0, 20).replace(/\s+/g, '_')}_${proj.format}.mp4`;
+                                downloadBlobFile(proj.renderedVideoBlobUrl!, filename);
+                              }}
+                              title="MP4 ডাউনলোড"
+                              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                          </>
                         )}
 
                         <button
@@ -511,6 +527,66 @@ export const AiVideoStudioMain: React.FC<AiVideoStudioMainProps> = ({
             loadData();
           }}
         />
+      )}
+
+      {/* Video Preview & Download Modal */}
+      {previewingVideoProject && previewingVideoProject.renderedVideoBlobUrl && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-2xl flex flex-col items-center gap-4">
+            <div className="flex items-center justify-between w-full pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Video className="w-4 h-4 text-emerald-400" />
+                <h3 className="text-xs font-bold text-white line-clamp-1">
+                  {previewingVideoProject.title}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewingVideoProject(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="w-full aspect-[9/16] bg-black rounded-2xl overflow-hidden border border-slate-800 shadow-inner flex items-center justify-center">
+              <video
+                controls
+                playsInline
+                autoPlay
+                loop
+                src={previewingVideoProject.renderedVideoBlobUrl}
+                className="max-h-full max-w-full object-contain"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 text-[11px] text-emerald-400 font-medium">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>সাইজ: {previewingVideoProject.renderedVideoSizeMb || '1.2'} MB • {previewingVideoProject.durationSec}s</span>
+            </div>
+
+            <div className="flex items-center gap-2.5 w-full">
+              <button
+                type="button"
+                onClick={() => {
+                  const filename = `smarthub_${(previewingVideoProject.title || 'video').slice(0, 20).replace(/\s+/g, '_')}_${previewingVideoProject.format}.mp4`;
+                  downloadBlobFile(previewingVideoProject.renderedVideoBlobUrl!, filename);
+                }}
+                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 active:scale-95 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 transition cursor-pointer"
+              >
+                <Download className="w-4 h-4" /> MP4 ডাউনলোড
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPreviewingVideoProject(null)}
+                className="py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition cursor-pointer"
+              >
+                বন্ধ করুন
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -995,3 +995,112 @@ export async function renderMultiAiVideoToBlob(
     }
   });
 }
+
+// ==========================================
+// 7. Smart ChatGPT / Custom Script Parser
+// ==========================================
+export function parseRawScriptToScenes(
+  rawText: string,
+  topic: string,
+  mode: VideoMode,
+  language: VideoLanguage,
+  style: VideoStyle,
+  format: VideoFormat
+): VideoScript {
+  const isBn = language === 'bn';
+  const cleanText = rawText.trim();
+
+  // Try splitting by scene indicators or double newlines
+  let paragraphs: string[] = [];
+
+  // Check if text has "Scene 1", "দৃশ্য ১", "1.", etc.
+  if (/(?:scene\s*\d+|দৃশ্য\s*\d+|\n\s*\d+[\.\)])/i.test(cleanText)) {
+    paragraphs = cleanText
+      .split(/(?:\n|^)(?:scene\s*\d+[:\.\-]?|দৃশ্য\s*\d+[:\.\-]?|\d+[\.\)])\s*/i)
+      .map((p) => p.trim())
+      .filter((p) => p.length > 5);
+  } else {
+    // Split by blank lines or bullet points
+    paragraphs = cleanText
+      .split(/\n\s*\n|\n(?=[•\-\*])/)
+      .map((p) => p.trim().replace(/^[•\-\*]\s*/, ''))
+      .filter((p) => p.length > 5);
+  }
+
+  // Fallback if only 1 massive block
+  if (paragraphs.length <= 1 && cleanText.length > 80) {
+    const sentences = cleanText.split(/(?<=[।!?\.\n])/).map((s) => s.trim()).filter(Boolean);
+    paragraphs = [];
+    let current = '';
+    for (const s of sentences) {
+      if ((current + ' ' + s).length > 70 && current) {
+        paragraphs.push(current);
+        current = s;
+      } else {
+        current = current ? current + ' ' + s : s;
+      }
+    }
+    if (current) paragraphs.push(current);
+  }
+
+  if (paragraphs.length === 0) {
+    paragraphs = [cleanText || (isBn ? 'স্বাগতম আমাদের ভিডিওতে।' : 'Welcome to our video.')];
+  }
+
+  const hookOpening = paragraphs[0].slice(0, 80);
+
+  const scenes: VideoScene[] = paragraphs.map((para, idx) => {
+    const words = para.split(/\s+/).length;
+    const estimatedSec = Math.max(3, Math.min(8, Math.round(words / 2.5)));
+    const onScreen = para.split(/\s+/).slice(0, 6).join(' ').replace(/[।,!?\.:]$/, '');
+
+    const motions: VideoScene['cameraMotion'][] = ['zoom_in', 'zoom_out', 'pan_left', 'pan_right', 'subtle_drift'];
+    const transitions: VideoScene['transitionType'][] = ['fade', 'dissolve', 'zoom'];
+
+    return {
+      id: `custom-sc-${Date.now()}-${idx}`,
+      sceneNumber: idx + 1,
+      durationSec: estimatedSec,
+      narrationText: mode === 'voiceless' ? '' : para,
+      onScreenText: onScreen,
+      visualDescription: `${topic} - Scene ${idx + 1}`,
+      imagePrompt: `${topic}, ${onScreen}, ${style} aesthetic, cinematic lighting, 8k quality`,
+      transitionType: transitions[idx % transitions.length],
+      cameraMotion: motions[idx % motions.length],
+    };
+  });
+
+  const totalSec = scenes.reduce((acc, s) => acc + s.durationSec, 0);
+
+  return {
+    topic: topic || (paragraphs[0].slice(0, 35) + '...'),
+    mode,
+    hookOpening,
+    scenes,
+    closingStatement: paragraphs[paragraphs.length - 1] || (isBn ? 'ভিডিওটি ভালো লাগলে লাইক ও শেয়ার করুন।' : 'Thanks for watching. Follow for more.'),
+    callToAction: isBn ? 'নতুন ভিডিও পেতে সাবস্ক্রাইব করুন!' : 'Subscribe and share!',
+    totalEstimatedSeconds: totalSec,
+    generatedByProvider: 'local_offline',
+    providerName: 'আমার নিজস্ব স্ক্রিপ্ট (Custom / ChatGPT Script)',
+  };
+}
+
+// ==========================================
+// 8. Mobile Safe Video Downloader
+// ==========================================
+export function downloadBlobFile(url: string, filename: string): void {
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+    }, 400);
+  } catch (err) {
+    window.open(url, '_blank');
+  }
+}
+

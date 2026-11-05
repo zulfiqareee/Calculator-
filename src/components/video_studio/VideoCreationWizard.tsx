@@ -26,6 +26,8 @@ import {
   Flame,
   Copy,
   Check,
+  FileText,
+  ClipboardPaste,
 } from 'lucide-react';
 import {
   VideoMode,
@@ -46,6 +48,8 @@ import {
   playSceneVoice,
   stopSceneVoice,
   generateProceduralVisualScene,
+  parseRawScriptToScenes,
+  downloadBlobFile,
 } from '../../utils/multiAiVideoEngine';
 import { saveVideoProject } from '../../utils/multiAiStudioStorage';
 import { ThumbnailGeneratorModal } from './ThumbnailGeneratorModal';
@@ -76,6 +80,12 @@ export const VideoCreationWizard: React.FC<VideoCreationWizardProps> = ({
   const [script, setScript] = useState<VideoScript | null>(existingProject?.script || null);
   const [isGeneratingScript, setIsGeneratingScript] = useState<boolean>(false);
   const [scriptProviderUsed, setScriptProviderUsed] = useState<string>('');
+
+  // ChatGPT & Custom Script States
+  const [scriptInputType, setScriptInputType] = useState<'ai_title' | 'chatgpt_script'>('ai_title');
+  const [customScriptText, setCustomScriptText] = useState<string>('');
+  const [showPasteScriptModal, setShowPasteScriptModal] = useState<boolean>(false);
+  const [modalCustomScriptText, setModalCustomScriptText] = useState<string>('');
 
   // Audio & Subtitle States
   const [voiceGender, setVoiceGender] = useState<'male' | 'female'>(existingProject?.voiceGender || 'male');
@@ -173,6 +183,52 @@ export const VideoCreationWizard: React.FC<VideoCreationWizardProps> = ({
       console.error('Failed to generate script:', err);
     } finally {
       setIsGeneratingScript(false);
+    }
+  };
+
+  // Process Ready-made ChatGPT / Custom Script
+  const handleProcessCustomScript = (textToProcess?: string) => {
+    const text = (textToProcess ?? customScriptText).trim();
+    if (!text) return;
+
+    const detectedTopic = topic.trim() || text.split('\n')[0].replace(/^[#\*\d\.\:\-\s]+/, '').slice(0, 40) || 'কাস্টম স্ক্রিপ্ট ভিডিও';
+    if (!topic.trim()) {
+      setTopic(detectedTopic);
+    }
+
+    const parsed = parseRawScriptToScenes(
+      text,
+      detectedTopic,
+      mode,
+      language,
+      style,
+      format
+    );
+
+    setScript(parsed);
+    setScriptProviderUsed(parsed.providerName || 'ChatGPT / নিজস্ব স্ক্রিপ্ট');
+    setCurrentStep(2);
+  };
+
+  const handleUpdateWithCustomScriptModal = () => {
+    if (!modalCustomScriptText.trim()) return;
+    handleProcessCustomScript(modalCustomScriptText);
+    setShowPasteScriptModal(false);
+    setModalCustomScriptText('');
+  };
+
+  const handlePasteFromClipboard = async (target: 'main' | 'modal') => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        if (target === 'main') {
+          setCustomScriptText(text);
+        } else {
+          setModalCustomScriptText(text);
+        }
+      }
+    } catch (err) {
+      // Browser might require manual paste
     }
   };
 
@@ -282,9 +338,8 @@ export const VideoCreationWizard: React.FC<VideoCreationWizardProps> = ({
       };
       saveVideoProject(updatedProject);
 
-      // Move automatically to SEO & Publish step
+      // Prepare SEO in background, but STAY on Step 5 so user can watch & download their video!
       handleGenerateSEOAutomatic(result.url, result.sizeMb);
-      setCurrentStep(6);
     } catch (err: any) {
       console.error('Video Render Failed:', err);
       const msg = err?.message || 'রেন্ডার প্রক্রিয়ায় ত্রুটি ঘটেছে। অনুগ্রহ করে আবার চেষ্টা করুন।';
@@ -477,19 +532,113 @@ export const VideoCreationWizard: React.FC<VideoCreationWizardProps> = ({
               </div>
             </div>
 
+            {/* Script Creation Method Selector */}
+            <div>
+              <label className="text-xs font-semibold text-slate-300 mb-2 block">
+                স্ক্রিপ্ট তৈরির পদ্ধতি (Script Source)
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setScriptInputType('ai_title')}
+                  className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition ${
+                    scriptInputType === 'ai_title'
+                      ? 'bg-indigo-950/50 border-indigo-500 ring-2 ring-indigo-500/20'
+                      : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 shrink-0">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                      টাইটেল দিয়ে AI স্ক্রিপ্ট
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-semibold">
+                        অটো
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                      শুধু বিষয়/টাইটেল দিন, এআই নিজেই পুরো চিত্রনাট্য ও দৃশ্য সাজাবে।
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setScriptInputType('chatgpt_script')}
+                  className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition ${
+                    scriptInputType === 'chatgpt_script'
+                      ? 'bg-purple-950/50 border-purple-500 ring-2 ring-purple-500/20'
+                      : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="p-2 rounded-xl bg-purple-500/20 text-purple-400 shrink-0">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                      ChatGPT / নিজস্ব স্ক্রিপ্ট পেস্ট
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-semibold">
+                        কাস্টম
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                      ChatGPT বা আপনার তৈরি স্ক্রিপ্ট পেস্ট করে সরাসরি ভিডিও বানান।
+                    </p>
+                  </div>
+                </button>
+              </div>
+            </div>
+
             {/* Video Topic Input */}
             <div>
               <label className="text-xs font-semibold text-slate-300 mb-1.5 block">
-                ভিডিওর বিষয় বা টাইটেল (Topic or Title) *
+                ভিডিওর বিষয় বা মূল টাইটেল (Topic or Title) {scriptInputType === 'ai_title' ? '*' : '(ঐচ্ছিক)'}
               </label>
               <input
                 type="text"
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
-                placeholder="যেমন: প্রতিদিন সকালে হাটার ১০টি গোপন স্বাস্থ্য উপকারিতা"
+                placeholder={
+                  scriptInputType === 'ai_title'
+                    ? 'যেমন: প্রতিদিন সকালে হাটার ১০টি গোপন স্বাস্থ্য উপকারিতা'
+                    : 'ভিডিওর টাইটেল লিখুন (খালি রাখলে স্ক্রিপ্ট থেকে স্বয়ংক্রিয়ভাবে নেওয়া হবে)'
+                }
                 className="w-full bg-slate-900 border border-slate-800 rounded-2xl px-4 py-3.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition shadow-inner"
               />
             </div>
+
+            {/* If ChatGPT Script Mode is active: Show Script Textarea & Paste Button */}
+            {scriptInputType === 'chatgpt_script' && (
+              <div className="p-4 rounded-2xl bg-purple-950/20 border border-purple-900/40 flex flex-col gap-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+                    <FileText className="w-4 h-4 text-purple-400" />
+                    ChatGPT বা আপনার রেডিমেড স্ক্রিপ্ট এখানে পেস্ট করুন *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handlePasteFromClipboard('main')}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-800/50 hover:bg-purple-700/60 text-[11px] font-semibold text-purple-200 transition"
+                  >
+                    <ClipboardPaste className="w-3.5 h-3.5" /> ক্লিপবোর্ড থেকে পেস্ট
+                  </button>
+                </div>
+
+                <textarea
+                  value={customScriptText}
+                  onChange={(e) => setCustomScriptText(e.target.value)}
+                  rows={6}
+                  placeholder={`এখানে ChatGPT বা আপনার নিজের স্ক্রিপ্ট পেস্ট করুন...\n\nউদাহরণ:\nদৃশ্য ১: প্রতিদিন সকালে মাত্র ২০ মিনিট হাটলে হার্ট ভালো থাকে।\nদৃশ্য ২: এটি অতিরিক্ত ক্যালোরি দ্রুত পোড়ায় এবং ওজন নিয়ন্ত্রণে রাখে।\nদৃশ্য ৩: সারাদিন কাজের শক্তি পাওয়া যায় এবং ক্লান্তি দূর হয়।\n\n(নোট: দৃশ্য ১/দৃশ্য ২ অথবা বুলেট পয়েন্ট বা সাধারণ প্যারাগ্রাফ - যেকোনো ফরম্যাট পেস্ট করলেই চলবে)`}
+                  className="w-full bg-slate-950 border border-purple-900/50 rounded-xl p-3.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 leading-relaxed font-sans"
+                />
+
+                <div className="flex items-center justify-between text-[11px] text-purple-300/80">
+                  <span>শব্দ সংখ্যা: {customScriptText.trim() ? customScriptText.trim().split(/\s+/).length : 0} টি</span>
+                  <span>স্বয়ংক্রিয়ভাবে দৃশ্য ও টাইমকোড ভাগ করা হবে</span>
+                </div>
+              </div>
+            )}
 
             {/* Format & Duration */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -612,27 +761,40 @@ export const VideoCreationWizard: React.FC<VideoCreationWizardProps> = ({
               />
             </div>
 
-            {/* Bottom Generate Button */}
+            {/* Bottom Generate / Process Button */}
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
-              <button
-                type="button"
-                disabled={!topic.trim() || isGeneratingScript}
-                onClick={handleGenerateScript}
-                className="flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-600 to-pink-600 hover:brightness-110 text-white text-sm font-bold shadow-lg shadow-indigo-500/25 transition disabled:opacity-50"
-              >
-                {isGeneratingScript ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    মাল্টি-এআই স্ক্রিপ্ট জেনারেট হচ্ছে...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4" />
-                    স্ক্রিপ্ট ও দৃশ্য তৈরি করুন
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
+              {scriptInputType === 'ai_title' ? (
+                <button
+                  type="button"
+                  disabled={!topic.trim() || isGeneratingScript}
+                  onClick={handleGenerateScript}
+                  className="flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-600 to-pink-600 hover:brightness-110 active:scale-95 text-white text-sm font-bold shadow-lg shadow-indigo-500/25 transition disabled:opacity-50 cursor-pointer"
+                >
+                  {isGeneratingScript ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      মাল্টি-এআই স্ক্রিপ্ট জেনারেট হচ্ছে...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      এআই স্ক্রিপ্ট ও দৃশ্য তৈরি করুন
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={!customScriptText.trim()}
+                  onClick={() => handleProcessCustomScript()}
+                  className="flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-pink-600 hover:brightness-110 active:scale-95 text-white text-sm font-bold shadow-lg shadow-purple-500/25 transition disabled:opacity-50 cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  ChatGPT স্ক্রিপ্ট প্রসেস করে দৃশ্য সাজান
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -671,17 +833,31 @@ export const VideoCreationWizard: React.FC<VideoCreationWizardProps> = ({
 
             {/* Scenes List */}
             <div className="flex flex-col gap-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs font-semibold text-slate-300">
                   মোট দৃশ্য: {script.scenes.length} টি ({script.totalEstimatedSeconds} সেকেন্ড)
                 </span>
-                <button
-                  type="button"
-                  onClick={handleGenerateScript}
-                  className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" /> পুনরায় স্ক্রিপ্ট জেনারেট
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalCustomScriptText(
+                        script.scenes.map((s) => `দৃশ্য ${s.sceneNumber}: ${s.narrationText || s.onScreenText}`).join('\n\n')
+                      );
+                      setShowPasteScriptModal(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-700/60 text-xs font-bold text-purple-300 transition"
+                  >
+                    <ClipboardPaste className="w-3.5 h-3.5" /> ChatGPT স্ক্রিপ্ট ইমপোর্ট
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleGenerateScript}
+                    className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 px-2 py-1"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" /> এআই রি-জেনারেট
+                  </button>
+                </div>
               </div>
 
               {script.scenes.map((sc, idx) => (
@@ -1092,9 +1268,22 @@ export const VideoCreationWizard: React.FC<VideoCreationWizardProps> = ({
             <div className="w-full max-w-sm aspect-[9/16] bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden relative shadow-2xl flex items-center justify-center p-3">
               <canvas
                 ref={previewCanvasRef}
-                className="max-h-full max-w-full object-contain rounded-2xl shadow-lg"
+                className={`max-h-full max-w-full object-contain rounded-2xl shadow-lg ${renderedBlobUrl && !isRendering ? 'hidden' : 'block'}`}
                 style={{ aspectRatio: format === 'shorts' ? '9/16' : '16/9' }}
               />
+
+              {/* Rendered HTML5 Video Player */}
+              {renderedBlobUrl && !isRendering && (
+                <video
+                  controls
+                  playsInline
+                  autoPlay
+                  loop
+                  src={renderedBlobUrl}
+                  className="max-h-full max-w-full object-contain rounded-2xl shadow-2xl z-10"
+                  style={{ aspectRatio: format === 'shorts' ? '9/16' : '16/9' }}
+                />
+              )}
 
               {!isRendering && !renderedBlobUrl && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/75 p-6 backdrop-blur-[2px]">
@@ -1146,30 +1335,42 @@ export const VideoCreationWizard: React.FC<VideoCreationWizardProps> = ({
               )}
             </div>
 
-            {/* If Rendered Successfully */}
+            {/* If Rendered Successfully: Big Action Buttons */}
             {renderedBlobUrl && !isRendering && (
-              <div className="flex flex-col items-center gap-3 w-full max-w-md">
-                <div className="flex items-center gap-2 text-xs text-emerald-400 font-semibold bg-emerald-950/40 border border-emerald-800/40 px-4 py-2 rounded-xl">
-                  <CheckCircle2 className="w-4 h-4" /> ভিডিও সফলভাবে রেন্ডার সম্পন্ন! ({renderedSizeMb} MB)
+              <div className="flex flex-col items-center gap-3 w-full max-w-md animate-fadeIn">
+                <div className="flex items-center gap-2 text-xs text-emerald-400 font-semibold bg-emerald-950/60 border border-emerald-800/60 px-4 py-2.5 rounded-xl shadow-md">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>ভিডিও সফলভাবে রেন্ডার সম্পন্ন! ({renderedSizeMb || '1.2'} MB)</span>
                 </div>
 
-                <div className="flex items-center gap-3 w-full">
-                  <a
-                    href={renderedBlobUrl}
-                    download={`smarthub_${topic.slice(0, 20).replace(/\s+/g, '_')}_${format}.mp4`}
-                    className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition shadow-md"
+                <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const filename = `smarthub_${(topic || 'video').slice(0, 20).replace(/\s+/g, '_')}_${format}.mp4`;
+                      downloadBlobFile(renderedBlobUrl, filename);
+                    }}
+                    className="w-full sm:flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 active:scale-95 text-white text-xs font-bold transition shadow-lg shadow-emerald-600/30 cursor-pointer"
                   >
-                    <Download className="w-4 h-4" /> MP4 ডাউনলোড করুন
-                  </a>
+                    <Download className="w-4 h-4" /> MP4 ভিডিও ডাউনলোড করুন
+                  </button>
 
                   <button
                     type="button"
                     onClick={() => setCurrentStep(6)}
-                    className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition shadow-md shadow-indigo-600/20"
+                    className="w-full sm:flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold transition shadow-md shadow-indigo-600/20 cursor-pointer"
                   >
                     পরবর্তী: এসইও ও পাবলিশ <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={handleStartRender}
+                  className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition mt-1 py-1"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> পুনরায় নতুন করে রেন্ডার করুন
+                </button>
               </div>
             )}
 
@@ -1204,6 +1405,48 @@ export const VideoCreationWizard: React.FC<VideoCreationWizardProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Rendered Video Player Banner in Step 6 so admin can always play and download */}
+            {renderedBlobUrl && (
+              <div className="p-4 rounded-2xl bg-slate-900 border border-emerald-800/50 flex flex-col sm:flex-row items-center gap-4 shadow-xl">
+                <div className="w-28 sm:w-36 aspect-[9/16] bg-black rounded-xl overflow-hidden shrink-0 border border-slate-700 shadow-md">
+                  <video
+                    controls
+                    playsInline
+                    src={renderedBlobUrl}
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+                <div className="flex flex-col gap-2 flex-1 text-left w-full">
+                  <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span>ভিডিও রেন্ডার প্রস্তুত ({renderedSizeMb || '1.2'} MB)</span>
+                  </div>
+                  <p className="text-sm text-white font-semibold line-clamp-2">
+                    {topic || script?.topic}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const filename = `smarthub_${(topic || 'video').slice(0, 20).replace(/\s+/g, '_')}_${format}.mp4`;
+                        downloadBlobFile(renderedBlobUrl, filename);
+                      }}
+                      className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 active:scale-95 text-white text-xs font-bold shadow-md transition cursor-pointer"
+                    >
+                      <Download className="w-4 h-4" /> MP4 ডাউনলোড করুন
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentStep(5)}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition"
+                    >
+                      ভিডিও এডিটর / রি-রেন্ডার
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Action Bar: Thumbnail Generator & Social Publish */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1370,6 +1613,70 @@ export const VideoCreationWizard: React.FC<VideoCreationWizardProps> = ({
           </div>
         )}
       </div>
+
+      {/* Quick ChatGPT Script Import Modal */}
+      {showPasteScriptModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl flex flex-col gap-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-purple-500/20 text-purple-400">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">ChatGPT স্ক্রিপ্ট ইমপোর্ট / পরিবর্তন</h3>
+                  <p className="text-[11px] text-slate-400">আপনার পুরো স্ক্রিপ্ট পেস্ট করুন, স্বয়ংক্রিয়ভাবে দৃশ্য তৈরি হবে</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPasteScriptModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-slate-400">স্ক্রিপ্ট টেক্সট (দৃশ্য বা প্যারাগ্রাফ):</span>
+              <button
+                type="button"
+                onClick={() => handlePasteFromClipboard('modal')}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-900/40 hover:bg-purple-800/60 text-[11px] font-semibold text-purple-200 transition"
+              >
+                <ClipboardPaste className="w-3.5 h-3.5" /> ক্লিপবোর্ড থেকে পেস্ট
+              </button>
+            </div>
+
+            <textarea
+              value={modalCustomScriptText}
+              onChange={(e) => setModalCustomScriptText(e.target.value)}
+              rows={8}
+              placeholder="এখানে ChatGPT বা আপনার স্ক্রিপ্ট পেস্ট করুন..."
+              className="w-full bg-slate-950 border border-purple-900/50 rounded-xl p-3.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 leading-relaxed font-sans"
+            />
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowPasteScriptModal(false)}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+              >
+                বাতিল
+              </button>
+
+              <button
+                type="button"
+                disabled={!modalCustomScriptText.trim()}
+                onClick={handleUpdateWithCustomScriptModal}
+                className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:brightness-110 active:scale-95 text-white text-xs font-bold shadow-lg shadow-purple-600/30 transition disabled:opacity-50 cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4" /> দৃশ্যগুলো আপডেট করুন
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Thumbnail Generator Modal */}
       <ThumbnailGeneratorModal
