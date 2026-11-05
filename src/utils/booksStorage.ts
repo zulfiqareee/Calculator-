@@ -104,9 +104,44 @@ export function getStoredBooks(): BookItem[] {
   }
 }
 
-export function saveStoredBooks(books: BookItem[]): void {
+export async function pushBooksToServer(books: BookItem[]): Promise<boolean> {
+  try {
+    const res = await fetch('/api/books', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ books }),
+    });
+    const data = await res.json();
+    return data?.success === true;
+  } catch (err) {
+    console.warn('[Sync] Could not push books to server:', err);
+    return false;
+  }
+}
+
+export async function fetchBooksFromServer(): Promise<BookItem[]> {
+  try {
+    const res = await fetch('/api/books');
+    if (!res.ok) return getStoredBooks();
+    const data = await res.json();
+    if (data?.success && Array.isArray(data.books)) {
+      if (data.books.length > 0) {
+        saveStoredBooks(data.books, false);
+        return data.books;
+      }
+    }
+  } catch (err) {
+    console.warn('[Sync] Could not fetch books from server:', err);
+  }
+  return getStoredBooks();
+}
+
+export function saveStoredBooks(books: BookItem[], pushToServer: boolean = true): void {
   try {
     localStorage.setItem(STORAGE_KEY_BOOKS, JSON.stringify(books));
+    if (pushToServer) {
+      pushBooksToServer(books).catch(() => {});
+    }
   } catch (err) {
     console.error('Failed to save books', err);
   }
@@ -117,14 +152,14 @@ export function addOrUpdateBook(book: BookItem): void {
   const index = current.findIndex((b) => b.id === book.id);
   if (index >= 0) {
     current[index] = { ...book, updatedAt: Date.now() };
-    saveStoredBooks(current);
+    saveStoredBooks(current, true);
   } else {
-    saveStoredBooks([{ ...book, createdAt: Date.now(), updatedAt: Date.now() }, ...current]);
+    saveStoredBooks([{ ...book, createdAt: Date.now(), updatedAt: Date.now() }, ...current], true);
   }
 }
 
 export function deleteBook(bookId: string): void {
   const current = getStoredBooks();
   const updated = current.filter((b) => b.id !== bookId);
-  saveStoredBooks(updated);
+  saveStoredBooks(updated, true);
 }

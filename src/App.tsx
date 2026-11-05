@@ -45,6 +45,7 @@ import {
   BellRing,
   Video,
   CalendarDays,
+  BookMarked,
 } from 'lucide-react';
 import { Language, ThemeMode, ToolCategory, ToolId, ToolItem, CustomTool } from './types';
 import {
@@ -57,13 +58,15 @@ import {
   getStoredRecents,
   addStoredRecent,
 } from './utils/storage';
-import { getStoredCustomTools } from './utils/customToolsStorage';
+import { getStoredCustomTools, fetchCustomToolsFromServer } from './utils/customToolsStorage';
+import { fetchBooksFromServer } from './utils/booksStorage';
+import { fetchHealthTipsFromServer } from './utils/healthStorage';
 import { AUTHORIZED_ADMIN_EMAIL } from './utils/adminAuth';
 import { TOOLS_LIST, UI_TEXT, formatNumber } from './i18n/translations';
 
 // Standard Tools
 import { BasicCalculator } from './components/tools/BasicCalculator';
-import { ElectricityBillEstimator } from './components/tools/ElectricityBillEstimator';
+import { TallyKhataView } from './components/tools/TallyKhataView';
 import { AgeCalculator } from './components/tools/AgeCalculator';
 import { DateDifferenceCalculator } from './components/tools/DateDifferenceCalculator';
 import { BanglaEnglishCalendar } from './components/tools/BanglaEnglishCalendar';
@@ -99,11 +102,10 @@ import { AdMobBanner } from './components/admob/AdMobBanner';
 import { AdMobManager } from './components/admob/AdMobManager';
 import { HistoryView } from './components/HistoryView';
 import { AboutPolicy } from './components/AboutPolicy';
-import { AiVideoStudioMain } from './components/video_studio/AiVideoStudioMain';
 import { FreeAiVideoPlatformsHub } from './components/video_studio/FreeAiVideoPlatformsHub';
 
 type BottomTab = 'home' | 'favorites' | 'recents' | 'settings';
-type SpecialView = 'none' | 'books' | 'notes' | 'video-studio' | 'ai-video-hub';
+type SpecialView = 'none' | 'books' | 'notes' | 'ai-video-hub';
 
 export default function App() {
   const [lang, setLang] = useState<Language>(getStoredLanguage());
@@ -277,10 +279,32 @@ export default function App() {
 
   const t = UI_TEXT[lang];
 
-  // Refresh custom tools
-  const refreshCustomTools = () => {
-    setCustomTools(getStoredCustomTools());
+  // Refresh custom tools & fetch latest from free server
+  const refreshCustomTools = async () => {
+    const tools = await fetchCustomToolsFromServer();
+    setCustomTools(tools);
   };
+
+  // Auto-sync custom tools, books, and health content from Free Server for all users & customers
+  useEffect(() => {
+    let isMounted = true;
+    const syncAll = async () => {
+      try {
+        const tools = await fetchCustomToolsFromServer();
+        if (isMounted && tools && tools.length > 0) {
+          setCustomTools(tools);
+        }
+        await fetchBooksFromServer();
+        await fetchHealthTipsFromServer();
+      } catch (e) {
+        console.warn('[Sync] Background free server sync:', e);
+      }
+    };
+    syncAll();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Sync HTML language attribute
   useEffect(() => {
@@ -419,6 +443,8 @@ export default function App() {
       case 'CalendarDays':
       case 'Calendar':
         return <CalendarDays className={className} />;
+      case 'BookMarked':
+        return <BookMarked className={className} />;
       case 'DollarSign':
         return <DollarSign className={className} />;
       case 'MapPin':
@@ -466,8 +492,8 @@ export default function App() {
     switch (activeToolId) {
       case 'calculator':
         return <BasicCalculator lang={lang} />;
-      case 'electricity':
-        return <ElectricityBillEstimator lang={lang} />;
+      case 'tally-khata':
+        return <TallyKhataView lang={lang} />;
       case 'age':
         return <AgeCalculator lang={lang} />;
       case 'date-diff':
@@ -637,18 +663,10 @@ export default function App() {
               setSettingsSubView('admin');
             }}
           />
-        ) : specialView === 'video-studio' ? (
-          /* 3. SPECIAL VIEW: PRIVATE AI VIDEO STUDIO */
-          <AiVideoStudioMain
-            onClose={() => setSpecialView('none')}
-            currentUserEmail={AUTHORIZED_ADMIN_EMAIL}
-            isSuperAdmin={true}
-          />
         ) : specialView === 'ai-video-hub' ? (
-          /* 4. SPECIAL VIEW: ALL-IN-ONE FREE AI VIDEO PLATFORMS HUB */
+          /* 3. SPECIAL VIEW: ALL-IN-ONE FREE AI VIDEO PLATFORMS HUB */
           <FreeAiVideoPlatformsHub
             onBack={() => setSpecialView('none')}
-            onOpenInAppStudio={() => setSpecialView('video-studio')}
           />
         ) : activeToolId && currentTool ? (
           /* 3. ACTIVE TOOL VIEW */
@@ -838,6 +856,34 @@ export default function App() {
                   </button>
                 )}
 
+                {/* Featured Button: Digital Tally Khata (হিসাব কিতাব ও ভাউচার প্রিন্ট) */}
+                {!searchQuery && (
+                  <button
+                    onClick={() => openTool('tally-khata')}
+                    className="w-full p-3.5 rounded-2xl bg-gradient-to-r from-emerald-800 via-teal-900 to-slate-900 border border-emerald-600/60 hover:border-emerald-400 text-white flex items-center justify-between shadow-md active:scale-98 transition text-left group cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 via-teal-500 to-green-600 flex items-center justify-center text-white shadow-sm shrink-0 group-hover:scale-105 transition">
+                        <BookMarked className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-extrabold text-xs sm:text-sm block truncate">
+                            {lang === 'bn' ? 'ডিজিটাল টালি খাতা ও মেমো' : 'Digital Tally Khata'}
+                          </span>
+                          <span className="text-[10px] bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 px-1.5 py-0.2 rounded font-bold shrink-0">
+                            {lang === 'bn' ? 'হিসাব ও ভাউচার' : 'Ledger & Memo'}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-emerald-100/90 block truncate">
+                          {lang === 'bn' ? 'কাস্টমার বাকি-জমা, ক্যাশবই, খরচ হিসাব ও ভাউচার প্রিন্ট' : 'Customer dues, cashbook, expense tracker & voucher print'}
+                        </span>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-emerald-400 shrink-0 ml-2" />
+                  </button>
+                )}
+
                 {/* Section Title: "টুলস সমূহ" */}
                 <div className="flex items-center justify-between pt-1">
                   <h2 className="text-base font-bold text-[#0B3A82] dark:text-blue-300 tracking-tight">
@@ -948,32 +994,6 @@ export default function App() {
                         </div>
                       </div>
                       <ChevronRight className="w-5 h-5 text-white/80" />
-                    </button>
-
-                    {/* AI Video Creation Studio (Admin Only) */}
-                    <button
-                      onClick={() => setSpecialView('video-studio')}
-                      className="bg-gradient-to-r from-indigo-900 via-purple-900 to-slate-900 border border-indigo-700/50 text-white p-4 rounded-2xl flex items-center justify-between shadow-md active:scale-98 transition text-left"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-pink-500 flex items-center justify-center text-white shadow-sm">
-                          <Video className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-sm block">
-                              AI Video Studio (Multi-Engine)
-                            </span>
-                            <span className="text-[10px] bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 px-1.5 py-0.2 rounded font-semibold">
-                              Owner Only
-                            </span>
-                          </div>
-                          <span className="text-[11px] text-slate-300 block">
-                            {lang === 'bn' ? 'ফ্রি এআই ভিডিও মেকার ও সোশ্যাল পাবলিশিং' : 'Free multi-engine AI video creator & auto publisher'}
-                          </span>
-                        </div>
-                      </div>
-                      <ChevronRight className="w-5 h-5 text-slate-400" />
                     </button>
 
                     {/* All-in-One Free AI Video Platforms Hub Button */}
@@ -1146,7 +1166,7 @@ export default function App() {
                       lang={lang}
                       onOpenTool={(toolId) => openTool(toolId)}
                       onRefreshTools={refreshCustomTools}
-                      onOpenVideoStudio={() => setSpecialView('video-studio')}
+                      onOpenVideoStudio={() => setSpecialView('ai-video-hub')}
                     />
                   </div>
                 )}

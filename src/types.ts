@@ -5,7 +5,8 @@ export type ToolCategory = 'all' | 'finance' | 'utility' | 'daily' | 'electrical
 
 export type ToolId =
   | 'calculator'
-  | 'electricity'
+  | 'tally-khata'
+  | 'calendar'
   | 'age'
   | 'date-diff'
   | 'emi'

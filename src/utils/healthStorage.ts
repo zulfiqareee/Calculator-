@@ -333,9 +333,42 @@ export function getStoredHealthTips(): HealthTipItem[] {
   return HEALTH_TIPS_DATA;
 }
 
-export function saveStoredHealthTips(tips: HealthTipItem[]): void {
+export async function pushHealthTipsToServer(tips: HealthTipItem[]): Promise<boolean> {
+  try {
+    const res = await fetch('/api/health-tips', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tips }),
+    });
+    const data = await res.json();
+    return data?.success === true;
+  } catch (err) {
+    console.warn('[Sync] Could not push health tips to server:', err);
+    return false;
+  }
+}
+
+export async function fetchHealthTipsFromServer(): Promise<HealthTipItem[]> {
+  try {
+    const res = await fetch('/api/health-tips');
+    if (!res.ok) return getStoredHealthTips();
+    const data = await res.json();
+    if (data?.success && Array.isArray(data.tips) && data.tips.length > 0) {
+      saveStoredHealthTips(data.tips, false);
+      return data.tips;
+    }
+  } catch (err) {
+    console.warn('[Sync] Could not fetch health tips from server:', err);
+  }
+  return getStoredHealthTips();
+}
+
+export function saveStoredHealthTips(tips: HealthTipItem[], pushToServer: boolean = true): void {
   try {
     localStorage.setItem(STORAGE_KEYS.HEALTH_TIPS, JSON.stringify(tips));
+    if (pushToServer) {
+      pushHealthTipsToServer(tips).catch(() => {});
+    }
   } catch (err) {
     console.error('Failed to save health tips to storage:', err);
   }
