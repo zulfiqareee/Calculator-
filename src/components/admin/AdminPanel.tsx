@@ -95,21 +95,25 @@ import {
   resetSurahsToDefault,
 } from '../../utils/quranStorage';
 import { arabicToBengaliTajweed } from '../../utils/tajweedHelper';
+import { Video } from 'lucide-react';
+import { AiProviderManagerModal } from './AiProviderManagerModal';
 
 interface Props {
   lang: Language;
   onOpenTool?: (toolId: string) => void;
   onRefreshTools?: () => void;
+  onOpenVideoStudio?: () => void;
 }
 
 type AdminTab = 'health' | 'books' | 'quran' | 'notes' | 'tools' | 'backup' | 'security';
 
-export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }) => {
+export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools, onOpenVideoStudio }) => {
   // Auth state
   const [emailInput, setEmailInput] = useState<string>('zulfiqar1hasan@gmail.com');
   const [passInput, setPassInput] = useState<string>('');
   const [session, setSession] = useState(getAdminSession());
   const [authError, setAuthError] = useState<string | null>(null);
+  const [showAiProviderModal, setShowAiProviderModal] = useState<boolean>(false);
 
   // Active Admin Sub-tab (default to health when entering admin to manage CMS)
   const [activeTab, setActiveTab] = useState<AdminTab>('health');
@@ -653,6 +657,44 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }
         >
           <LogOut className="w-3.5 h-3.5" />
           <span>লগআউট</span>
+        </button>
+      </div>
+
+      {/* AI Video Studio & Multi-Engine Router Quick Launch Bar */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3 rounded-2xl bg-gradient-to-r from-indigo-950/40 via-purple-950/30 to-slate-900 border border-indigo-800/40 shadow-xs">
+        <button
+          onClick={() => {
+            if (onOpenVideoStudio) onOpenVideoStudio();
+          }}
+          className="flex items-center gap-3 p-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white transition active:scale-98 shadow-sm text-left"
+        >
+          <div className="p-2 rounded-lg bg-white/20 text-white shrink-0">
+            <Video className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold block">AI Video Studio</span>
+              <span className="text-[10px] px-1.5 py-0.2 bg-white/25 rounded font-mono">NEW</span>
+            </div>
+            <span className="text-[10px] text-indigo-100 block">
+              ভয়েস/ভয়েস-লেস ভিডিও ক্রিয়েশন ও অটো পাবলিশ
+            </span>
+          </div>
+        </button>
+
+        <button
+          onClick={() => setShowAiProviderModal(true)}
+          className="flex items-center gap-3 p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/80 transition active:scale-98 text-left"
+        >
+          <div className="p-2 rounded-lg bg-purple-500/20 text-purple-400 shrink-0">
+            <Cpu className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-xs font-bold text-white block">AI ইঞ্জিন ও ফলব্যাক রাউটার</span>
+            <span className="text-[10px] text-slate-400 block">
+              Gemini, Groq, Pollinations ফ্রি কোটা ম্যানেজমেন্ট
+            </span>
+          </div>
         </button>
       </div>
 
@@ -3460,6 +3502,13 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools }
           {passMessage && <span className="text-xs text-emerald-500 font-bold">{passMessage}</span>}
         </div>
       )}
+
+      {/* AI Multi-Engine Provider Manager Modal */}
+      <AiProviderManagerModal
+        isOpen={showAiProviderModal}
+        onClose={() => setShowAiProviderModal(false)}
+      />
     </div>
   );
 };
+

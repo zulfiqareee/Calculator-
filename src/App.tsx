@@ -43,6 +43,7 @@ import {
   HeartPulse,
   Bell,
   BellRing,
+  Video,
 } from 'lucide-react';
 import { Language, ThemeMode, ToolCategory, ToolId, ToolItem, CustomTool } from './types';
 import {
@@ -96,9 +97,10 @@ import { AdMobBanner } from './components/admob/AdMobBanner';
 import { AdMobManager } from './components/admob/AdMobManager';
 import { HistoryView } from './components/HistoryView';
 import { AboutPolicy } from './components/AboutPolicy';
+import { AiVideoStudioMain } from './components/video_studio/AiVideoStudioMain';
 
 type BottomTab = 'home' | 'favorites' | 'recents' | 'settings';
-type SpecialView = 'none' | 'books' | 'notes';
+type SpecialView = 'none' | 'books' | 'notes' | 'video-studio';
 
 export default function App() {
   const [lang, setLang] = useState<Language>(getStoredLanguage());
@@ -627,6 +629,13 @@ export default function App() {
               setSettingsSubView('admin');
             }}
           />
+        ) : specialView === 'video-studio' ? (
+          /* 3. SPECIAL VIEW: PRIVATE AI VIDEO STUDIO */
+          <AiVideoStudioMain
+            onClose={() => setSpecialView('none')}
+            currentUserEmail={AUTHORIZED_ADMIN_EMAIL}
+            isSuperAdmin={true}
+          />
         ) : activeToolId && currentTool ? (
           /* 3. ACTIVE TOOL VIEW */
           <div className="flex flex-col gap-3">
@@ -899,6 +908,32 @@ export default function App() {
                       <ChevronRight className="w-5 h-5 text-white/80" />
                     </button>
 
+                    {/* AI Video Creation Studio (Admin Only) */}
+                    <button
+                      onClick={() => setSpecialView('video-studio')}
+                      className="bg-gradient-to-r from-indigo-900 via-purple-900 to-slate-900 border border-indigo-700/50 text-white p-4 rounded-2xl flex items-center justify-between shadow-md active:scale-98 transition text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-pink-500 flex items-center justify-center text-white shadow-sm">
+                          <Video className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-sm block">
+                              AI Video Studio (Multi-Engine)
+                            </span>
+                            <span className="text-[10px] bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 px-1.5 py-0.2 rounded font-semibold">
+                              Owner Only
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-slate-300 block">
+                            {lang === 'bn' ? 'ফ্রি এআই ভিডিও মেকার ও সোশ্যাল পাবলিশিং' : 'Free multi-engine AI video creator & auto publisher'}
+                          </span>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-slate-400" />
+                    </button>
+
                     {/* Books & Reference Guide Button */}
                     <button
                       onClick={() => setSpecialView('books')}
@@ -1043,6 +1078,7 @@ export default function App() {
                       lang={lang}
                       onOpenTool={(toolId) => openTool(toolId)}
                       onRefreshTools={refreshCustomTools}
+                      onOpenVideoStudio={() => setSpecialView('video-studio')}
                     />
                   </div>
                 )}
