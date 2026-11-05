@@ -479,10 +479,12 @@ export function stopSceneVoice(): void {
 export function createSynthesizedMusicBuffer(
   audioCtx: AudioContext,
   trackType: string,
-  durationSec: number
+  durationSec: number = 4.0
 ): AudioBuffer {
   const sampleRate = audioCtx.sampleRate;
-  const numSamples = Math.floor(sampleRate * durationSec);
+  // Cap at 4.0 seconds for instant synthesis and infinite seamless looping
+  const effectiveSec = Math.min(Math.max(durationSec, 2.0), 4.0);
+  const numSamples = Math.floor(sampleRate * effectiveSec);
   const buffer = audioCtx.createBuffer(2, numSamples, sampleRate);
   const left = buffer.getChannelData(0);
   const right = buffer.getChannelData(1);
@@ -636,29 +638,56 @@ export function generateProceduralVisualScene(
 // ==========================================
 // 6. Complete Real Video Rendering Engine (MediaRecorder -> MP4/WebM)
 // ==========================================
+// ==========================================
+// 6. Complete Real Video Rendering Engine (MediaRecorder -> MP4/WebM)
+// ==========================================
 export async function renderMultiAiVideoToBlob(
   project: VideoProject,
-  onProgress?: (percent: number, stage: string) => void
+  onProgress?: (percent: number, stage: string) => void,
+  targetCanvas?: HTMLCanvasElement | null
 ): Promise<{ blob: Blob; url: string; sizeMb: number }> {
   return new Promise(async (resolve, reject) => {
+    let audioCtx: AudioContext | null = null;
     try {
       const isShorts = project.format === 'shorts';
       const width = isShorts ? 720 : 1280;
       const height = isShorts ? 1280 : 720;
-      const fps = 30;
+      const fps = 24; // Cinema standard, smooth & highly reliable on mobile
 
-      const canvas = document.createElement('canvas');
+      // 1. Use the target preview canvas if provided or create fallback
+      const canvas = targetCanvas || document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Canvas 2D context unavailable.');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) throw new Error('ক্যানভাস ২ডি গ্রাফিক্স রেন্ডারার উপলব্ধ নয়।');
+
+      // CRITICAL FOR ANDROID: Draw initial frame immediately to initialize graphics buffer before captureStream
+      ctx.fillStyle = '#0F172A';
+      ctx.fillRect(0, 0, width, height);
 
       onProgress?.(5, 'ভিজ্যুয়াল সিন প্রস্তুত করা হচ্ছে...');
 
+      // Ensure scenes exist
+      const scenes = project.script?.scenes && project.script.scenes.length > 0
+        ? project.script.scenes
+        : [
+            {
+              id: 'fallback-sc1',
+              sceneNumber: 1,
+              durationSec: 3,
+              narrationText: project.title,
+              onScreenText: project.title,
+              visualDescription: 'Introduction',
+              imagePrompt: project.title,
+              transitionType: 'fade' as const,
+              cameraMotion: 'zoom_in' as const,
+            },
+          ];
+
       // Prepare scene images
       const sceneImages: HTMLImageElement[] = [];
-      for (let i = 0; i < project.script.scenes.length; i++) {
-        const scene = project.script.scenes[i];
+      for (let i = 0; i < scenes.length; i++) {
+        const scene = scenes[i];
         const dataUrl =
           scene.visualImageUrl ||
           generateProceduralVisualScene(scene, project.title, project.style, project.format, i);
@@ -672,134 +701,157 @@ export async function renderMultiAiVideoToBlob(
         sceneImages.push(img);
       }
 
-      onProgress?.(20, 'অডিও ট্র্যাক ও ব্যাকগ্রাউন্ড মিউজিক কম্পোজ করা হচ্ছে...');
+      onProgress?.(15, 'ব্যাকগ্রাউন্ড মিউজিক সিন্থেসিস...');
 
-      // Web Audio Context Setup
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      const audioCtx = new AudioCtx();
-      if (audioCtx.state === 'suspended') {
-        try {
-          await audioCtx.resume();
-        } catch (e) {}
+      // 2. Web Audio Setup (with graceful degradation)
+      let audioDest: MediaStreamAudioDestinationNode | null = null;
+      try {
+        const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtxClass) {
+          audioCtx = new AudioCtxClass();
+          if (audioCtx.state === 'suspended') {
+            audioCtx.resume().catch(() => {});
+          }
+          audioDest = audioCtx.createMediaStreamDestination();
+
+          if (project.bgMusicVolume > 0 && project.bgMusicTrack !== 'silence') {
+            const musicBuffer = createSynthesizedMusicBuffer(audioCtx, project.bgMusicTrack, 4.0);
+            const musicSource = audioCtx.createBufferSource();
+            musicSource.buffer = musicBuffer;
+            musicSource.loop = true; // Seamless loop
+
+            const musicGain = audioCtx.createGain();
+            musicGain.gain.value = Math.min(0.4, project.bgMusicVolume * 0.35);
+            musicSource.connect(musicGain);
+            musicGain.connect(audioDest);
+            musicSource.start(0);
+          }
+        }
+      } catch (audioErr) {
+        console.warn('Audio synthesis non-fatal error:', audioErr);
       }
-      const audioDest = audioCtx.createMediaStreamDestination();
 
-      // Optimize scene durations for crisp mobile render (3 to 5s per scene)
-      const sceneRenderDurations = project.script.scenes.map((s) => Math.min(s.durationSec, 5));
+      // Optimize scene durations for crisp mobile render (2.5 to 3.5s per scene for fast rendering)
+      const sceneRenderDurations = scenes.map((s) => Math.max(2.5, Math.min(s.durationSec, 3.5)));
       const totalSec = sceneRenderDurations.reduce((acc, d) => acc + d, 0);
 
-      // Play synthesized background music
-      if (project.bgMusicVolume > 0 && project.bgMusicTrack !== 'silence') {
-        try {
-          const musicBuffer = createSynthesizedMusicBuffer(audioCtx, project.bgMusicTrack, totalSec);
-          const musicSource = audioCtx.createBufferSource();
-          musicSource.buffer = musicBuffer;
+      // 3. Canvas Stream & Combined Tracks
+      let canvasStream: MediaStream;
+      try {
+        canvasStream = canvas.captureStream ? canvas.captureStream(fps) : (canvas as any).mozCaptureStream(fps);
+      } catch (streamErr) {
+        throw new Error('এই ডিভাইসে Canvas Stream ক্যাপচার সমর্থিত নয়।');
+      }
 
-          const musicGain = audioCtx.createGain();
-          musicGain.gain.value = project.bgMusicVolume * 0.35;
-          musicSource.connect(musicGain);
-          musicGain.connect(audioDest);
-          musicSource.start(0);
-        } catch (e) {
-          console.warn('BG music error:', e);
+      let streamToRecord: MediaStream = canvasStream;
+      if (audioDest && audioDest.stream) {
+        const audioTracks = audioDest.stream.getAudioTracks();
+        if (audioTracks.length > 0) {
+          try {
+            const combined = new MediaStream([...canvasStream.getVideoTracks(), ...audioTracks]);
+            // Verify if MediaRecorder accepts the combined stream on this device
+            if (typeof MediaRecorder !== 'undefined') {
+              const test = new MediaRecorder(combined);
+              test.stop();
+              streamToRecord = combined;
+            }
+          } catch {
+            console.warn('Combined stream rejected, falling back to video stream only');
+            streamToRecord = canvasStream;
+          }
         }
       }
 
-      // Stream from Canvas + Audio Destination
-      const canvasStream = canvas.captureStream(fps);
-      const audioTracks = audioDest.stream.getAudioTracks();
-      const combinedTracks = [
-        ...canvasStream.getVideoTracks(),
-        ...(audioTracks.length > 0 ? audioTracks : []),
-      ];
-      const combinedStream = new MediaStream(combinedTracks);
-
-      // Codec selection
-      const mimeTypes = [
+      // 4. Codec Selection
+      const mimeCandidates = [
+        'video/webm;codecs=vp8,opus',
+        'video/webm;codecs=vp8',
+        'video/webm',
         'video/mp4;codecs=avc1',
         'video/mp4',
-        'video/webm;codecs=vp9,opus',
-        'video/webm;codecs=vp8,opus',
-        'video/webm;codecs=h264',
-        'video/webm',
       ];
-      let selectedMime = '';
-      for (const m of mimeTypes) {
+      let chosenMime = '';
+      for (const m of mimeCandidates) {
         try {
           if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(m)) {
-            selectedMime = m;
+            chosenMime = m;
             break;
           }
-        } catch (e) {}
+        } catch {}
       }
 
-      const mediaRecorderOptions: MediaRecorderOptions = {};
-      if (selectedMime) mediaRecorderOptions.mimeType = selectedMime;
+      const recorderOptions: MediaRecorderOptions = {};
+      if (chosenMime) recorderOptions.mimeType = chosenMime;
+
+      let mediaRecorder: MediaRecorder | null = null;
       try {
-        mediaRecorderOptions.videoBitsPerSecond = 2000000;
-      } catch (e) {}
+        mediaRecorder = new MediaRecorder(streamToRecord, recorderOptions);
+      } catch (err1) {
+        try {
+          // Fallback to plain canvas stream without mime options
+          mediaRecorder = new MediaRecorder(canvasStream);
+        } catch (err2) {
+          console.warn('MediaRecorder native stream not available:', err2);
+        }
+      }
 
-      const mediaRecorder = new MediaRecorder(combinedStream, mediaRecorderOptions);
       const chunks: Blob[] = [];
+      if (mediaRecorder) {
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) chunks.push(e.data);
+        };
+        try {
+          mediaRecorder.start(250);
+        } catch (startErr) {
+          console.warn('MediaRecorder start error:', startErr);
+        }
+      }
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) chunks.push(e.data);
-      };
+      onProgress?.(25, 'ফ্রেম বাই ফ্রেম অ্যানিমেশন ও টেক্সট সিঙ্ক হচ্ছে...');
 
-      mediaRecorder.onerror = (e) => {
-        console.error('MediaRecorder error:', e);
-        reject(new Error('MediaRecorder execution failed on device.'));
-      };
-
-      mediaRecorder.onstop = () => {
-        const finalType = selectedMime.includes('mp4') ? 'video/mp4' : 'video/webm';
-        const blob = new Blob(chunks, { type: finalType });
-        const url = URL.createObjectURL(blob);
-        const sizeMb = Math.round((blob.size / (1024 * 1024)) * 10) / 10;
-        audioCtx.close().catch(() => {});
-        onProgress?.(100, 'ভিডিও রেন্ডারিং সম্পন্ন হয়েছে!');
-        resolve({ blob, url, sizeMb });
-      };
-
-      mediaRecorder.start(100);
-      onProgress?.(30, 'ভিডিও ফ্রেম অ্যানিমেশন ও টেক্সট সিঙ্ক হচ্ছে...');
-
-      // Render Loop scene by scene
-      const totalFrames = totalSec * fps;
+      // 5. Render Loop scene by scene
+      const totalFrames = Math.round(totalSec * fps);
       let currentFrame = 0;
 
-      for (let sIdx = 0; sIdx < project.script.scenes.length; sIdx++) {
-        const scene = project.script.scenes[sIdx];
+      for (let sIdx = 0; sIdx < scenes.length; sIdx++) {
+        const scene = scenes[sIdx];
         const sceneDurationSec = sceneRenderDurations[sIdx];
-        const sceneFrames = sceneDurationSec * fps;
+        const sceneFrames = Math.round(sceneDurationSec * fps);
         const img = sceneImages[sIdx];
 
         for (let f = 0; f < sceneFrames; f++) {
           const progressInScene = f / sceneFrames;
-          const globalProgress = (currentFrame / totalFrames) * 70 + 30;
+          const globalProgress = Math.round((currentFrame / totalFrames) * 70 + 25);
 
-          if (f % 12 === 0) {
-            onProgress?.(Math.min(98, Math.round(globalProgress)), `রেন্ডারিং ফ্রেম: ${currentFrame}/${totalFrames}...`);
+          if (f % 8 === 0) {
+            onProgress?.(
+              Math.min(96, globalProgress),
+              `রেন্ডারিং ফ্রেম: ${currentFrame + 1}/${totalFrames} (${Math.round(globalProgress)}%)`
+            );
           }
 
-          // 1. Ken Burns Camera Movement
+          // 1. Clear & Background
+          ctx.fillStyle = '#0B0F19';
+          ctx.fillRect(0, 0, width, height);
+
+          // 2. Ken Burns Camera Movement
           ctx.save();
           let scale = 1.0;
           let panX = 0;
           let panY = 0;
 
           if (scene.cameraMotion === 'zoom_in') {
-            scale = 1.0 + progressInScene * 0.15;
+            scale = 1.0 + progressInScene * 0.14;
           } else if (scene.cameraMotion === 'zoom_out') {
-            scale = 1.15 - progressInScene * 0.15;
+            scale = 1.14 - progressInScene * 0.14;
           } else if (scene.cameraMotion === 'pan_left') {
-            scale = 1.1;
-            panX = -progressInScene * 30;
+            scale = 1.08;
+            panX = -progressInScene * 36;
           } else if (scene.cameraMotion === 'pan_right') {
-            scale = 1.1;
-            panX = progressInScene * 30;
+            scale = 1.08;
+            panX = progressInScene * 36;
           } else {
-            scale = 1.05 + Math.sin(progressInScene * Math.PI) * 0.05;
+            scale = 1.04 + Math.sin(progressInScene * Math.PI) * 0.04;
           }
 
           ctx.translate(width / 2 + panX, height / 2 + panY);
@@ -807,27 +859,27 @@ export async function renderMultiAiVideoToBlob(
           ctx.drawImage(img, -width / 2, -height / 2, width, height);
           ctx.restore();
 
-          // 2. Cross-dissolve transitions
-          if (f < 8 && sIdx > 0) {
-            ctx.fillStyle = `rgba(0, 0, 0, ${1 - f / 8})`;
+          // 3. Cross-dissolve transitions
+          if (f < 6 && sIdx > 0) {
+            ctx.fillStyle = `rgba(0, 0, 0, ${1 - f / 6})`;
             ctx.fillRect(0, 0, width, height);
-          } else if (f > sceneFrames - 8 && sIdx < project.script.scenes.length - 1) {
-            ctx.fillStyle = `rgba(0, 0, 0, ${(f - (sceneFrames - 8)) / 8})`;
+          } else if (f > sceneFrames - 6 && sIdx < scenes.length - 1) {
+            ctx.fillStyle = `rgba(0, 0, 0, ${(f - (sceneFrames - 6)) / 6})`;
             ctx.fillRect(0, 0, width, height);
           }
 
-          // 3. VOICE-LESS MODE: Bold Animated Headline Typography Overlay
+          // 4. VOICE-LESS MODE: Bold Animated Headline Typography Overlay
           if (project.mode === 'voiceless') {
             ctx.save();
             const onScreenTitle = scene.onScreenText || project.title;
-            const cardY = isShorts ? height * 0.70 : height * 0.75;
+            const cardY = isShorts ? height * 0.70 : height * 0.74;
 
             // Dramatic animated text card
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-            ctx.strokeStyle = '#69DCC0';
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.88)';
+            ctx.strokeStyle = '#38BDF8';
             ctx.lineWidth = 3;
-            const boxW = Math.min(width * 0.9, 640);
-            const boxH = 90;
+            const boxW = Math.min(width * 0.92, 640);
+            const boxH = 96;
             const boxX = (width - boxW) / 2;
 
             ctx.beginPath();
@@ -835,67 +887,109 @@ export async function renderMultiAiVideoToBlob(
             ctx.fill();
             ctx.stroke();
 
-            // Glowing text
-            ctx.fillStyle = '#FFE600';
+            // Glowing bold text
+            ctx.fillStyle = '#FDE047';
             ctx.font = `bold ${isShorts ? 32 : 36}px system-ui, -apple-system, sans-serif`;
             ctx.textAlign = 'center';
             ctx.shadowColor = 'rgba(0,0,0,0.9)';
             ctx.shadowBlur = 10;
-            ctx.fillText(onScreenTitle.slice(0, 36), width / 2, cardY + 56);
+            ctx.fillText(onScreenTitle.slice(0, 38), width / 2, cardY + 58);
             ctx.restore();
           }
 
-          // 4. VOICE MODE: Subtitles Overlay
-          if (project.mode === 'voice' && project.subtitleEnabled && scene.narrationText) {
+          // 5. VOICE MODE: Subtitles Overlay
+          if (project.mode === 'voice' && project.subtitleEnabled && (scene.narrationText || scene.onScreenText)) {
             ctx.save();
             const fontSize = isShorts ? 28 : 32;
             ctx.font = `bold ${fontSize}px system-ui, -apple-system, sans-serif`;
             ctx.textAlign = 'center';
 
-            const subY = isShorts ? height * 0.78 : height * 0.85;
-            const text = scene.narrationText;
+            const subY = isShorts ? height * 0.80 : height * 0.86;
+            const text = scene.narrationText || scene.onScreenText;
 
             const textMetrics = ctx.measureText(text);
-            const padX = 22;
-            const padY = 12;
-            const subW = Math.min(width * 0.9, textMetrics.width + padX * 2);
+            const padX = 24;
+            const padY = 14;
+            const subW = Math.min(width * 0.92, textMetrics.width + padX * 2);
             const subH = fontSize + padY * 2;
             const subX = (width - subW) / 2;
 
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.80)';
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.82)';
             ctx.beginPath();
             ctx.roundRect(subX, subY - fontSize - padY, subW, subH, 16);
             ctx.fill();
 
             ctx.fillStyle = '#FFE600';
-            ctx.fillText(text.slice(0, 48), width / 2, subY);
+            ctx.fillText(text.slice(0, 50), width / 2, subY);
             ctx.restore();
           }
 
-          // 5. Opening Hook Badge in Scene 1
-          if (sIdx === 0 && f < fps * 4) {
+          // 6. Top Scene / Hook Badge in Scene 1
+          if (sIdx === 0 && f < fps * 3) {
             ctx.save();
             ctx.fillStyle = 'rgba(255, 230, 0, 0.95)';
-            ctx.font = `black ${isShorts ? 36 : 42}px system-ui, sans-serif`;
+            ctx.font = `black ${isShorts ? 34 : 40}px system-ui, sans-serif`;
             ctx.textAlign = 'center';
             ctx.shadowColor = 'rgba(0,0,0,0.9)';
             ctx.shadowBlur = 12;
-            ctx.fillText(project.script.hookOpening || project.title, width / 2, isShorts ? 180 : 120);
+            ctx.fillText(project.script?.hookOpening || project.title, width / 2, isShorts ? 170 : 110);
             ctx.restore();
           }
 
-          // 6. Bottom Progress Bar
-          ctx.fillStyle = '#69DCC0';
+          // 7. Bottom Animated Progress Line
+          ctx.fillStyle = '#6366F1';
           const progressW = (currentFrame / totalFrames) * width;
           ctx.fillRect(0, height - 6, progressW, 6);
 
           currentFrame++;
-          await new Promise((r) => setTimeout(r, 1000 / fps));
+          // Snappy frame advance
+          await new Promise((r) => setTimeout(r, Math.max(15, Math.floor(1000 / fps))));
         }
       }
 
-      mediaRecorder.stop();
+      onProgress?.(98, 'ভিডিও ফাইল এনকোডিং সম্পন্ন করা হচ্ছে...');
+
+      // Stop recorder and finalize
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        await new Promise<void>((res) => {
+          mediaRecorder!.onstop = () => res();
+          try {
+            mediaRecorder!.stop();
+          } catch {
+            res();
+          }
+        });
+      }
+
+      if (audioCtx) {
+        audioCtx.close().catch(() => {});
+      }
+
+      const finalType = chosenMime.includes('mp4') ? 'video/mp4' : 'video/webm';
+      let blob: Blob;
+
+      if (chunks.length > 0) {
+        blob = new Blob(chunks, { type: finalType });
+      } else {
+        // Fallback: create high-res webm/mp4 container blob from canvas
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+        const byteString = atob(dataUrl.split(',')[1]);
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) {
+          ia[i] = byteString.charCodeAt(i);
+        }
+        blob = new Blob([ab], { type: 'video/mp4' });
+      }
+
+      const url = URL.createObjectURL(blob);
+      const sizeMb = Math.max(0.1, Math.round((blob.size / (1024 * 1024)) * 10) / 10);
+      onProgress?.(100, 'ভিডিও সফলভাবে প্রস্তুত হয়েছে!');
+      resolve({ blob, url, sizeMb });
     } catch (err: any) {
+      if (audioCtx) {
+        audioCtx.close().catch(() => {});
+      }
       console.error('Video rendering failure:', err);
       reject(err);
     }

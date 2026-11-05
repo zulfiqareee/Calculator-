@@ -45,6 +45,7 @@ import {
   renderMultiAiVideoToBlob,
   playSceneVoice,
   stopSceneVoice,
+  generateProceduralVisualScene,
 } from '../../utils/multiAiVideoEngine';
 import { saveVideoProject } from '../../utils/multiAiStudioStorage';
 import { ThumbnailGeneratorModal } from './ThumbnailGeneratorModal';
@@ -89,6 +90,7 @@ export const VideoCreationWizard: React.FC<VideoCreationWizardProps> = ({
   // Render Video States
   const [renderProgress, setRenderProgress] = useState<number>(0);
   const [renderPhaseMessage, setRenderPhaseMessage] = useState<string>('');
+  const [renderError, setRenderError] = useState<string | null>(null);
   const [isRendering, setIsRendering] = useState<boolean>(false);
   const [renderedBlobUrl, setRenderedBlobUrl] = useState<string | null>(existingProject?.renderedVideoBlobUrl || null);
   const [renderedSizeMb, setRenderedSizeMb] = useState<number | null>(existingProject?.renderedVideoSizeMb || null);
@@ -112,6 +114,42 @@ export const VideoCreationWizard: React.FC<VideoCreationWizardProps> = ({
       stopSceneVoice();
     };
   }, []);
+
+  // Draw initial scene on preview canvas when step 5 is active
+  useEffect(() => {
+    if (currentStep === 5 && previewCanvasRef.current) {
+      const cvs = previewCanvasRef.current;
+      const isShorts = format === 'shorts';
+      cvs.width = isShorts ? 720 : 1280;
+      cvs.height = isShorts ? 1280 : 720;
+      const ctx = cvs.getContext('2d');
+      if (ctx) {
+        const firstScene = script?.scenes?.[0] || {
+          id: 'sc-prev',
+          sceneNumber: 1,
+          durationSec: 3,
+          narrationText: topic || 'স্মার্ট হাব এআই ভিডিও',
+          onScreenText: topic || 'স্মার্ট হাব এআই ভিডিও',
+          visualDescription: 'Preview scene',
+          imagePrompt: topic || 'smart hub video',
+          transitionType: 'fade' as const,
+          cameraMotion: 'zoom_in' as const,
+        };
+        const dataUrl = generateProceduralVisualScene(
+          firstScene,
+          topic || script?.topic || 'স্মার্ট হাব ভিডিও',
+          style,
+          format,
+          0
+        );
+        const img = new Image();
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0, cvs.width, cvs.height);
+        };
+        img.src = dataUrl;
+      }
+    }
+  }, [currentStep, script, format, style, topic]);
 
   // Step 1 -> Step 2: Generate Script
   const handleGenerateScript = async () => {
@@ -167,15 +205,41 @@ export const VideoCreationWizard: React.FC<VideoCreationWizardProps> = ({
 
   // Step 5: Render Video to MP4
   const handleStartRender = async () => {
-    if (!script) return;
+    setRenderError(null);
+
+    // 1. Ensure we have a valid script with scenes
+    let currentScript = script;
+    if (!currentScript || !currentScript.scenes || currentScript.scenes.length === 0) {
+      setRenderPhaseMessage('স্ক্রিপ্ট প্রস্তুত করা হচ্ছে...');
+      try {
+        currentScript = await generateSmartScript(
+          topic.trim() || 'স্মার্ট হাব এআই ভিডিও',
+          mode,
+          language,
+          format,
+          durationSec,
+          style,
+          customInstructions.trim() || undefined
+        );
+        setScript(currentScript);
+      } catch (e: any) {
+        console.warn('Script creation fallback:', e);
+      }
+    }
+
+    if (!currentScript) {
+      setRenderError('স্ক্রিপ্ট পাওয়া যায়নি। অনুগ্রহ করে ধাপ ২-এ গিয়ে স্ক্রিপ্ট প্রস্তুত করুন।');
+      return;
+    }
+
     setIsRendering(true);
-    setRenderProgress(0);
+    setRenderProgress(5);
     setRenderPhaseMessage('ইঞ্জিন ইনিশিয়ালাইজেশন হচ্ছে...');
 
     try {
       const currentProject: VideoProject = {
         id: projectId,
-        title: topic || script.topic,
+        title: topic || currentScript.topic,
         createdAt: existingProject?.createdAt || Date.now(),
         updatedAt: Date.now(),
         mode,
@@ -184,7 +248,7 @@ export const VideoCreationWizard: React.FC<VideoCreationWizardProps> = ({
         durationSec,
         style,
         customInstructions,
-        script,
+        script: currentScript,
         voiceGender,
         voiceSpeed,
         bgMusicTrack,
@@ -202,7 +266,8 @@ export const VideoCreationWizard: React.FC<VideoCreationWizardProps> = ({
         (progress: number, msg: string) => {
           setRenderProgress(progress);
           setRenderPhaseMessage(msg);
-        }
+        },
+        previewCanvasRef.current
       );
 
       setRenderedBlobUrl(result.url);
@@ -222,7 +287,9 @@ export const VideoCreationWizard: React.FC<VideoCreationWizardProps> = ({
       setCurrentStep(6);
     } catch (err: any) {
       console.error('Video Render Failed:', err);
-      setRenderPhaseMessage(`রেন্ডার ব্যর্থ: ${err?.message || 'অজানা সমস্যা'}`);
+      const msg = err?.message || 'রেন্ডার প্রক্রিয়ায় ত্রুটি ঘটেছে। অনুগ্রহ করে আবার চেষ্টা করুন।';
+      setRenderError(msg);
+      setRenderPhaseMessage(`রেন্ডার ব্যর্থ: ${msg}`);
     } finally {
       setIsRendering(false);
     }
@@ -1030,36 +1097,51 @@ export const VideoCreationWizard: React.FC<VideoCreationWizardProps> = ({
               />
 
               {!isRendering && !renderedBlobUrl && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 p-6">
-                  <div className="p-4 rounded-3xl bg-indigo-600/20 text-indigo-400 mb-3">
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/75 p-6 backdrop-blur-[2px]">
+                  <div className="p-4 rounded-3xl bg-indigo-600/30 text-indigo-400 mb-3 border border-indigo-500/30 shadow-lg">
                     <Video className="w-8 h-8" />
                   </div>
                   <h4 className="text-sm font-bold text-white mb-1">ভিডিও প্রস্তুত</h4>
-                  <p className="text-xs text-slate-400 mb-4 max-w-xs">
-                    রেন্ডার শুরু করলে দৃশ্যভিত্তিক ক্যামেরা মোশন ও অডিও সিন্থেসিস আরম্ভ হবে।
+                  <p className="text-xs text-slate-300 mb-4 max-w-xs">
+                    রেন্ডার শুরু করলে দৃশ্যভিত্তিক ক্যামেরা মোশন, মিউজিক ও টাইপোগ্রাফি এনকোডিং আরম্ভ হবে।
                   </p>
+
+                  {renderError && (
+                    <div className="w-full max-w-xs mb-3 p-3 rounded-xl bg-red-950/80 border border-red-800 text-red-300 text-xs flex flex-col gap-1 text-left">
+                      <span className="font-bold text-red-200 flex items-center gap-1.5">
+                        <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                        রেন্ডার করতে সমস্যা হয়েছে
+                      </span>
+                      <span className="text-[11px] text-red-300/90 leading-tight">
+                        {renderError}
+                      </span>
+                    </div>
+                  )}
+
                   <button
                     type="button"
                     onClick={handleStartRender}
-                    className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-600 to-pink-600 hover:brightness-110 text-white text-xs font-bold shadow-xl shadow-indigo-500/30 transition"
+                    className="flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-600 to-pink-600 hover:brightness-110 active:scale-95 text-white text-xs font-bold shadow-xl shadow-indigo-500/40 transition cursor-pointer"
                   >
-                    <Play className="w-4 h-4" /> এখনই রেন্ডার শুরু করুন
+                    <Play className="w-4 h-4" />
+                    {renderError ? 'পুনরায় রেন্ডার শুরু করুন' : 'এখনই রেন্ডার শুরু করুন'}
                   </button>
                 </div>
               )}
 
               {isRendering && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/85 p-6 backdrop-blur-sm">
-                  <div className="w-16 h-16 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin mb-4" />
-                  <div className="text-lg font-bold text-white mb-1">{renderProgress}%</div>
-                  <p className="text-xs text-indigo-300 font-medium mb-3">{renderPhaseMessage}</p>
+                  <div className="w-16 h-16 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin mb-4 shadow-lg shadow-indigo-500/20" />
+                  <div className="text-2xl font-black text-white mb-1 tracking-tight">{renderProgress}%</div>
+                  <p className="text-xs text-indigo-300 font-medium mb-3 max-w-xs leading-relaxed">{renderPhaseMessage}</p>
 
-                  <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden max-w-xs">
+                  <div className="w-full bg-slate-800/80 rounded-full h-2.5 overflow-hidden max-w-xs border border-slate-700/50 shadow-inner">
                     <div
-                      className="bg-gradient-to-r from-indigo-500 to-pink-500 h-full transition-all duration-300"
+                      className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 h-full transition-all duration-200"
                       style={{ width: `${renderProgress}%` }}
                     />
                   </div>
+                  <span className="text-[10px] text-slate-400 mt-2">লাইভ ফ্রেম প্রসেসিং চলছে...</span>
                 </div>
               )}
             </div>
