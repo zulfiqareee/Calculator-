@@ -35,6 +35,7 @@ import { VideoCreationWizard } from './VideoCreationWizard';
 import { AiProviderManagerModal } from '../admin/AiProviderManagerModal';
 import { SocialAccountsModal } from './SocialAccountsModal';
 import { PublishingModal } from './PublishingModal';
+import { FreeAiVideoPlatformsHub } from './FreeAiVideoPlatformsHub';
 
 interface AiVideoStudioMainProps {
   onClose: () => void;
@@ -63,7 +64,7 @@ export const AiVideoStudioMain: React.FC<AiVideoStudioMainProps> = ({
   const [authError, setAuthError] = useState<string | null>(null);
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<'projects' | 'history' | 'social'>('projects');
+  const [activeTab, setActiveTab] = useState<'projects' | 'history' | 'social' | 'hub'>('projects');
 
   // Wizard state
   const [isWizardOpen, setIsWizardOpen] = useState<boolean>(false);
@@ -305,13 +306,36 @@ export const AiVideoStudioMain: React.FC<AiVideoStudioMainProps> = ({
           </button>
 
           <button
+            onClick={() => setActiveTab('hub')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
+              activeTab === 'hub'
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
+                : 'bg-purple-950/40 text-purple-300 border border-purple-800/40 hover:text-white'
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            ফ্রি এআই ভিডিও হাব (১০+ সাইট)
+          </button>
+
+          <button
             onClick={() => setShowSocialModal(true)}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition ml-auto"
           >
             <Key className="w-4 h-4 text-purple-400" />
-            সোশ্যাল অ্যাকাউন্ট সংযোগ
+            সোশ্যাল সংযোগ
           </button>
         </div>
+
+        {/* ================= TAB: FREE AI PLATFORMS HUB ================= */}
+        {activeTab === 'hub' && (
+          <FreeAiVideoPlatformsHub
+            onOpenInAppStudio={() => {
+              setActiveTab('projects');
+              setSelectedProject(null);
+              setIsWizardOpen(true);
+            }}
+          />
+        )}
 
         {/* ================= TAB: PROJECTS ================= */}
         {activeTab === 'projects' && (
