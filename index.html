@@ -23,18 +23,45 @@
     <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400;1,700&family=Amiri+Quran&family=Hind+Siliguri:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Scheherazade+New:wght@400;700&display=swap" rel="stylesheet">
     <script>
       // Suppress benign Vite dev WebSocket disconnection noise in sandbox
-      window.addEventListener('error', function(e) {
-        if (e.message && (e.message.includes("reading 'send'") || e.message.includes('WebSocket'))) {
-          e.stopImmediatePropagation();
-          e.preventDefault();
-        }
-      }, true);
-      window.addEventListener('unhandledrejection', function(e) {
-        if (e.reason && String(e.reason).includes("reading 'send'")) {
-          e.stopImmediatePropagation();
-          e.preventDefault();
-        }
-      }, true);
+      (function() {
+        var isWsError = function(str) {
+          if (!str || typeof str !== 'string') return false;
+          return str.indexOf('WebSocket') !== -1 ||
+                 str.indexOf('closed without opened') !== -1 ||
+                 str.indexOf("reading 'send'") !== -1 ||
+                 str.indexOf('[vite]') !== -1;
+        };
+
+        var origError = console.error;
+        console.error = function() {
+          for (var i = 0; i < arguments.length; i++) {
+            var arg = arguments[i];
+            if (arg) {
+              var s = String(arg.message || arg.stack || arg);
+              if (isWsError(s)) return;
+            }
+          }
+          return origError.apply(console, arguments);
+        };
+
+        window.addEventListener('error', function(e) {
+          var msg = String((e && (e.message || (e.error && (e.error.message || e.error.stack)))) || '');
+          if (isWsError(msg)) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            return true;
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(e) {
+          var reason = e && (e.reason || '');
+          var msg = String(reason.message || reason.stack || reason);
+          if (isWsError(msg)) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+          }
+        }, true);
+      })();
     </script>
   </head>
   <body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 antialiased selection:bg-emerald-500 selection:text-white">

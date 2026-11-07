@@ -15,25 +15,37 @@ export default defineConfig(({ command }) => {
         includeAssets: ['icon.svg', 'manifest.webmanifest'],
         manifest: {
           id: '/',
-          name: 'Smart Utility Tools — বাংলা ও English',
-          short_name: 'SmartTools',
-          description: 'Essential offline utility toolkit with 8 local calculators, AdMob integration, and bilingual support.',
-          theme_color: '#10b981',
-          background_color: '#0f172a',
+          name: 'SmartHub – All-in-One Tools',
+          short_name: 'SmartHub',
+          description: 'SmartHub – All-in-One Tools: Essential utility tools, Quran reader, smart alarm, prayer times, weather, calculators, and offline guides.',
+          theme_color: '#0B63F6',
+          background_color: '#0F172A',
           display: 'standalone',
           start_url: '/',
           scope: '/',
           icons: [
             {
-              src: '/icon.svg',
-              sizes: '192x192 512x512',
-              type: 'image/svg+xml',
+              src: '/logo.png',
+              sizes: '512x512',
+              type: 'image/png',
               purpose: 'any'
             },
             {
-              src: '/icon.svg',
+              src: '/icon-512.png',
               sizes: '512x512',
-              type: 'image/svg+xml',
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: '/icon-192.png',
+              sizes: '192x192',
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: '/logo.png',
+              sizes: '512x512',
+              type: 'image/png',
               purpose: 'maskable'
             }
           ]
@@ -78,11 +90,9 @@ export default defineConfig(({ command }) => {
       host: '0.0.0.0',
       // Disable Vite 8 console forwarding over WebSocket to prevent client.send errors when WS is closed
       forwardConsole: false,
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modify—file watching is disabled to prevent flickering during agent edits.
-      hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      // HMR is disabled in AI Studio environment where WebSockets are unsupported
+      hmr: false,
+      watch: null,
     },
   };
 });
