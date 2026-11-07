@@ -841,18 +841,18 @@ export default function App() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
                           <span className="font-extrabold text-xs sm:text-sm block truncate">
-                            {lang === 'bn' ? 'ফ্রি এআই ভিডিও জেনারেটর হাব' : 'Free AI Video Hub'}
+                            {lang === 'bn' ? 'Top AI Video Generators of 2025' : 'Top AI Video Generators 2025'}
                           </span>
-                          <span className="text-[10px] bg-pink-500/30 text-pink-300 border border-pink-500/40 px-1.5 py-0.2 rounded font-bold shrink-0">
-                            {lang === 'bn' ? 'সব প্ল্যাটফর্ম' : 'All Engines'}
+                          <span className="text-[10px] bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 px-1.5 py-0.2 rounded font-bold shrink-0">
+                            {lang === 'bn' ? 'টপ ১৮+ টুল' : 'Top 18+'}
                           </span>
                         </div>
                         <span className="text-[11px] text-slate-300 block truncate">
-                          {lang === 'bn' ? 'একটি বাটনেই বিশ্বের সব সেরা ফ্রি এআই ভিডিও মেকার ও প্রম্পট' : 'All top free AI video generators & prompt tools in one place'}
+                          {lang === 'bn' ? 'ক্লিক করলেই সরাসরি Synthesia, Runway, InVideo, HeyGen সহ সবার অফিসিয়াল ওয়েবসাইটে নিয়ে যাবে' : 'Direct 1-click access to Synthesia, Runway, InVideo, HeyGen & all top AI video sites'}
                         </span>
                       </div>
                     </div>
-                    <ChevronRight className="w-5 h-5 text-indigo-400 shrink-0 ml-2" />
+                    <ChevronRight className="w-5 h-5 text-emerald-400 shrink-0 ml-2" />
                   </button>
                 )}
 
@@ -1008,18 +1008,18 @@ export default function App() {
                         <div>
                           <div className="flex items-center gap-1.5">
                             <span className="font-bold text-sm block">
-                              {lang === 'bn' ? 'ফ্রি এআই ভিডিও প্ল্যাটফর্ম হাব' : 'Free AI Video Platforms Hub'}
+                              {lang === 'bn' ? 'Top AI Video Generators of 2025' : 'Top AI Video Generators 2025'}
                             </span>
-                            <span className="text-[10px] bg-pink-500/30 text-pink-300 border border-pink-500/40 px-1.5 py-0.2 rounded font-semibold">
-                              ১০+ প্ল্যাটফর্ম
+                            <span className="text-[10px] bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 px-1.5 py-0.2 rounded font-semibold">
+                              ১৮+ টুল
                             </span>
                           </div>
                           <span className="text-[11px] text-slate-300 block">
-                            {lang === 'bn' ? 'Kling, Luma, Runway, Haiper সহ সব ফ্রি ভিডিও এআই' : 'Direct access to Kling, Luma, Runway & free AI video sites'}
+                            {lang === 'bn' ? 'ক্লিক করলেই সরাসরি অফিসিয়াল ওয়েবসাইটে নিয়ে যাবে' : 'Direct 1-click access to all official AI video generator websites'}
                           </span>
                         </div>
                       </div>
-                      <ChevronRight className="w-5 h-5 text-slate-400" />
+                      <ChevronRight className="w-5 h-5 text-emerald-400" />
                     </button>
 
                     {/* Books & Reference Guide Button */}
