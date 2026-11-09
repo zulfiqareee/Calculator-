@@ -33,6 +33,7 @@ import {
   Send,
 } from 'lucide-react';
 import { Language } from '../../types';
+import { CustomerLedgerDetailView } from './CustomerLedgerDetailView';
 
 interface Props {
   lang: Language;
@@ -81,6 +82,7 @@ export interface Transaction {
   items?: VoucherItem[];
   previousDue?: number;
   currentDue?: number;
+  photoUrl?: string;
   date: string; // YYYY-MM-DD
   time: string; // HH:mm
   createdAt: number;
@@ -194,6 +196,7 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
 
   // Selected Customer for detail view or voucher
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [customerSubView, setCustomerSubView] = useState<'none' | 'entry' | 'report'>('none');
 
   // Search query for customer
   const [customerSearch, setCustomerSearch] = useState<string>('');
@@ -298,6 +301,168 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
       setSyncMessage('সার্ভার থেকে রিস্টোর করতে সমস্যা হয়েছে।');
       setTimeout(() => setSyncStatus('idle'), 4000);
     }
+  };
+
+  // Open customer detail / ledger screen (matching Screen 1 or Screen 2)
+  const handleOpenCustomerDetail = (cust: Customer, mode: 'entry' | 'report' = 'entry') => {
+    setSelectedCustomer(cust);
+    setCustomerSubView(mode);
+  };
+
+  // Handle saving transaction from Screen 1 (Customer ledger entry)
+  const handleSaveTransactionFromDetail = (txData: {
+    type: 'sale_due' | 'due_collection';
+    amount: number;
+    note?: string;
+    date: string;
+    photoUrl?: string;
+  }) => {
+    if (!selectedCustomer) return;
+
+    const now = new Date();
+    const time = now.toTimeString().slice(0, 5);
+    const voucherNo = `TK-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const previousDue = selectedCustomer.balance;
+    const balanceChange = txData.type === 'sale_due' ? txData.amount : -txData.amount;
+    const currentDue = previousDue + balanceChange;
+
+    const newTx: Transaction = {
+      id: `tx_${Date.now()}`,
+      voucherNo,
+      type: txData.type,
+      customerId: selectedCustomer.id,
+      customerName: selectedCustomer.name,
+      customerPhone: selectedCustomer.phone,
+      amount: txData.amount,
+      note: txData.note,
+      photoUrl: txData.photoUrl,
+      category: txData.type === 'sale_due' ? 'বাকি বিক্রি' : 'জমা গ্রহণ',
+      previousDue,
+      currentDue,
+      date: txData.date || now.toISOString().slice(0, 10),
+      time,
+      createdAt: Date.now(),
+    };
+
+    // Update customer balance in state and update selectedCustomer
+    const updatedCustomer: Customer = {
+      ...selectedCustomer,
+      balance: currentDue,
+    };
+
+    setCustomers((prev) =>
+      prev.map((c) => (c.id === selectedCustomer.id ? updatedCustomer : c))
+    );
+    setSelectedCustomer(updatedCustomer);
+    setTransactions((prev) => [newTx, ...prev]);
+
+    // Background sync to server
+    setTimeout(() => {
+      handleServerSync();
+    }, 200);
+  };
+
+  // Handle updating an existing transaction from Screen 2 (Report view)
+  const handleUpdateTransaction = (updatedTx: Transaction) => {
+    const oldTx = transactions.find((t) => t.id === updatedTx.id);
+    if (!oldTx || !selectedCustomer) return;
+
+    // Calculate delta on customer balance
+    const oldEffect =
+      oldTx.type === 'sale_due'
+        ? oldTx.amount
+        : oldTx.type === 'due_collection'
+        ? -oldTx.amount
+        : 0;
+    const newEffect =
+      updatedTx.type === 'sale_due'
+        ? updatedTx.amount
+        : updatedTx.type === 'due_collection'
+        ? -updatedTx.amount
+        : 0;
+    const delta = newEffect - oldEffect;
+
+    const newBalance = selectedCustomer.balance + delta;
+    const updatedCustomer: Customer = {
+      ...selectedCustomer,
+      balance: newBalance,
+    };
+
+    setTransactions((prev) =>
+      prev.map((t) => (t.id === updatedTx.id ? updatedTx : t))
+    );
+    setCustomers((prev) =>
+      prev.map((c) => (c.id === selectedCustomer.id ? updatedCustomer : c))
+    );
+    setSelectedCustomer(updatedCustomer);
+
+    setTimeout(() => {
+      handleServerSync();
+    }, 200);
+  };
+
+  // Handle deleting a transaction from Screen 2 (Report view)
+  const handleDeleteTransactionFromDetail = (txId: string) => {
+    const deletedTx = transactions.find((t) => t.id === txId);
+    if (!deletedTx || !selectedCustomer) return;
+
+    // Revert balance effect
+    const effect =
+      deletedTx.type === 'sale_due'
+        ? deletedTx.amount
+        : deletedTx.type === 'due_collection'
+        ? -deletedTx.amount
+        : 0;
+    const newBalance = selectedCustomer.balance - effect;
+
+    const updatedCustomer: Customer = {
+      ...selectedCustomer,
+      balance: newBalance,
+    };
+
+    setTransactions((prev) => prev.filter((t) => t.id !== txId));
+    setCustomers((prev) =>
+      prev.map((c) => (c.id === selectedCustomer.id ? updatedCustomer : c))
+    );
+    setSelectedCustomer(updatedCustomer);
+
+    setTimeout(() => {
+      handleServerSync();
+    }, 200);
+  };
+
+  // Handle updating customer details (from Screen 1 / Screen 2 modal)
+  const handleUpdateCustomer = (updatedCust: Customer) => {
+    setCustomers((prev) =>
+      prev.map((c) => (c.id === updatedCust.id ? updatedCust : c))
+    );
+    setSelectedCustomer(updatedCust);
+
+    // Also update customerName and customerPhone across transactions
+    setTransactions((prev) =>
+      prev.map((t) =>
+        t.customerId === updatedCust.id
+          ? { ...t, customerName: updatedCust.name, customerPhone: updatedCust.phone }
+          : t
+      )
+    );
+
+    setTimeout(() => {
+      handleServerSync();
+    }, 200);
+  };
+
+  // Handle deleting customer and all related transactions
+  const handleDeleteCustomer = (custId: string) => {
+    setCustomers((prev) => prev.filter((c) => c.id !== custId));
+    setTransactions((prev) => prev.filter((t) => t.customerId !== custId));
+    setSelectedCustomer(null);
+    setCustomerSubView('none');
+
+    setTimeout(() => {
+      handleServerSync();
+    }, 200);
   };
 
   // Calculation summaries
@@ -471,6 +636,24 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
     setCopiedTagada(true);
     setTimeout(() => setCopiedTagada(false), 3000);
   };
+
+  // If viewing a customer's dedicated ledger/entry screen or report screen
+  if (customerSubView !== 'none' && selectedCustomer) {
+    return (
+      <CustomerLedgerDetailView
+        customer={selectedCustomer}
+        shop={shop}
+        transactions={transactions}
+        initialScreen={customerSubView}
+        onBack={() => setCustomerSubView('none')}
+        onSaveTransaction={handleSaveTransactionFromDetail}
+        onUpdateTransaction={handleUpdateTransaction}
+        onDeleteTransaction={handleDeleteTransactionFromDetail}
+        onUpdateCustomer={handleUpdateCustomer}
+        onDeleteCustomer={handleDeleteCustomer}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4 animate-fadeIn text-slate-800 dark:text-slate-100">
@@ -809,92 +992,119 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
                 কোনো কাস্টমার বা সাপ্লায়ার পাওয়া যায়নি। নতুন গ্রাহক যোগ করুন।
               </div>
             ) : (
-              filteredCustomers.map((cust) => (
-                <div
-                  key={cust.id}
-                  className="p-4 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col gap-3"
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                          {cust.name}
-                        </h4>
+              filteredCustomers.map((cust) => {
+                const initials =
+                  cust.name
+                    .split(' ')
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map((p) => p[0].toUpperCase())
+                    .join('') || 'C';
+
+                return (
+                  <div
+                    key={cust.id}
+                    className="p-4 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col gap-3 hover:border-emerald-500/50 transition"
+                  >
+                    {/* Top Clickable Area: Opens Screen 1 (Entry & Ledger) */}
+                    <div
+                      onClick={() => handleOpenCustomerDetail(cust, 'entry')}
+                      className="flex items-start justify-between gap-3 cursor-pointer group"
+                      title="কাস্টমার বিস্তারিত ও লেনদেন এন্ট্রি খুলুন"
+                    >
+                      <div className="flex items-center gap-3">
+                        {/* Circular Avatar matching reference screenshots */}
+                        <div className="w-11 h-11 rounded-full bg-orange-500 text-white font-bold text-sm flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                          {initials}
+                        </div>
+
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                              {cust.name}
+                            </h4>
+                            <span
+                              className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                                cust.type === 'customer'
+                                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                                  : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                              }`}
+                            >
+                              {cust.type === 'customer' ? 'কাস্টমার' : 'সাপ্লায়ার'}
+                            </span>
+                          </div>
+                          <span className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 block flex items-center gap-1.5">
+                            <Phone className="w-3 h-3" /> {cust.phone}
+                            {cust.address && <span>• {cust.address}</span>}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Balance */}
+                      <div className="text-right">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                          {cust.balance > 0 ? 'বাকি পাবো' : cust.balance < 0 ? 'দেনা দেবো' : 'পরিশোধ'}
+                        </span>
                         <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                            cust.type === 'customer'
-                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
-                              : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                          className={`text-base font-black ${
+                            cust.balance > 0
+                              ? 'text-red-600 dark:text-red-400'
+                              : cust.balance < 0
+                              ? 'text-amber-600 dark:text-amber-400'
+                              : 'text-emerald-600 dark:text-emerald-400'
                           }`}
                         >
-                          {cust.type === 'customer' ? 'কাস্টমার' : 'সাপ্লায়ার'}
+                          {shop.currency} {formatMoney(cust.balance)}
+                        </span>
+                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium block mt-0.5">
+                          হিসাব খুলুন →
                         </span>
                       </div>
-                      <span className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 block flex items-center gap-1.5">
-                        <Phone className="w-3 h-3" /> {cust.phone}
-                        {cust.address && <span>• {cust.address}</span>}
-                      </span>
                     </div>
 
-                    {/* Balance */}
-                    <div className="text-right">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block">
-                        {cust.balance > 0 ? 'বাকি পাবো' : cust.balance < 0 ? 'দেনা দেবো' : 'পরিশোধ'}
-                      </span>
-                      <span
-                        className={`text-base font-black ${
-                          cust.balance > 0
-                            ? 'text-red-600 dark:text-red-400'
-                            : cust.balance < 0
-                            ? 'text-amber-600 dark:text-amber-400'
-                            : 'text-emerald-600 dark:text-emerald-400'
-                        }`}
-                      >
-                        {shop.currency} {formatMoney(cust.balance)}
-                      </span>
+                    {/* Actions for this customer */}
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleOpenCustomerDetail(cust, 'entry')}
+                          className="px-3 py-1.5 rounded-xl bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-950/60 dark:text-red-300 font-bold transition flex items-center gap-1"
+                        >
+                          <span>- দিলাম / বেচা</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleOpenCustomerDetail(cust, 'entry')}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 font-bold transition flex items-center gap-1"
+                        >
+                          <span>+ পেলাম</span>
+                        </button>
+
+                        {/* Dedicated Report Button matching Screen 2 */}
+                        <button
+                          onClick={() => handleOpenCustomerDetail(cust, 'report')}
+                          className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold transition flex items-center gap-1"
+                          title="কাস্টমারের বিস্তারিত রিপোর্ট ও স্টেটমেন্ট দেখুন"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-slate-500" />
+                          <span>রিপোর্ট</span>
+                        </button>
+                      </div>
+
+                      {/* Tagada SMS */}
+                      {cust.balance > 0 && (
+                        <button
+                          onClick={() => handleCopyTagada(cust)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-orange-50 dark:bg-orange-950/40 hover:bg-orange-100 text-orange-700 dark:text-orange-300 font-medium transition"
+                          title="বাকি তাগাদা মেসেজ কপি করুন"
+                        >
+                          <Send className="w-3 h-3 text-orange-600" />
+                          <span>{copiedTagada ? 'কপি হয়েছে!' : 'তাগাদা SMS'}</span>
+                        </button>
+                      )}
                     </div>
                   </div>
-
-                  {/* Actions for this customer */}
-                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 text-xs">
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => {
-                          setTxCustomerId(cust.id);
-                          setTxType('sale_due');
-                          setShowTransactionModal(true);
-                        }}
-                        className="px-3 py-1.5 rounded-xl bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-950/60 dark:text-red-300 font-bold transition"
-                      >
-                        - বাকি দিলাম
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          setTxCustomerId(cust.id);
-                          setTxType('due_collection');
-                          setShowTransactionModal(true);
-                        }}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 font-bold transition"
-                      >
-                        + জমা পেলাম
-                      </button>
-                    </div>
-
-                    {/* Tagada SMS */}
-                    {cust.balance > 0 && (
-                      <button
-                        onClick={() => handleCopyTagada(cust)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-medium transition"
-                        title="বাকি তাগাদা মেসেজ কপি করুন"
-                      >
-                        <Send className="w-3 h-3 text-red-500" />
-                        <span>{copiedTagada ? 'কপি হয়েছে!' : 'তাগাদা SMS'}</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
