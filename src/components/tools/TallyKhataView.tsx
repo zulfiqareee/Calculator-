@@ -31,9 +31,22 @@ import {
   CreditCard,
   ShoppingBag,
   Send,
+  Lock,
+  Unlock,
+  Shield,
+  ShieldCheck,
+  Package,
+  BarChart2,
+  Mic,
+  FileSpreadsheet,
+  Volume2,
 } from 'lucide-react';
 import { Language } from '../../types';
 import { CustomerLedgerDetailView } from './CustomerLedgerDetailView';
+import { PinSecurityLock, PIN_ENABLED_KEY, PIN_STORAGE_KEY } from './PinSecurityLock';
+import { TallyStockAndProfit } from './TallyStockAndProfit';
+import { tallySounds, BengaliVoiceRecognition } from '../../utils/tallyAudioVoice';
+import { exportCustomersToExcel, exportTransactionsToExcel } from '../../utils/tallyExport';
 
 interface Props {
   lang: Language;
@@ -111,7 +124,19 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
   const isBn = lang === 'bn';
 
   // Navigation tab inside Tally Khata
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'customers' | 'cashbook' | 'voucher' | 'reports' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'customers' | 'stock' | 'profit' | 'cashbook' | 'voucher' | 'reports' | 'settings'>('dashboard');
+
+  // Security PIN Lock State
+  const [isPinEnabled, setIsPinEnabled] = useState<boolean>(() => {
+    return localStorage.getItem(PIN_ENABLED_KEY) === 'true';
+  });
+  const [isLocked, setIsLocked] = useState<boolean>(() => {
+    return localStorage.getItem(PIN_ENABLED_KEY) === 'true';
+  });
+  const [pinCodeInput, setPinCodeInput] = useState<string>(() => {
+    return localStorage.getItem(PIN_STORAGE_KEY) || '1234';
+  });
+  const [pinChangeSuccess, setPinChangeSuccess] = useState<boolean>(false);
 
   // Shop Profile state
   const [shop, setShop] = useState<ShopProfile>(() => {
@@ -605,6 +630,13 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
 
     setTransactions([newTx, ...transactions]);
 
+    // Sound feedback
+    if (txType === 'due_collection' || txType === 'sale_cash') {
+      tallySounds.playCashChime();
+    } else {
+      tallySounds.playDueAlert();
+    }
+
     // Reset Form
     setTxAmount('');
     setTxNote('');
@@ -656,8 +688,16 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
   }
 
   return (
-    <div className="flex flex-col gap-4 animate-fadeIn text-slate-800 dark:text-slate-100">
-      {/* Top Shop Banner with Server Sync Badge */}
+    <div className="flex flex-col gap-4 animate-fadeIn text-slate-800 dark:text-slate-100 relative">
+      {/* 4-Digit Security PIN Lock Screen Modal (If active and locked) */}
+      <PinSecurityLock
+        isLocked={isLocked}
+        onUnlock={() => setIsLocked(false)}
+        shopName={shop.name}
+        shopPhone={shop.phone}
+      />
+
+      {/* Top Shop Banner with Server Sync & PIN Lock Badge */}
       <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-br from-emerald-700 via-teal-800 to-slate-900 text-white shadow-xl relative overflow-hidden">
         <div className="relative z-10 flex flex-col gap-3">
           <div className="flex items-center justify-between">
@@ -666,16 +706,38 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
               ডিজিটাল টালি খাতা ও হিসাব মেমো
             </span>
 
-            {/* Cloud Server Sync Button */}
-            <button
-              onClick={handleServerSync}
-              disabled={syncStatus === 'syncing'}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/30 hover:bg-emerald-500/50 border border-emerald-400/40 text-xs font-semibold text-emerald-200 transition cursor-pointer"
-              title="সার্ভারে ক্লাউড সিঙ্ক করুন"
-            >
-              <Cloud className={`w-3.5 h-3.5 ${syncStatus === 'syncing' ? 'animate-bounce' : ''}`} />
-              <span>{syncStatus === 'syncing' ? 'সিঙ্ক হচ্ছে...' : 'সার্ভার সিঙ্ক'}</span>
-            </button>
+            <div className="flex items-center gap-1.5">
+              {/* Quick Lock Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  tallySounds.playClickSound();
+                  if (isPinEnabled) {
+                    setIsLocked(true);
+                  } else {
+                    setActiveTab('settings');
+                    alert('পিন লক সক্রিয় করতে সেটিংস থেকে ৪-ডিজিট পিন অন করুন।');
+                  }
+                }}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 text-xs font-semibold text-white transition cursor-pointer"
+                title={isPinEnabled ? 'অ্যাপ লক করুন' : 'পিন লক সেট করুন'}
+              >
+                <Lock className="w-3.5 h-3.5 text-emerald-300" />
+                <span>{isPinEnabled ? 'লক' : 'পিন লক'}</span>
+              </button>
+
+              {/* Cloud Server Sync Button */}
+              <button
+                type="button"
+                onClick={handleServerSync}
+                disabled={syncStatus === 'syncing'}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/30 hover:bg-emerald-500/50 border border-emerald-400/40 text-xs font-semibold text-emerald-200 transition cursor-pointer"
+                title="সার্ভারে ক্লাউড সিঙ্ক করুন"
+              >
+                <Cloud className={`w-3.5 h-3.5 ${syncStatus === 'syncing' ? 'animate-bounce' : ''}`} />
+                <span>{syncStatus === 'syncing' ? 'সিঙ্ক...' : 'সার্ভার সিঙ্ক'}</span>
+              </button>
+            </div>
           </div>
 
           <div className="flex items-start justify-between">
@@ -690,7 +752,7 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
 
             <button
               onClick={() => setActiveTab('settings')}
-              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
             >
               <Edit2 className="w-3.5 h-3.5" />
               দোকান এডিট
@@ -713,11 +775,14 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
         </div>
       </div>
 
-      {/* Main Feature Tabs */}
-      <div className="flex items-center bg-slate-200/80 dark:bg-slate-900 p-1 rounded-2xl border border-slate-300/60 dark:border-slate-800 text-xs font-bold overflow-x-auto no-scrollbar">
+      {/* Main Feature Tabs Bar */}
+      <div className="flex items-center bg-slate-200/80 dark:bg-slate-900 p-1 rounded-2xl border border-slate-300/60 dark:border-slate-800 text-xs font-bold overflow-x-auto no-scrollbar gap-1">
         <button
-          onClick={() => setActiveTab('dashboard')}
-          className={`flex-1 min-w-[70px] py-2 px-2.5 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+          onClick={() => {
+            tallySounds.playClickSound();
+            setActiveTab('dashboard');
+          }}
+          className={`shrink-0 py-2 px-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
             activeTab === 'dashboard'
               ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-sm'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -728,8 +793,11 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
         </button>
 
         <button
-          onClick={() => setActiveTab('customers')}
-          className={`flex-1 min-w-[90px] py-2 px-2.5 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+          onClick={() => {
+            tallySounds.playClickSound();
+            setActiveTab('customers');
+          }}
+          className={`shrink-0 py-2 px-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
             activeTab === 'customers'
               ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-sm'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -740,8 +808,41 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
         </button>
 
         <button
-          onClick={() => setActiveTab('cashbook')}
-          className={`flex-1 min-w-[80px] py-2 px-2.5 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+          onClick={() => {
+            tallySounds.playClickSound();
+            setActiveTab('stock');
+          }}
+          className={`shrink-0 py-2 px-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+            activeTab === 'stock'
+              ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Package className="w-4 h-4 text-amber-500" />
+          <span>পণ্য স্টক</span>
+        </button>
+
+        <button
+          onClick={() => {
+            tallySounds.playClickSound();
+            setActiveTab('profit');
+          }}
+          className={`shrink-0 py-2 px-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+            activeTab === 'profit'
+              ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <BarChart2 className="w-4 h-4 text-purple-500" />
+          <span>লাভ-লোকসান</span>
+        </button>
+
+        <button
+          onClick={() => {
+            tallySounds.playClickSound();
+            setActiveTab('cashbook');
+          }}
+          className={`shrink-0 py-2 px-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
             activeTab === 'cashbook'
               ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-sm'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -752,8 +853,11 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
         </button>
 
         <button
-          onClick={() => setActiveTab('reports')}
-          className={`flex-1 min-w-[80px] py-2 px-2.5 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+          onClick={() => {
+            tallySounds.playClickSound();
+            setActiveTab('reports');
+          }}
+          className={`shrink-0 py-2 px-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
             activeTab === 'reports'
               ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-sm'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -761,6 +865,21 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
         >
           <FileText className="w-4 h-4" />
           <span>হিসাব রিপোর্ট</span>
+        </button>
+
+        <button
+          onClick={() => {
+            tallySounds.playClickSound();
+            setActiveTab('settings');
+          }}
+          className={`shrink-0 py-2 px-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+            activeTab === 'settings'
+              ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Store className="w-4 h-4" />
+          <span>দোকান সেটিংস</span>
         </button>
       </div>
 
@@ -1110,6 +1229,24 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
         </div>
       )}
 
+      {/* ================= TAB: STOCK & INVENTORY ================= */}
+      {activeTab === 'stock' && (
+        <TallyStockAndProfit
+          shop={shop}
+          transactions={transactions}
+          activeSubView="stock"
+        />
+      )}
+
+      {/* ================= TAB: PROFIT & LOSS ================= */}
+      {activeTab === 'profit' && (
+        <TallyStockAndProfit
+          shop={shop}
+          transactions={transactions}
+          activeSubView="profit"
+        />
+      )}
+
       {/* ================= TAB 3: DAILY CASHBOOK ================= */}
       {activeTab === 'cashbook' && (
         <div className="flex flex-col gap-4 animate-fadeIn">
@@ -1285,6 +1422,33 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
               </span>
             </div>
           </div>
+
+          {/* Excel / Spreadsheet 1-Click Export Row */}
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                tallySounds.playSuccessChime();
+                exportCustomersToExcel(customers, shop);
+              }}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-sm cursor-pointer"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>কাস্টমার খাতা Excel (.csv)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                tallySounds.playSuccessChime();
+                exportTransactionsToExcel(transactions, shop);
+              }}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition shadow-sm cursor-pointer"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+              <span>সব লেনদেন Excel (.csv)</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -1355,6 +1519,91 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
                 onChange={(e) => setShop({ ...shop, address: e.target.value })}
                 className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs"
               />
+            </div>
+
+            {/* 4-Digit PIN Security Management Card */}
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-900 dark:text-white">৪-ডিজিট সিকিউরিটি পিন লক</h4>
+                    <p className="text-[11px] text-slate-500">দোকানের গোপনীয় হিসাব রক্ষায় পিন কোড সেট করুন</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !isPinEnabled;
+                    setIsPinEnabled(next);
+                    localStorage.setItem(PIN_ENABLED_KEY, next ? 'true' : 'false');
+                    tallySounds.playClickSound();
+                  }}
+                  className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
+                    isPinEnabled ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
+                  }`}
+                >
+                  <div className={`w-4 h-4 rounded-full bg-white transition-transform absolute top-1 ${
+                    isPinEnabled ? 'right-1' : 'left-1'
+                  }`} />
+                </button>
+              </div>
+
+              {isPinEnabled && (
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex flex-col gap-2">
+                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                    নতুন ৪-ডিজিট পিন কোড:
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="password"
+                      maxLength={4}
+                      value={pinCodeInput}
+                      onChange={(e) => setPinCodeInput(e.target.value.replace(/\D/g, ''))}
+                      placeholder="১২৩৪"
+                      className="w-32 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-center text-sm font-black tracking-widest text-slate-900 dark:text-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (pinCodeInput.length === 4) {
+                          localStorage.setItem(PIN_STORAGE_KEY, pinCodeInput);
+                          tallySounds.playSuccessChime();
+                          setPinChangeSuccess(true);
+                          setTimeout(() => setPinChangeSuccess(false), 3000);
+                        } else {
+                          alert('অনুগ্রহ করে ৪ ডিজিটের পিন লিখুন।');
+                        }
+                      }}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer"
+                    >
+                      পিন সেভ করুন
+                    </button>
+                  </div>
+                  {pinChangeSuccess && (
+                    <span className="text-[11px] text-emerald-600 font-bold flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> পিন সফলভাবে আপডেট হয়েছে!
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Sound Test Button */}
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  ক্যাশ রেজিস্টার সাউন্ড শুনুন:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => tallySounds.playCashChime()}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Volume2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>সাউন্ড বাজান</span>
+                </button>
+              </div>
             </div>
 
             <div className="pt-2 flex items-center justify-between border-t border-slate-100 dark:border-slate-800">
