@@ -17,6 +17,8 @@ export type ToolId =
   | 'health-tips'
   | 'quran-pdf'
   | 'alarm'
+  | 'compass'
+  | 'electricity'
   | string;
 
 export type HealthCategory =

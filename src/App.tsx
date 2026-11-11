@@ -80,6 +80,7 @@ import { CompactHomeWeatherWidget } from './components/tools/CompactHomeWeatherW
 import { HealthTipsView } from './components/tools/HealthTipsView';
 import { QuranPdfReader } from './components/tools/QuranPdfReader';
 import { CompassTool } from './components/tools/CompassTool';
+import { ElectricitySuiteView } from './components/tools/ElectricitySuiteView';
 import { PermissionManagerModal } from './components/permissions/PermissionManagerModal';
 import {
   isOnboardingCompleted,
@@ -535,6 +536,8 @@ export default function App() {
         );
       case 'alarm':
         return <AlarmMainView lang={lang} />;
+      case 'electricity':
+        return <ElectricitySuiteView lang={lang} />;
       default:
         return null;
     }

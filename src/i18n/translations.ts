@@ -185,6 +185,19 @@ export const TOOLS_LIST: ToolItem[] = [
     gradient: 'from-amber-500 to-orange-700',
     accentColor: 'text-amber-500',
   },
+  {
+    id: 'electricity',
+    category: 'utility',
+    titleEn: 'Electricity Bill & Load Suite',
+    titleBn: 'বিদ্যুৎ বিল ও লোড হিসাব',
+    descEn: 'DESCO, DPDC, BREB, NESCO slab tariff, appliance watt calculator, IPS battery & Ohm laws.',
+    descBn: 'ডেসকো, ডিপিডিসি, পল্লী বিদ্যুৎ ও নেসকো সরকারি স্ল্যাব বিল, হোম লোড ওয়াট ও আইপিএস ব্যাটারি সাইজিং।',
+    badgeEn: 'Energy',
+    badgeBn: 'বিদ্যুৎ',
+    iconName: 'Zap',
+    gradient: 'from-amber-500 to-yellow-600',
+    accentColor: 'text-amber-500',
+  },
 ];
 
 export const UI_TEXT = {
