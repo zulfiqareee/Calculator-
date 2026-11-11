@@ -14,17 +14,36 @@ import {
   AlertTriangle,
   Info,
   Shapes,
+  BookOpen,
+  FileText,
+  Calculator,
+  Printer,
+  Scale,
+  DollarSign,
+  Share2,
 } from 'lucide-react';
 import { Language } from '../../types';
 import { UI_TEXT, formatNumber } from '../../i18n/translations';
 import { addStoredHistory } from '../../utils/storage';
 import { copyToClipboard } from '../../utils/clipboard';
+import { LandPlotVisualizer } from './LandPlotVisualizer';
+import {
+  calculateFarayez,
+  decimalToAnaGonda,
+  anaGondaToDecimal,
+  FarayezInput,
+} from '../../utils/faraezEngine';
+import {
+  calculateLandRegistrationFees,
+  DeedType,
+  AreaType,
+} from '../../utils/landRegistryEngine';
 
 interface Props {
   lang: Language;
 }
 
-type MainTab = 'plot' | 'converter' | 'share';
+type MainTab = 'plot' | 'faraez' | 'khatiyan' | 'registry' | 'converter';
 type ShapeType = 'quad' | 'triangles' | 'triangle' | 'curve';
 
 interface TriangleSegment {
@@ -57,11 +76,12 @@ function calculateHeronArea(a: number, b: number, c: number): { area: number; va
 export const LandMeasurementCalculator: React.FC<Props> = ({ lang }) => {
   const t = UI_TEXT[lang];
   const [activeTab, setActiveTab] = useState<MainTab>('plot');
-  const [shapeType, setShapeType] = useState<ShapeType>('triangles'); // Default to irregular multi-triangle
+  const [shapeType, setShapeType] = useState<ShapeType>('quad');
 
   // ==========================================
-  // SHAPE 1: 4 বাহুর জমি (চতুর্ভুজ + কর্ণ)
+  // TAB 1: PLOT MEASUREMENT (জমি পরিমাপ)
   // ==========================================
+  // Shape 1: 4 বাহু ও কর্ণ
   const [l1Ft, setL1Ft] = useState<number>(100);
   const [l1In, setL1In] = useState<number>(0);
   const [l2Ft, setL2Ft] = useState<number>(105);
@@ -81,29 +101,22 @@ export const LandMeasurementCalculator: React.FC<Props> = ({ lang }) => {
   const w2Total = w2Ft + w2In / 12;
   const diagTotal = diagFt + diagIn / 12;
 
-  // Quad calculation
   let quadAreaSqFt = 0;
   let quadValid = true;
   if (useDiagonal && diagTotal > 0) {
-    // Triangle 1: l1, w1, diag
     const t1 = calculateHeronArea(l1Total, w1Total, diagTotal);
-    // Triangle 2: l2, w2, diag
     const t2 = calculateHeronArea(l2Total, w2Total, diagTotal);
     if (t1.valid && t2.valid) {
       quadAreaSqFt = t1.area + t2.area;
     } else {
       quadValid = false;
-      // Fallback to average if triangle inequality broken
       quadAreaSqFt = ((l1Total + l2Total) / 2) * ((w1Total + w2Total) / 2);
     }
   } else {
-    // Average method (গড় পদ্ধতি)
     quadAreaSqFt = ((l1Total + l2Total) / 2) * ((w1Total + w2Total) / 2);
   }
 
-  // ==========================================
-  // SHAPE 2: আঁকা-বাঁকা বহুভুজ জমি (বহু-ত্রিভুজায়ন পদ্ধতি)
-  // ==========================================
+  // Shape 2: বহু-ত্রিভুজায়ন পদ্ধতি
   const [triangles, setTriangles] = useState<TriangleSegment[]>([
     {
       id: 't-1',
@@ -151,9 +164,7 @@ export const LandMeasurementCalculator: React.FC<Props> = ({ lang }) => {
   );
   const multiTriangleHasInvalid = triangleResults.some((t) => !t.valid);
 
-  // ==========================================
-  // SHAPE 3: তেকোনা জমি (৩ বাহুর ত্রিভুজ)
-  // ==========================================
+  // Shape 3: তেকোনা ৩ বাহু
   const [triAFt, setTriAFt] = useState<number>(90);
   const [triAIn, setTriAIn] = useState<number>(0);
   const [triBFt, setTriBFt] = useState<number>(70);
@@ -166,9 +177,7 @@ export const LandMeasurementCalculator: React.FC<Props> = ({ lang }) => {
   const triCTotal = triCFt + triCIn / 12;
   const singleTriResult = calculateHeronArea(triATotal, triBTotal, triCTotal);
 
-  // ==========================================
-  // SHAPE 4: নদী বা রাস্তার আঁকা-বাঁকা সীমানা (অফসেট পদ্ধতি)
-  // ==========================================
+  // Shape 4: আঁকা-বাঁকা সীমানা (অফসেট পদ্ধতি)
   const [intervalFt, setIntervalFt] = useState<number>(20);
   const [offsets, setOffsets] = useState<OffsetPoint[]>([
     { id: 'off-1', feet: 15, inch: 0 },
@@ -178,7 +187,6 @@ export const LandMeasurementCalculator: React.FC<Props> = ({ lang }) => {
     { id: 'off-5', feet: 18, inch: 0 },
   ]);
 
-  // Trapezoidal formula: d * [ (O1 + On)/2 + O2 + O3 + ... + On-1 ]
   let curveAreaSqFt = 0;
   if (offsets.length >= 2 && intervalFt > 0) {
     const values = offsets.map((o) => o.feet + o.inch / 12);
@@ -188,29 +196,77 @@ export const LandMeasurementCalculator: React.FC<Props> = ({ lang }) => {
     curveAreaSqFt = intervalFt * ((first + last) / 2 + middleSum);
   }
 
-  // Active Total Area Determination based on current ShapeType
   let totalSqFt = 0;
-  if (shapeType === 'quad') {
-    totalSqFt = quadAreaSqFt;
-  } else if (shapeType === 'triangles') {
-    totalSqFt = multiTriangleTotalSqFt;
-  } else if (shapeType === 'triangle') {
-    totalSqFt = singleTriResult.valid ? singleTriResult.area : 0;
-  } else if (shapeType === 'curve') {
-    totalSqFt = curveAreaSqFt;
-  }
+  if (shapeType === 'quad') totalSqFt = quadAreaSqFt;
+  else if (shapeType === 'triangles') totalSqFt = multiTriangleTotalSqFt;
+  else if (shapeType === 'triangle') totalSqFt = singleTriResult.valid ? singleTriResult.area : 0;
+  else if (shapeType === 'curve') totalSqFt = curveAreaSqFt;
 
   // Conversions
   const shotok = totalSqFt / 435.6; // ১ শতক = ৪৩৫.৬ বর্গফুট
   const katha = totalSqFt / 720; // ১ কাঠা = ৭২০ বর্গফুট
-  const bigha = totalSqFt / 14400; // ১ বিঘা = ১৪,৪০০ বর্গফুট (২০ কাঠা বা ৩৩.০৫৭ শতক)
-  const acre = totalSqFt / 43560; // ১ একর = ৪৩,৫৬০ বর্গফুট (১০০ শতক)
+  const bigha = totalSqFt / 14400; // ১ বিঘা = ১৪,৪০০ বর্গফুট
+  const acre = totalSqFt / 43560; // ১ একর = ৪৩,৫৬০ বর্গফুট
   const chhatak = totalSqFt / 45; // ১ ছটাক = ৪৫ বর্গফুট
-  const ganda = totalSqFt / 871.2; // ১ গণ্ডা = ৮৭১.২ বর্গফুট (২ শতক)
-  const sqMeter = totalSqFt * 0.092903; // ১ বর্গমিটার = ১০.৭৬৪ বর্গফুট
+  const ganda = totalSqFt / 871.2; // ১ গণ্ডা = ৮৭১.২ বর্গফুট
+  const sqMeter = totalSqFt * 0.092903;
 
   // ==========================================
-  // TAB 2: CONVERTER
+  // TAB 2: ISLAMIC FARAEZ (ফারায়েজ ও ওয়ারিশ বণ্টন)
+  // ==========================================
+  const [faraezState, setFaraezState] = useState<FarayezInput>({
+    deceasedGender: 'male',
+    totalLandShotok: 33, // Default 1 bigha = 33 shotok
+    totalValuationTaka: 5000000, // 50 Lakhs taka
+    wifeCount: 1,
+    hasHusband: false,
+    sons: 2,
+    daughters: 2,
+    hasFather: false,
+    hasMother: true,
+    paternalGrandfather: false,
+    grandmother: false,
+    fullBrothers: 0,
+    fullSisters: 0,
+  });
+
+  const faraezResult = calculateFarayez(faraezState);
+
+  // ==========================================
+  // TAB 3: KHATIYAN ANA-GONDA CONVERTER (পর্চার আনা-গণ্ডা)
+  // ==========================================
+  const [khAna, setKhAna] = useState<number>(4);
+  const [khGonda, setKhGonda] = useState<number>(10);
+  const [khKora, setKhKora] = useState<number>(2);
+  const [khKranti, setKhKranti] = useState<number>(1);
+  const [khTil, setKhTil] = useState<number>(0);
+  const [khTotalPlotShotok, setKhTotalPlotShotok] = useState<number>(50); // Total dag shotok
+
+  const khResult = anaGondaToDecimal(khAna, khGonda, khKora, khKranti, khTil);
+  const khCalculatedShotok = khTotalPlotShotok * khResult.fraction;
+
+  // Reverse: From Shotok to Ana-Gonda
+  const [revShotokInput, setRevShotokInput] = useState<number>(12.5);
+  const [revDagTotalShotok, setRevDagTotalShotok] = useState<number>(50);
+  const revFraction =
+    revDagTotalShotok > 0 ? Math.min(1, revShotokInput / revDagTotalShotok) : 0;
+  const revAnaGonda = decimalToAnaGonda(revFraction);
+
+  // ==========================================
+  // TAB 4: LAND REGISTRY FEES (দলিল রেজিস্ট্রি খরচ)
+  // ==========================================
+  const [regDeedType, setRegDeedType] = useState<DeedType>('saf_kabala');
+  const [regAreaType, setRegAreaType] = useState<AreaType>('city_corp');
+  const [regDeedValue, setRegDeedValue] = useState<number>(2000000); // 20 Lakhs taka
+
+  const regResult = calculateLandRegistrationFees({
+    deedType: regDeedType,
+    areaType: regAreaType,
+    deedValueTaka: regDeedValue,
+  });
+
+  // ==========================================
+  // TAB 5: GENERAL CONVERTER
   // ==========================================
   const [convValue, setConvValue] = useState<number>(10);
   const [convUnit, setConvUnit] = useState<string>('shotok');
@@ -237,60 +293,45 @@ export const LandMeasurementCalculator: React.FC<Props> = ({ lang }) => {
         return val;
     }
   };
-
   const convSqFt = getSqFtFromUnit(convValue, convUnit);
-
-  // ==========================================
-  // TAB 3: SHARE / FARAIZ (অংশীদার ভাগ)
-  // ==========================================
-  const [totalLandShotok, setTotalLandShotok] = useState<number>(33);
-  const [shares, setShares] = useState<{ id: string; name: string; shareRatio: number }[]>([
-    { id: '1', name: 'ওয়ারিশ ১ (পুত্র/অংশীদার)', shareRatio: 8 },
-    { id: '2', name: 'ওয়ারিশ ২ (কন্যা/অংশীদার)', shareRatio: 4 },
-  ]);
-
-  const totalShareSum = shares.reduce((acc, s) => acc + s.shareRatio, 0) || 1;
 
   const [copied, setCopied] = useState<boolean>(false);
 
   const handleCopy = async () => {
     let text = '';
-    const shapeLabel =
-      shapeType === 'triangles'
-        ? 'আঁকা-বাঁকা বহু-ত্রিভুজ পদ্ধতি'
-        : shapeType === 'quad'
-        ? '৪ বাহু ও কর্ণ পদ্ধতি'
-        : shapeType === 'triangle'
-        ? 'তেকোনা ৩ বাহু পদ্ধতি'
-        : 'নদী/রাস্তার বাঁকা সীমানা অফসেট পদ্ধতি';
-
     if (activeTab === 'plot') {
-      text = `জমির পরিমাপের হিসাব (${shapeLabel}):
+      text = `জমির ডিজিটাল পরিমাপের হিসাব:
 মোট ক্ষেত্রফল: ${totalSqFt.toFixed(2)} বর্গফুট (${sqMeter.toFixed(2)} বর্গমিটার)
 --------------------------------------
-শতক / ডেসিমেল: ${shotok.toFixed(3)} শতক
-কাঠা: ${katha.toFixed(3)} কাঠা
-বিঘা: ${bigha.toFixed(3)} বিঘা
-ছটাক: ${chhatak.toFixed(2)} ছটাক
-একর: ${acre.toFixed(4)} একর
-গণ্ডা: ${ganda.toFixed(2)} গণ্ডা`;
-
-      if (shapeType === 'triangles') {
-        text += `\n\nখণ্ড ত্রিভুজসমূহের বিবরণ:`;
-        triangleResults.forEach((tr, i) => {
-          text += `\n• ${tr.nameBn}: বাহু(${tr.a.toFixed(1)}', ${tr.b.toFixed(1)}', ${tr.c.toFixed(1)}') = ${tr.areaSqFt.toFixed(1)} বর্গফুট (${tr.shotok.toFixed(3)} শতক)`;
-        });
-      }
-    } else if (activeTab === 'converter') {
-      text = `জমির একক রূপান্তর: ${convValue} ${convUnit} = ${(convSqFt / 435.6).toFixed(3)} শতক (${convSqFt.toFixed(1)} বর্গফুট)`;
+• শতক / ডেসিমেল: ${shotok.toFixed(3)} শতক
+• কাঠা: ${katha.toFixed(3)} কাঠা
+• বিঘা: ${bigha.toFixed(3)} বিঘা
+• একর: ${acre.toFixed(4)} একর
+• ছটাক: ${chhatak.toFixed(2)} ছটাক
+• গণ্ডা: ${ganda.toFixed(2)} গণ্ডা`;
+    } else if (activeTab === 'faraez') {
+      text = `ইসলামিক ফারায়েজ ও ওয়ারিশ সম্পত্তি বণ্টন (মোট জমি: ${faraezState.totalLandShotok} শতক, মূল্য: ৳${faraezState.totalValuationTaka}):\n` +
+        faraezResult.heirs
+          .map(
+            (h) =>
+              `• ${h.roleBn}: ${h.totalShotok.toFixed(2)} শতক (${h.totalPercentage.toFixed(1)}%) | আনা-গণ্ডা: ${h.anaGondaText} | মূল্য: ৳${h.totalTaka.toLocaleString('en-IN')}`
+          )
+          .join('\n') +
+        `\n\nব্যাখ্যা: ${faraezResult.explanationBn}`;
+    } else if (activeTab === 'khatiyan') {
+      text = `খতিয়ানের আনা-গণ্ডা হিসাব:
+অংশ: ${khAna} আনা ${khGonda} গণ্ডা ${khKora} কড়া ${khKranti} ক্রান্তি ${khTil} তিল
+সহস্রাংশ: ${khResult.sahasrangsho} / ১০০০
+মোট ${khTotalPlotShotok} শতক জমির মধ্যে প্রাপ্তি: ${khCalculatedShotok.toFixed(3)} শতক`;
+    } else if (activeTab === 'registry') {
+      text = `দলিল রেজিস্ট্রি ও সরকারি ফি হিসাব (${regResult.deedTitleBn}):
+মোট দলিলের মূল্য: ৳${regDeedValue.toLocaleString('en-IN')}
+এলাকা: ${regResult.areaTitleBn}
+মোট সরকারি ফি: ৳${regResult.totalGovtFees.toLocaleString('en-IN')}
+--------------------------------------
+` + regResult.feeItems.map((f) => `• ${f.nameBn} (${f.rateLabel}): ৳${f.amountTaka.toLocaleString('en-IN')}`).join('\n');
     } else {
-      text = `জমির অংশীদার বণ্টন (মোট ${totalLandShotok} শতক):\n` +
-        shares
-          .map((s) => {
-            const pShotok = (totalLandShotok * s.shareRatio) / totalShareSum;
-            return `• ${s.name}: ${pShotok.toFixed(2)} শতক (${(pShotok * 435.6).toFixed(0)} বর্গফুট)`;
-          })
-          .join('\n');
+      text = `জমির একক রূপান্তর: ${convValue} ${convUnit} = ${(convSqFt / 435.6).toFixed(3)} শতক (${convSqFt.toFixed(1)} বর্গফুট)`;
     }
 
     const ok = await copyToClipboard(text);
@@ -301,21 +342,64 @@ export const LandMeasurementCalculator: React.FC<Props> = ({ lang }) => {
 
     addStoredHistory({
       toolId: 'land',
-      titleEn: 'Land Measurement',
-      titleBn: 'জমির হিসাব ও পরিমাপক',
-      expression: `${totalSqFt.toFixed(1)} sq ft (${shapeLabel})`,
-      result: `${shotok.toFixed(3)} শতক / ${katha.toFixed(2)} কাঠা`,
+      titleEn: 'Land Measurement & Farayez',
+      titleBn: 'জমির পরিমাপ ও ফারায়েজ',
+      expression: `${activeTab.toUpperCase()}: ${totalSqFt.toFixed(1)} sq ft`,
+      result: `${shotok.toFixed(3)} শতক`,
     });
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
-    <div className="flex flex-col gap-4 max-w-lg mx-auto w-full select-none">
+    <div className="flex flex-col gap-4 max-w-lg mx-auto w-full select-none pb-12">
+      {/* Top Header Card */}
+      <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 text-white rounded-3xl p-5 shadow-lg relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-36 h-36 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="relative z-10">
+          <div className="flex items-center justify-between mb-2">
+            <span className="px-2.5 py-0.5 rounded-full bg-white/20 text-white text-[11px] font-bold backdrop-blur-md flex items-center gap-1.5">
+              <Sparkles size={12} className="text-amber-300" />
+              {lang === 'bn' ? 'ডিজিটাল আমিন ও ল্যান্ড সার্ভেয়ার' : 'Smart Digital Land Surveyor'}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={handlePrint}
+                className="p-2 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 text-white transition flex items-center gap-1 text-xs font-bold"
+                title={lang === 'bn' ? 'রিপোর্ট প্রিন্ট করুন' : 'Print Survey Report'}
+              >
+                <Printer size={14} />
+              </button>
+              <button
+                onClick={handleCopy}
+                className="px-3 py-1.5 rounded-xl bg-white text-emerald-900 hover:bg-emerald-50 active:scale-95 transition flex items-center gap-1.5 text-xs font-bold shadow-sm"
+              >
+                {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                <span>{copied ? (lang === 'bn' ? 'কপি হয়েছে' : 'Copied') : (lang === 'bn' ? 'কপি' : 'Copy')}</span>
+              </button>
+            </div>
+          </div>
+          <h2 className="text-xl font-extrabold tracking-tight">
+            {lang === 'bn' ? 'জমির পরিমাপ ও ইসলামিক ফারায়েজ' : 'Land Measurement & Farayez'}
+          </h2>
+          <p className="text-xs text-white/90 mt-1 leading-relaxed">
+            {lang === 'bn'
+              ? 'নিখুঁত জ্যামিতিক নকশা, হেরন সূত্র, ১৬ আনা খতিয়ান পর্চা ও কুরআন-সুন্নাহ মোতাবেক উত্তরাধিকার সম্পত্তি বণ্টন'
+              : 'Precision cadastre CAD, Heron triangulation, 16-Ana Khatiyan & Quranic inheritance distribution'}
+          </p>
+        </div>
+      </div>
+
       {/* Main Tab Switcher */}
-      <div className="flex bg-slate-200 dark:bg-slate-800 p-1 rounded-2xl gap-1 text-xs font-bold">
+      <div className="grid grid-cols-5 bg-slate-200 dark:bg-slate-800 p-1 rounded-2xl gap-1 text-[11px] font-bold">
         {[
-          { id: 'plot', labelBn: 'জমি পরিমাপ', labelEn: 'Plot Measure', icon: Compass },
-          { id: 'converter', labelBn: 'একক রূপান্তর', labelEn: 'Converter', icon: ArrowRightLeft },
-          { id: 'share', labelBn: 'অংশীদার ভাগ', labelEn: 'Land Shares', icon: Users },
+          { id: 'plot', labelBn: 'জমি পরিমাপ', labelEn: 'Measure', icon: Compass },
+          { id: 'faraez', labelBn: 'ফারায়েজ বণ্টন', labelEn: 'Farayez', icon: Scale },
+          { id: 'khatiyan', labelBn: 'খতিয়ান পর্চা', labelEn: 'Khatiyan', icon: FileText },
+          { id: 'registry', labelBn: 'দলিল ফি', labelEn: 'Registry', icon: DollarSign },
+          { id: 'converter', labelBn: 'একক রূপান্তর', labelEn: 'Convert', icon: ArrowRightLeft },
         ].map((m) => {
           const Icon = m.icon;
           const isSel = activeTab === m.id;
@@ -323,14 +407,16 @@ export const LandMeasurementCalculator: React.FC<Props> = ({ lang }) => {
             <button
               key={m.id}
               onClick={() => setActiveTab(m.id as MainTab)}
-              className={`flex-1 py-2 rounded-xl flex items-center justify-center gap-1.5 transition ${
+              className={`py-2 px-1 rounded-xl flex flex-col items-center justify-center gap-1 transition ${
                 isSel
                   ? 'bg-[#0B63F6] text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <Icon className="w-3.5 h-3.5" />
-              <span>{lang === 'bn' ? m.labelBn : m.labelEn}</span>
+              <Icon size={14} />
+              <span className="truncate w-full text-center leading-tight">
+                {lang === 'bn' ? m.labelBn : m.labelEn}
+              </span>
             </button>
           );
         })}
@@ -341,37 +427,40 @@ export const LandMeasurementCalculator: React.FC<Props> = ({ lang }) => {
          ========================================================================= */}
       {activeTab === 'plot' && (
         <div className="flex flex-col gap-4">
-          {/* Shape Selector Bar */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2 shadow-xs">
-            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block px-2 pb-1.5">
-              {lang === 'bn' ? 'জমির ধরন নির্বাচন করুন:' : 'Select Land Shape:'}
-            </span>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-xs font-bold">
+          {/* Shape Selector Sub-tabs */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-xs flex flex-col gap-3">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Shapes size={14} className="text-[#0B63F6]" />
+                {lang === 'bn' ? 'জমির ধরন ও জরিপ পদ্ধতি নির্বাচন করুন:' : 'Select Plot Shape & Method:'}
+              </span>
+            </label>
+
+            <div className="grid grid-cols-2 gap-2 text-xs font-bold">
               {[
                 {
-                  id: 'triangles',
-                  labelBn: 'আঁকা-বাঁকা জমি',
-                  subBn: 'বহু-ত্রিভুজ পদ্ধতি',
-                  labelEn: 'Irregular Land',
-                  highlight: true,
+                  id: 'quad',
+                  labelBn: '৪ বাহু ও কর্ণ পদ্ধতি',
+                  labelEn: '4-Side & Diagonal',
+                  descBn: 'আয়তাকার বা অসম ৪ কোনা জমি',
                 },
                 {
-                  id: 'quad',
-                  labelBn: '৪ বাহু ও কর্ণ',
-                  subBn: 'চতুর্ভুজ জমি',
-                  labelEn: '4-Sided + Diag',
+                  id: 'triangles',
+                  labelBn: 'আঁকা-বাঁকা বহু-ত্রিভুজায়ন',
+                  labelEn: 'Irregular Multi-Triangle',
+                  descBn: 'অনেক বাঁকা জমিকে ত্রিভুজে ভাগ',
                 },
                 {
                   id: 'triangle',
-                  labelBn: 'তেকোনা জমি',
-                  subBn: '৩ বাহুর পরিমাপ',
-                  labelEn: '3-Sided Triangle',
+                  labelBn: 'তেকোনা ৩ বাহু (হেরন সূত্র)',
+                  labelEn: 'Triangle (Heron)',
+                  descBn: '৩ কোনা জমির সঠিক পরিমাপ',
                 },
                 {
                   id: 'curve',
-                  labelBn: 'বাঁকা নদী/রাস্তা',
-                  subBn: 'অফসেট পদ্ধতি',
-                  labelEn: 'Curved Offset',
+                  labelBn: 'নদী/রাস্তার বাঁকা সীমানা',
+                  labelEn: 'Curved River/Road Offset',
+                  descBn: 'অফসেট পদ্ধতিতে ট্রাপিজয়েডাল হিসাব',
                 },
               ].map((s) => {
                 const isSel = shapeType === s.id;
@@ -379,883 +468,1058 @@ export const LandMeasurementCalculator: React.FC<Props> = ({ lang }) => {
                   <button
                     key={s.id}
                     onClick={() => setShapeType(s.id as ShapeType)}
-                    className={`py-2 px-2 rounded-xl text-center transition flex flex-col items-center justify-center ${
+                    className={`p-3 rounded-2xl border text-left transition flex flex-col justify-between ${
                       isSel
-                        ? 'bg-blue-50 dark:bg-blue-950/70 border-2 border-[#0B63F6] text-[#0B63F6] dark:text-blue-400 shadow-2xs'
-                        : 'bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                        ? 'border-[#0B63F6] bg-blue-50/60 dark:bg-blue-950/40 text-[#0B63F6] shadow-xs'
+                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300'
                     }`}
                   >
-                    <span className="leading-tight block font-extrabold text-[11px]">
-                      {lang === 'bn' ? s.labelBn : s.labelEn}
-                    </span>
-                    <span className="text-[9px] text-slate-400 font-normal block mt-0.5 truncate max-w-full">
-                      {lang === 'bn' ? s.subBn : ''}
-                    </span>
+                    <span className="font-bold text-[12px]">{lang === 'bn' ? s.labelBn : s.labelEn}</span>
+                    <span className="text-[10px] text-slate-500 font-normal mt-1">{s.descBn}</span>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {/* =============================================================
-              SUB-MODE: আঁকা-বাঁকা জমি (বহু-ত্রিভুজায়ন পদ্ধতি)
-             ============================================================= */}
-          {shapeType === 'triangles' && (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-xs font-black text-slate-800 dark:text-white flex items-center gap-1.5">
-                    <Shapes className="w-4 h-4 text-[#0B63F6]" />
-                    <span>{lang === 'bn' ? 'আঁকা-বাঁকা জমির ত্রিভুজায়ন পদ্ধতি' : 'Irregular Triangulation'}</span>
-                  </h3>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    {lang === 'bn'
-                      ? 'আমিনদের নিয়ম অনুযায়ী জমিকে বিভিন্ন ত্রিভুজে ভাগ করে ৩টি বাহুর মাপ দিন'
-                      : "Divide irregular plot into triangles and input 3 side lengths for each"}
-                  </p>
-                </div>
-                <button
-                  onClick={() => {
-                    const nextNum = triangles.length + 1;
-                    setTriangles([
-                      ...triangles,
-                      {
-                        id: `t-${Date.now()}`,
-                        nameBn: `ত্রিভুজ ${nextNum} (${nextNum === 3 ? 'তৃতীয়' : nextNum === 4 ? 'চতুর্থ' : 'পরবর্তী'} খণ্ড)`,
-                        nameEn: `Triangle ${nextNum}`,
-                        aFt: 70,
-                        aIn: 0,
-                        bFt: 65,
-                        bIn: 0,
-                        cFt: 85,
-                        cIn: 0,
-                      },
-                    ]);
-                  }}
-                  className="px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/80 text-[#0B63F6] dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 text-xs font-bold flex items-center gap-1 shadow-2xs transition active:scale-95"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>{lang === 'bn' ? '+ ত্রিভুজ যোগ' : '+ Add Triangle'}</span>
-                </button>
-              </div>
-
-              {/* Triangle Cards List */}
-              <div className="flex flex-col gap-3">
-                {triangles.map((tri, idx) => {
-                  const res = triangleResults[idx];
-                  return (
-                    <div
-                      key={tri.id}
-                      className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/80 flex flex-col gap-2.5 transition"
-                    >
-                      <div className="flex items-center justify-between pb-1.5 border-b border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200">
-                        <span className="flex items-center gap-1.5 text-[#0B63F6]">
-                          <span className="w-5 h-5 rounded-full bg-[#0B63F6] text-white flex items-center justify-center text-[10px] font-black">
-                            {idx + 1}
-                          </span>
-                          <span>{lang === 'bn' ? tri.nameBn : tri.nameEn}</span>
-                        </span>
-                        <div className="flex items-center gap-2">
-                          {res && res.valid ? (
-                            <span className="font-mono text-emerald-600 dark:text-emerald-400 font-extrabold text-[11px] bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
-                              {res.shotok.toFixed(3)} শতক ({res.areaSqFt.toFixed(1)} sq ft)
-                            </span>
-                          ) : (
-                            <span className="text-[10px] text-rose-500 font-bold flex items-center gap-1">
-                              <AlertTriangle className="w-3 h-3" />
-                              <span>অসম্ভব মাপ</span>
-                            </span>
-                          )}
-                          {triangles.length > 1 && (
-                            <button
-                              onClick={() => setTriangles(triangles.filter((_, i) => i !== idx))}
-                              className="text-slate-400 hover:text-rose-500 p-1 transition"
-                              title="মুছে ফেলুন"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* 3 Sides inputs (Side A, Side B, Side C) */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        {/* Side A */}
-                        <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
-                            বাহু ১ (Side A)
-                          </label>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <div className="relative">
-                              <input
-                                type="number"
-                                value={tri.aFt || ''}
-                                onChange={(e) => {
-                                  const updated = [...triangles];
-                                  updated[idx].aFt = Math.max(0, parseFloat(e.target.value) || 0);
-                                  setTriangles(updated);
-                                }}
-                                className="w-full h-8 bg-slate-50 dark:bg-slate-800 border rounded-lg px-2 text-xs font-bold"
-                              />
-                              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-400 font-bold">
-                                ফুট
-                              </span>
-                            </div>
-                            <div className="relative">
-                              <input
-                                type="number"
-                                value={tri.aIn || ''}
-                                onChange={(e) => {
-                                  const updated = [...triangles];
-                                  updated[idx].aIn = Math.max(0, parseFloat(e.target.value) || 0);
-                                  setTriangles(updated);
-                                }}
-                                className="w-full h-8 bg-slate-50 dark:bg-slate-800 border rounded-lg px-2 text-xs font-bold"
-                              />
-                              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-400 font-bold">
-                                ইঞ্চি
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Side B */}
-                        <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
-                            বাহু ২ (Side B)
-                          </label>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <div className="relative">
-                              <input
-                                type="number"
-                                value={tri.bFt || ''}
-                                onChange={(e) => {
-                                  const updated = [...triangles];
-                                  updated[idx].bFt = Math.max(0, parseFloat(e.target.value) || 0);
-                                  setTriangles(updated);
-                                }}
-                                className="w-full h-8 bg-slate-50 dark:bg-slate-800 border rounded-lg px-2 text-xs font-bold"
-                              />
-                              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-400 font-bold">
-                                ফুট
-                              </span>
-                            </div>
-                            <div className="relative">
-                              <input
-                                type="number"
-                                value={tri.bIn || ''}
-                                onChange={(e) => {
-                                  const updated = [...triangles];
-                                  updated[idx].bIn = Math.max(0, parseFloat(e.target.value) || 0);
-                                  setTriangles(updated);
-                                }}
-                                className="w-full h-8 bg-slate-50 dark:bg-slate-800 border rounded-lg px-2 text-xs font-bold"
-                              />
-                              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-400 font-bold">
-                                ইঞ্চি
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Side C (or Diagonal/Common Border) */}
-                        <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
-                            বাহু ৩ / কর্ণ (Side C)
-                          </label>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <div className="relative">
-                              <input
-                                type="number"
-                                value={tri.cFt || ''}
-                                onChange={(e) => {
-                                  const updated = [...triangles];
-                                  updated[idx].cFt = Math.max(0, parseFloat(e.target.value) || 0);
-                                  setTriangles(updated);
-                                }}
-                                className="w-full h-8 bg-slate-50 dark:bg-slate-800 border rounded-lg px-2 text-xs font-bold"
-                              />
-                              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-400 font-bold">
-                                ফুট
-                              </span>
-                            </div>
-                            <div className="relative">
-                              <input
-                                type="number"
-                                value={tri.cIn || ''}
-                                onChange={(e) => {
-                                  const updated = [...triangles];
-                                  updated[idx].cIn = Math.max(0, parseFloat(e.target.value) || 0);
-                                  setTriangles(updated);
-                                }}
-                                className="w-full h-8 bg-slate-50 dark:bg-slate-800 border rounded-lg px-2 text-xs font-bold"
-                              />
-                              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-400 font-bold">
-                                ইঞ্চি
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Informational Guidance */}
-              <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 flex items-start gap-2 text-[11px] text-amber-800 dark:text-amber-300">
-                <Info className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>
-                  {lang === 'bn'
-                    ? 'টিপস: যেকোনো বাঁকা, অসম বা ৫/৬ কোণা জমিকে সুবিধাজনক কোণায় ফিতা টেনে ত্রিভুজ বানিয়ে ফেলুন। প্রতিটি ত্রিভুজের ৩ বাহুর মাপ দিলেই সবগুলোর যোগফল নিখুঁতভাবে পাওয়া যাবে।'
-                    : 'Tip: Convert any irregular or curved land into multiple triangles by measuring corner diagonals. Heron’s formula will accurately compute the total area.'}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* =============================================================
-              SUB-MODE: ৪ বাহু ও কর্ণ (চতুর্ভুজ)
-             ============================================================= */}
+          {/* Interactive Cadastral SVG Map */}
           {shapeType === 'quad' && (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex flex-col gap-4">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
-                <span className="flex items-center gap-1.5 text-[#0B63F6]">
-                  <MapPin className="w-4 h-4" />
-                  <span>{lang === 'bn' ? '৪ দিকের দৈর্ঘ্য ও প্রস্থ (ফুট ও ইঞ্চি):' : 'Enter 4 Boundary Lengths:'}</span>
-                </span>
-                <button
-                  onClick={() => {
-                    setL1Ft(100);
-                    setL2Ft(105);
-                    setW1Ft(50);
-                    setW2Ft(52);
-                    setL1In(0);
-                    setL2In(0);
-                    setW1In(0);
-                    setW2In(0);
-                    setDiagFt(115);
-                    setDiagIn(0);
-                  }}
-                  className="text-slate-400 hover:text-slate-600 text-[11px] flex items-center gap-1"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  <span>{t.actions.reset}</span>
-                </button>
-              </div>
-
-              {/* Visual Plot Preview Card */}
-              <div className="p-4 rounded-2xl bg-blue-50/70 dark:bg-slate-800/60 border border-blue-200/60 dark:border-slate-700 flex flex-col items-center justify-center text-[11px] relative py-5">
-                <span className="font-bold text-[#0B63F6] mb-1">উত্তর দৈর্ঘ্য: {l1Total.toFixed(1)} ft</span>
-                <div className="w-48 h-20 border-2 border-dashed border-[#0B63F6] rounded-xl flex items-center justify-between px-2 text-slate-500 font-semibold text-[10px] relative">
-                  <span>পশ্চিম: {w2Total.toFixed(1)} ft</span>
-                  <div className="text-center font-bold text-slate-700 dark:text-slate-200">
-                    <span className="block">{totalSqFt.toFixed(0)} sq ft</span>
-                    {useDiagonal && (
-                      <span className="text-[9px] text-blue-600 dark:text-blue-400 block font-normal">
-                        কর্ণ: {diagTotal.toFixed(1)} ft
-                      </span>
-                    )}
-                  </div>
-                  <span>পূর্ব: {w1Total.toFixed(1)} ft</span>
-                </div>
-                <span className="font-bold text-[#0B63F6] mt-1">দক্ষিণ দৈর্ঘ্য: {l2Total.toFixed(1)} ft</span>
-              </div>
-
-              {/* Length 1 (North) & Length 2 (South) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                    উত্তর দৈর্ঘ্য (Length 1)
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={l1Ft || ''}
-                        onChange={(e) => setL1Ft(Math.max(0, parseFloat(e.target.value) || 0))}
-                        className="w-full h-9 bg-white dark:bg-slate-900 border rounded-lg px-2 text-xs font-bold"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">ফুট</span>
-                    </div>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={l1In || ''}
-                        onChange={(e) => setL1In(Math.max(0, parseFloat(e.target.value) || 0))}
-                        className="w-full h-9 bg-white dark:bg-slate-900 border rounded-lg px-2 text-xs font-bold"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">ইঞ্চি</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                    দক্ষিণ দৈর্ঘ্য (Length 2)
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={l2Ft || ''}
-                        onChange={(e) => setL2Ft(Math.max(0, parseFloat(e.target.value) || 0))}
-                        className="w-full h-9 bg-white dark:bg-slate-900 border rounded-lg px-2 text-xs font-bold"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">ফুট</span>
-                    </div>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={l2In || ''}
-                        onChange={(e) => setL2In(Math.max(0, parseFloat(e.target.value) || 0))}
-                        className="w-full h-9 bg-white dark:bg-slate-900 border rounded-lg px-2 text-xs font-bold"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">ইঞ্চি</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Width 1 (East) & Width 2 (West) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                    পূর্ব প্রস্থ (Width 1)
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={w1Ft || ''}
-                        onChange={(e) => setW1Ft(Math.max(0, parseFloat(e.target.value) || 0))}
-                        className="w-full h-9 bg-white dark:bg-slate-900 border rounded-lg px-2 text-xs font-bold"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">ফুট</span>
-                    </div>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={w1In || ''}
-                        onChange={(e) => setW1In(Math.max(0, parseFloat(e.target.value) || 0))}
-                        className="w-full h-9 bg-white dark:bg-slate-900 border rounded-lg px-2 text-xs font-bold"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">ইঞ্চি</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                    পশ্চিম প্রস্থ (Width 2)
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={w2Ft || ''}
-                        onChange={(e) => setW2Ft(Math.max(0, parseFloat(e.target.value) || 0))}
-                        className="w-full h-9 bg-white dark:bg-slate-900 border rounded-lg px-2 text-xs font-bold"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">ফুট</span>
-                    </div>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={w2In || ''}
-                        onChange={(e) => setW2In(Math.max(0, parseFloat(e.target.value) || 0))}
-                        className="w-full h-9 bg-white dark:bg-slate-900 border rounded-lg px-2 text-xs font-bold"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">ইঞ্চি</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Diagonal Toggle & Input */}
-              <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-2">
-                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={useDiagonal}
-                    onChange={(e) => setUseDiagonal(e.target.checked)}
-                    className="rounded text-[#0B63F6] focus:ring-[#0B63F6] w-4 h-4"
-                  />
-                  <span>কর্ণ (Diagonal) পরিমাপ যুক্ত করুন (অসম চতুর্ভুজে হেরন্সের নির্ভুল ফর্মুলা)</span>
-                </label>
-                {useDiagonal && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={diagFt || ''}
-                        onChange={(e) => setDiagFt(Math.max(0, parseFloat(e.target.value) || 0))}
-                        placeholder="কর্ণ ফুট"
-                        className="w-full h-10 bg-slate-50 dark:bg-slate-800 border rounded-xl px-3 text-xs font-bold"
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">ফুট</span>
-                    </div>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={diagIn || ''}
-                        onChange={(e) => setDiagIn(Math.max(0, parseFloat(e.target.value) || 0))}
-                        placeholder="কর্ণ ইঞ্চি"
-                        className="w-full h-10 bg-slate-50 dark:bg-slate-800 border rounded-xl px-3 text-xs font-bold"
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">ইঞ্চি</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+            <LandPlotVisualizer
+              type="quad"
+              l1={l1Total}
+              l2={l2Total}
+              w1={w1Total}
+              w2={w2Total}
+              diag={useDiagonal ? diagTotal : 0}
+              totalSqFt={totalSqFt}
+              totalShotok={shotok}
+              lang={lang}
+            />
           )}
 
-          {/* =============================================================
-              SUB-MODE: তেকোনা জমি (৩ বাহুর মাপ)
-             ============================================================= */}
+          {shapeType === 'triangles' && (
+            <LandPlotVisualizer
+              type="triangles"
+              triangles={triangleResults}
+              totalSqFt={totalSqFt}
+              totalShotok={shotok}
+              lang={lang}
+            />
+          )}
+
           {shapeType === 'triangle' && (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex flex-col gap-4">
-              <h3 className="text-xs font-black text-slate-800 dark:text-white flex items-center gap-1.5">
-                <Compass className="w-4 h-4 text-[#0B63F6]" />
-                <span>{lang === 'bn' ? 'তেকোনা বা ত্রিভুজাকার জমি পরিমাপ' : 'Triangular Plot'}</span>
-              </h3>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {/* Side 1 */}
-                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                    ১ম বাহু (Side 1)
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={triAFt || ''}
-                        onChange={(e) => setTriAFt(Math.max(0, parseFloat(e.target.value) || 0))}
-                        className="w-full h-9 bg-white dark:bg-slate-900 border rounded-lg px-2 text-xs font-bold"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">ফুট</span>
-                    </div>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={triAIn || ''}
-                        onChange={(e) => setTriAIn(Math.max(0, parseFloat(e.target.value) || 0))}
-                        className="w-full h-9 bg-white dark:bg-slate-900 border rounded-lg px-2 text-xs font-bold"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">ইঞ্চি</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Side 2 */}
-                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                    ২য় বাহু (Side 2)
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={triBFt || ''}
-                        onChange={(e) => setTriBFt(Math.max(0, parseFloat(e.target.value) || 0))}
-                        className="w-full h-9 bg-white dark:bg-slate-900 border rounded-lg px-2 text-xs font-bold"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">ফুট</span>
-                    </div>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={triBIn || ''}
-                        onChange={(e) => setTriBIn(Math.max(0, parseFloat(e.target.value) || 0))}
-                        className="w-full h-9 bg-white dark:bg-slate-900 border rounded-lg px-2 text-xs font-bold"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">ইঞ্চি</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Side 3 */}
-                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                    ৩য় বাহু (Side 3)
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={triCFt || ''}
-                        onChange={(e) => setTriCFt(Math.max(0, parseFloat(e.target.value) || 0))}
-                        className="w-full h-9 bg-white dark:bg-slate-900 border rounded-lg px-2 text-xs font-bold"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">ফুট</span>
-                    </div>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={triCIn || ''}
-                        onChange={(e) => setTriCIn(Math.max(0, parseFloat(e.target.value) || 0))}
-                        className="w-full h-9 bg-white dark:bg-slate-900 border rounded-lg px-2 text-xs font-bold"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">ইঞ্চি</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {!singleTriResult.valid && (
-                <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 shrink-0" />
-                  <span>ত্রিভুজের যেকোনো দুই বাহুর যোগফল অবশ্যই তৃতীয় বাহুর চেয়ে বড় হতে হবে। বাহুর মাপ ঠিক করুন।</span>
-                </div>
-              )}
-            </div>
+            <LandPlotVisualizer
+              type="triangle"
+              a={triATotal}
+              b={triBTotal}
+              c={triCTotal}
+              totalSqFt={totalSqFt}
+              totalShotok={shotok}
+              valid={singleTriResult.valid}
+              lang={lang}
+            />
           )}
 
-          {/* =============================================================
-              SUB-MODE: বাঁকা নদী বা রাস্তার সীমানা (অফসেট পদ্ধতি)
-             ============================================================= */}
           {shapeType === 'curve' && (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-xs font-black text-slate-800 dark:text-white flex items-center gap-1.5">
-                    <Layers className="w-4 h-4 text-[#0B63F6]" />
-                    <span>{lang === 'bn' ? 'নদী/রাস্তার বাঁকা সীমানা (অফসেট পদ্ধতি)' : 'Curved Boundary Offset'}</span>
-                  </h3>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    {lang === 'bn'
-                      ? 'সোজা বেস লাইন বরাবর নির্দিষ্ট ব্যবধানে বাঁকা পাড়ের অফসেট উচ্চতা দিন'
-                      : 'Measure perpendicular offsets along a baseline (Trapezoidal Rule)'}
-                  </p>
-                </div>
-                <button
-                  onClick={() => {
-                    setOffsets([
-                      ...offsets,
-                      { id: `off-${Date.now()}`, feet: 20, inch: 0 },
-                    ]);
-                  }}
-                  className="px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/80 text-[#0B63F6] dark:text-blue-400 border border-blue-200 dark:border-blue-800 text-xs font-bold flex items-center gap-1 shadow-2xs"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>{lang === 'bn' ? '+ পয়েন্ট যোগ' : '+ Add Point'}</span>
-                </button>
-              </div>
+            <LandPlotVisualizer
+              type="curve"
+              intervalFt={intervalFt}
+              offsets={offsets}
+              totalSqFt={totalSqFt}
+              totalShotok={shotok}
+              lang={lang}
+            />
+          )}
 
-              {/* Baseline Interval */}
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                  পয়েন্টগুলোর মধ্যবর্তী সমদূরত্ব (Interval d):
-                </label>
-                <div className="relative max-w-xs">
-                  <input
-                    type="number"
-                    value={intervalFt || ''}
-                    onChange={(e) => setIntervalFt(Math.max(1, parseFloat(e.target.value) || 0))}
-                    className="w-full h-9 bg-white dark:bg-slate-900 border rounded-lg px-3 text-xs font-bold"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">ফুট</span>
+          {/* Inputs Section for Plot Measurement */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex flex-col gap-4">
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+              <MapPin size={13} className="text-emerald-500" />
+              {lang === 'bn' ? 'সীমানা পরিমাপের মান ইনপুট (ফুট ও ইঞ্চি):' : 'Boundary Input (Feet & Inches):'}
+            </h3>
+
+            {/* Quad Inputs */}
+            {shapeType === 'quad' && (
+              <div className="flex flex-col gap-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      উত্তর বাহু (দৈর্ঘ্য ১):
+                    </label>
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <input
+                          type="number"
+                          value={l1Ft || ''}
+                          onChange={(e) => setL1Ft(Math.max(0, parseFloat(e.target.value) || 0))}
+                          className="w-full h-9 bg-white dark:bg-slate-900 border rounded-xl px-2 text-xs font-bold font-mono text-center"
+                          placeholder="ফুট"
+                        />
+                      </div>
+                      <div className="w-16">
+                        <input
+                          type="number"
+                          value={l1In || ''}
+                          onChange={(e) => setL1In(Math.max(0, parseFloat(e.target.value) || 0))}
+                          className="w-full h-9 bg-white dark:bg-slate-900 border rounded-xl px-2 text-xs font-bold font-mono text-center"
+                          placeholder="ইঞ্চি"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      দক্ষিণ বাহু (দৈর্ঘ্য ২):
+                    </label>
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <input
+                          type="number"
+                          value={l2Ft || ''}
+                          onChange={(e) => setL2Ft(Math.max(0, parseFloat(e.target.value) || 0))}
+                          className="w-full h-9 bg-white dark:bg-slate-900 border rounded-xl px-2 text-xs font-bold font-mono text-center"
+                          placeholder="ফুট"
+                        />
+                      </div>
+                      <div className="w-16">
+                        <input
+                          type="number"
+                          value={l2In || ''}
+                          onChange={(e) => setL2In(Math.max(0, parseFloat(e.target.value) || 0))}
+                          className="w-full h-9 bg-white dark:bg-slate-900 border rounded-xl px-2 text-xs font-bold font-mono text-center"
+                          placeholder="ইঞ্চি"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      পশ্চিম বাহু (প্রস্থ ১):
+                    </label>
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <input
+                          type="number"
+                          value={w1Ft || ''}
+                          onChange={(e) => setW1Ft(Math.max(0, parseFloat(e.target.value) || 0))}
+                          className="w-full h-9 bg-white dark:bg-slate-900 border rounded-xl px-2 text-xs font-bold font-mono text-center"
+                          placeholder="ফুট"
+                        />
+                      </div>
+                      <div className="w-16">
+                        <input
+                          type="number"
+                          value={w1In || ''}
+                          onChange={(e) => setW1In(Math.max(0, parseFloat(e.target.value) || 0))}
+                          className="w-full h-9 bg-white dark:bg-slate-900 border rounded-xl px-2 text-xs font-bold font-mono text-center"
+                          placeholder="ইঞ্চি"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                      পূর্ব বাহু (প্রস্থ ২):
+                    </label>
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <input
+                          type="number"
+                          value={w2Ft || ''}
+                          onChange={(e) => setW2Ft(Math.max(0, parseFloat(e.target.value) || 0))}
+                          className="w-full h-9 bg-white dark:bg-slate-900 border rounded-xl px-2 text-xs font-bold font-mono text-center"
+                          placeholder="ফুট"
+                        />
+                      </div>
+                      <div className="w-16">
+                        <input
+                          type="number"
+                          value={w2In || ''}
+                          onChange={(e) => setW2In(Math.max(0, parseFloat(e.target.value) || 0))}
+                          className="w-full h-9 bg-white dark:bg-slate-900 border rounded-xl px-2 text-xs font-bold font-mono text-center"
+                          placeholder="ইঞ্চি"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Diagonal Checkbox & Input */}
+                <div className="p-3 bg-blue-50/70 dark:bg-blue-950/40 rounded-2xl border border-blue-200 dark:border-blue-800 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-[#0B63F6] flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={useDiagonal}
+                        onChange={(e) => setUseDiagonal(e.target.checked)}
+                        className="rounded text-[#0B63F6] focus:ring-0"
+                      />
+                      <span>কর্ণ মেপে নিখুঁত হেরন সূত্রে হিসাব (আমিন পদ্ধতি)</span>
+                    </label>
+                    <span className="text-[10px] text-slate-500 font-medium">প্রস্তাবিত</span>
+                  </div>
+
+                  {useDiagonal && (
+                    <div className="flex gap-2 mt-1">
+                      <div className="flex-1">
+                        <input
+                          type="number"
+                          value={diagFt || ''}
+                          onChange={(e) => setDiagFt(Math.max(0, parseFloat(e.target.value) || 0))}
+                          className="w-full h-9 bg-white dark:bg-slate-900 border rounded-xl px-3 text-xs font-bold font-mono"
+                          placeholder="কর্ণের দৈর্ঘ্য (ফুট)"
+                        />
+                      </div>
+                      <div className="w-20">
+                        <input
+                          type="number"
+                          value={diagIn || ''}
+                          onChange={(e) => setDiagIn(Math.max(0, parseFloat(e.target.value) || 0))}
+                          className="w-full h-9 bg-white dark:bg-slate-900 border rounded-xl px-2 text-xs font-bold font-mono text-center"
+                          placeholder="ইঞ্চি"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
+            )}
 
-              {/* Offset Points Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                {offsets.map((pt, idx) => (
-                  <div
-                    key={pt.id}
-                    className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex flex-col gap-1 relative"
+            {/* Irregular Multi-triangles Inputs */}
+            {shapeType === 'triangles' && (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-600 dark:text-slate-400">
+                    ত্রিভুজ খণ্ডসমূহ ({triangles.length}টি):
+                  </span>
+                  <button
+                    onClick={() => {
+                      setTriangles([
+                        ...triangles,
+                        {
+                          id: `t-${Date.now()}`,
+                          nameBn: `ত্রিভুজ ${triangles.length + 1}`,
+                          nameEn: `Triangle ${triangles.length + 1}`,
+                          aFt: 60,
+                          aIn: 0,
+                          bFt: 50,
+                          bIn: 0,
+                          cFt: 70,
+                          cIn: 0,
+                        },
+                      ]);
+                    }}
+                    className="px-2.5 py-1 bg-[#0B63F6] text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-xs active:scale-95 transition"
                   >
-                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-500">
-                      <span>অফসেট {idx + 1} (O{idx + 1})</span>
-                      {offsets.length > 2 && (
+                    <Plus size={12} />
+                    <span>নতুন ত্রিভুজ যোগ</span>
+                  </button>
+                </div>
+
+                {triangles.map((tri, idx) => (
+                  <div
+                    key={tri.id}
+                    className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col gap-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                        {tri.nameBn}
+                      </span>
+                      {triangles.length > 1 && (
                         <button
-                          onClick={() => setOffsets(offsets.filter((_, i) => i !== idx))}
-                          className="text-slate-400 hover:text-rose-500"
+                          onClick={() => setTriangles(triangles.filter((_, i) => i !== idx))}
+                          className="text-rose-500 hover:text-rose-700 p-1"
                         >
-                          ×
+                          <Trash2 size={13} />
                         </button>
                       )}
                     </div>
-                    <div className="grid grid-cols-2 gap-1">
-                      <div className="relative">
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-[10px] text-slate-500 font-bold block">বাহু ১ (ফুট):</label>
                         <input
                           type="number"
-                          value={pt.feet || ''}
+                          value={tri.aFt || ''}
                           onChange={(e) => {
-                            const updated = [...offsets];
-                            updated[idx].feet = Math.max(0, parseFloat(e.target.value) || 0);
-                            setOffsets(updated);
+                            const updated = [...triangles];
+                            updated[idx].aFt = parseFloat(e.target.value) || 0;
+                            setTriangles(updated);
                           }}
-                          className="w-full h-8 bg-white dark:bg-slate-900 border rounded-lg px-1.5 text-xs font-bold"
+                          className="w-full h-8 bg-white dark:bg-slate-900 border rounded-lg px-2 text-xs font-bold text-center"
                         />
-                        <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[8px] text-slate-400">ফুট</span>
                       </div>
-                      <div className="relative">
+                      <div>
+                        <label className="text-[10px] text-slate-500 font-bold block">বাহু ২ (ফুট):</label>
                         <input
                           type="number"
-                          value={pt.inch || ''}
+                          value={tri.bFt || ''}
                           onChange={(e) => {
-                            const updated = [...offsets];
-                            updated[idx].inch = Math.max(0, parseFloat(e.target.value) || 0);
-                            setOffsets(updated);
+                            const updated = [...triangles];
+                            updated[idx].bFt = parseFloat(e.target.value) || 0;
+                            setTriangles(updated);
                           }}
-                          className="w-full h-8 bg-white dark:bg-slate-900 border rounded-lg px-1.5 text-xs font-bold"
+                          className="w-full h-8 bg-white dark:bg-slate-900 border rounded-lg px-2 text-xs font-bold text-center"
                         />
-                        <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[8px] text-slate-400">ইঞ্চি</span>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-500 font-bold block">বাহু ৩ (ফুট):</label>
+                        <input
+                          type="number"
+                          value={tri.cFt || ''}
+                          onChange={(e) => {
+                            const updated = [...triangles];
+                            updated[idx].cFt = parseFloat(e.target.value) || 0;
+                            setTriangles(updated);
+                          }}
+                          className="w-full h-8 bg-white dark:bg-slate-900 border rounded-lg px-2 text-xs font-bold text-center"
+                        />
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
 
-          {/* =============================================================
-              COMPREHENSIVE RESULTS DISPLAY CARD
-             ============================================================= */}
-          <div className="bg-gradient-to-br from-slate-900 to-slate-950 text-white rounded-3xl p-5 shadow-lg border border-slate-800 flex flex-col gap-4">
-            <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4" />
-              <span>
-                {shapeType === 'triangles'
-                  ? 'আঁকা-বাঁকা জমির সর্বমোট ফলাফল (হেরন সূত্র):'
-                  : 'জমির মোট পরিমাপের ফলাফল:'}
-              </span>
-            </span>
+            {/* Single Triangle Inputs */}
+            {shapeType === 'triangle' && (
+              <div className="grid grid-cols-3 gap-2">
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
+                  <label className="text-[10px] text-slate-500 font-bold block mb-1">বাহু ক (ফুট):</label>
+                  <input
+                    type="number"
+                    value={triAFt || ''}
+                    onChange={(e) => setTriAFt(parseFloat(e.target.value) || 0)}
+                    className="w-full h-9 bg-white dark:bg-slate-900 border rounded-xl px-2 text-xs font-bold text-center"
+                  />
+                </div>
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
+                  <label className="text-[10px] text-slate-500 font-bold block mb-1">বাহু খ (ফুট):</label>
+                  <input
+                    type="number"
+                    value={triBFt || ''}
+                    onChange={(e) => setTriBFt(parseFloat(e.target.value) || 0)}
+                    className="w-full h-9 bg-white dark:bg-slate-900 border rounded-xl px-2 text-xs font-bold text-center"
+                  />
+                </div>
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
+                  <label className="text-[10px] text-slate-500 font-bold block mb-1">বাহু গ (ফুট):</label>
+                  <input
+                    type="number"
+                    value={triCFt || ''}
+                    onChange={(e) => setTriCFt(parseFloat(e.target.value) || 0)}
+                    className="w-full h-9 bg-white dark:bg-slate-900 border rounded-xl px-2 text-xs font-bold text-center"
+                  />
+                </div>
+              </div>
+            )}
 
-            {/* Highlighted Decimal / Shotok */}
-            <div className="p-4 bg-slate-800/80 rounded-2xl border border-slate-700/60 flex items-center justify-between">
-              <div>
-                <span className="text-xs text-slate-400 block font-medium">মোট জমির পরিমাণ:</span>
-                <span className="text-3xl font-black font-mono text-emerald-400">
-                  {formatNumber(shotok.toFixed(3), lang)}{' '}
-                  <span className="text-sm font-bold text-slate-300">শতক / ডেসিমেল</span>
-                </span>
-              </div>
-              <div className="text-right">
-                <span className="text-lg font-bold font-mono text-blue-400">
-                  {formatNumber(katha.toFixed(2), lang)}{' '}
-                  <span className="text-xs font-normal text-slate-300">কাঠা</span>
-                </span>
-              </div>
-            </div>
+            {/* Curve Offsets Inputs */}
+            {shapeType === 'curve' && (
+              <div className="flex flex-col gap-3">
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    অফসেট ব্যবধান d (ফুট):
+                  </label>
+                  <input
+                    type="number"
+                    value={intervalFt || ''}
+                    onChange={(e) => setIntervalFt(Math.max(1, parseFloat(e.target.value) || 0))}
+                    className="w-24 h-9 bg-white dark:bg-slate-900 border rounded-xl px-2 text-xs font-bold text-center"
+                  />
+                </div>
 
-            {/* All Units Breakdown Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
-              <div className="p-2.5 bg-slate-900 rounded-xl border border-slate-800">
-                <span className="text-slate-400 text-[11px] block">বর্গফুট (Sq Ft):</span>
-                <span className="text-sm font-mono font-bold text-white">{totalSqFt.toFixed(1)} sq ft</span>
-              </div>
-              <div className="p-2.5 bg-slate-900 rounded-xl border border-slate-800">
-                <span className="text-slate-400 text-[11px] block">বর্গমিটার (Sq M):</span>
-                <span className="text-sm font-mono font-bold text-white">{sqMeter.toFixed(1)} m²</span>
-              </div>
-              <div className="p-2.5 bg-slate-900 rounded-xl border border-slate-800">
-                <span className="text-slate-400 text-[11px] block">বিঘা (Bigha):</span>
-                <span className="text-sm font-mono font-bold text-white">{bigha.toFixed(3)} বিঘা</span>
-              </div>
-              <div className="p-2.5 bg-slate-900 rounded-xl border border-slate-800">
-                <span className="text-slate-400 text-[11px] block">ছটাক (Chhatak):</span>
-                <span className="text-sm font-mono font-bold text-white">{chhatak.toFixed(2)} ছটাক</span>
-              </div>
-              <div className="p-2.5 bg-slate-900 rounded-xl border border-slate-800">
-                <span className="text-slate-400 text-[11px] block">একর (Acre):</span>
-                <span className="text-sm font-mono font-bold text-white">{acre.toFixed(4)} একর</span>
-              </div>
-              <div className="p-2.5 bg-slate-900 rounded-xl border border-slate-800">
-                <span className="text-slate-400 text-[11px] block">গণ্ডা (Ganda):</span>
-                <span className="text-sm font-mono font-bold text-white">{ganda.toFixed(2)} গণ্ডা</span>
-              </div>
-            </div>
-
-            {/* Triangle-by-Triangle Summary (if irregular multi-triangle) */}
-            {shapeType === 'triangles' && (
-              <div className="pt-2 border-t border-slate-800 flex flex-col gap-1.5">
-                <span className="text-[11px] font-bold text-slate-400">প্রতিটি খণ্ডের বিবরণ:</span>
-                <div className="flex flex-col gap-1">
-                  {triangleResults.map((tr, idx) => (
-                    <div
-                      key={tr.id}
-                      className="flex items-center justify-between text-xs py-1 px-2.5 rounded-lg bg-slate-800/50"
-                    >
-                      <span className="text-slate-300 font-medium">
-                        {idx + 1}. {tr.nameBn}
-                      </span>
-                      <span className="font-mono text-emerald-400 font-bold">
-                        {tr.shotok.toFixed(3)} শতক ({tr.areaSqFt.toFixed(0)} sq ft)
-                      </span>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {offsets.map((off, idx) => (
+                    <div key={off.id} className="p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-center">
+                      <label className="text-[9px] text-slate-500 font-bold block">O{idx + 1}</label>
+                      <input
+                        type="number"
+                        value={off.feet || ''}
+                        onChange={(e) => {
+                          const updated = [...offsets];
+                          updated[idx].feet = parseFloat(e.target.value) || 0;
+                          setOffsets(updated);
+                        }}
+                        className="w-full h-8 bg-white dark:bg-slate-900 border rounded-lg text-xs font-bold text-center font-mono"
+                      />
                     </div>
                   ))}
                 </div>
               </div>
             )}
-
-            <button
-              onClick={handleCopy}
-              className="w-full h-11 bg-[#0B63F6] hover:bg-blue-600 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 active:scale-98 transition shadow-xs"
-            >
-              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-              <span>{copied ? t.actions.copied : 'পরিমাপের হিসাব কপি ও সেভ করুন'}</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* =========================================================================
-          TAB 2: CONVERTER (একক রূপান্তর)
-         ========================================================================= */}
-      {activeTab === 'converter' && (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex flex-col gap-4">
-          <h3 className="font-bold text-xs text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-            জমির একক রূপান্তর ক্যালকুলেটর:
-          </h3>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] font-bold text-slate-500 block mb-1">মান (Value):</label>
-              <input
-                type="number"
-                value={convValue || ''}
-                onChange={(e) => setConvValue(Math.max(0, parseFloat(e.target.value) || 0))}
-                className="w-full h-11 bg-slate-50 dark:bg-slate-800 border rounded-xl px-3 font-bold text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] font-bold text-slate-500 block mb-1">একক (Unit):</label>
-              <select
-                value={convUnit}
-                onChange={(e) => setConvUnit(e.target.value)}
-                className="w-full h-11 bg-slate-50 dark:bg-slate-800 border rounded-xl px-2 font-bold text-xs"
-              >
-                <option value="shotok">শতক / ডেসিমেল</option>
-                <option value="katha">কাঠা</option>
-                <option value="bigha">বিঘা</option>
-                <option value="acre">একর</option>
-                <option value="chhatak">ছটাক</option>
-                <option value="ganda">গণ্ডা</option>
-                <option value="sqft">বর্গফুট (Sq Ft)</option>
-                <option value="sqm">বর্গমিটার (Sq M)</option>
-              </select>
-            </div>
           </div>
 
-          {/* Converted Values Card */}
-          <div className="p-4 rounded-2xl bg-slate-900 text-white flex flex-col gap-2">
-            <span className="text-[11px] font-bold text-emerald-400">রূপান্তরিত পরিমাপসমূহ:</span>
+          {/* Complete Land Unit Breakdown Cards */}
+          <div className="bg-slate-900 text-white rounded-3xl p-5 shadow-xl flex flex-col gap-3">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+              {lang === 'bn' ? 'জমির বিস্তারিত একক ফলাফল:' : 'Detailed Regional Land Area Breakdown:'}
+            </span>
+
             <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="p-2 bg-slate-800 rounded-lg">
-                <span className="text-slate-400 text-[10px] block">শতক:</span>
-                <span className="font-bold font-mono text-emerald-400">{(convSqFt / 435.6).toFixed(3)} শতক</span>
+              <div className="p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30">
+                <span className="text-[10px] text-emerald-400 font-bold block">শতক / ডেসিমেল (Shotok):</span>
+                <span className="text-lg font-extrabold text-emerald-300 font-mono">
+                  {formatNumber(shotok.toFixed(3), lang)}
+                </span>
+                <span className="text-[9px] text-emerald-400/80 block mt-0.5">১ শতক = ৪৩৫.৬ বর্গফুট</span>
               </div>
-              <div className="p-2 bg-slate-800 rounded-lg">
-                <span className="text-slate-400 text-[10px] block">কাঠা:</span>
-                <span className="font-bold font-mono text-blue-400">{(convSqFt / 720).toFixed(3)} কাঠা</span>
+
+              <div className="p-3 rounded-2xl bg-blue-500/15 border border-blue-500/30">
+                <span className="text-[10px] text-blue-400 font-bold block">কাঠা (Katha):</span>
+                <span className="text-lg font-extrabold text-blue-300 font-mono">
+                  {formatNumber(katha.toFixed(3), lang)}
+                </span>
+                <span className="text-[9px] text-blue-400/80 block mt-0.5">১ কাঠা = ৭২০ বর্গফুট (১.৬৫ শতক)</span>
               </div>
-              <div className="p-2 bg-slate-800 rounded-lg">
-                <span className="text-slate-400 text-[10px] block">বিঘা:</span>
-                <span className="font-bold font-mono text-amber-400">{(convSqFt / 14400).toFixed(4)} বিঘা</span>
+
+              <div className="p-3 rounded-2xl bg-amber-500/15 border border-amber-500/30">
+                <span className="text-[10px] text-amber-400 font-bold block">বিঘা (Bigha):</span>
+                <span className="text-base font-extrabold text-amber-300 font-mono">
+                  {formatNumber(bigha.toFixed(4), lang)}
+                </span>
+                <span className="text-[9px] text-amber-400/80 block mt-0.5">১ বিঘা = ২০ কাঠা (৩৩.৩৩ শতক)</span>
               </div>
-              <div className="p-2 bg-slate-800 rounded-lg">
-                <span className="text-slate-400 text-[10px] block">ছটাক:</span>
-                <span className="font-bold font-mono text-teal-400">{(convSqFt / 45).toFixed(2)} ছটাক</span>
+
+              <div className="p-3 rounded-2xl bg-purple-500/15 border border-purple-500/30">
+                <span className="text-[10px] text-purple-400 font-bold block">একর (Acre):</span>
+                <span className="text-base font-extrabold text-purple-300 font-mono">
+                  {formatNumber(acre.toFixed(4), lang)}
+                </span>
+                <span className="text-[9px] text-purple-400/80 block mt-0.5">১ একর = ১০০ শতক (৩ বিঘা ৮ ছটাক)</span>
               </div>
-              <div className="p-2 bg-slate-800 rounded-lg">
-                <span className="text-slate-400 text-[10px] block">একর:</span>
-                <span className="font-bold font-mono text-purple-400">{(convSqFt / 43560).toFixed(4)} একর</span>
+
+              <div className="p-3 rounded-2xl bg-cyan-500/15 border border-cyan-500/30">
+                <span className="text-[10px] text-cyan-400 font-bold block">ছটাক (Chhatak):</span>
+                <span className="text-base font-extrabold text-cyan-300 font-mono">
+                  {formatNumber(chhatak.toFixed(2), lang)}
+                </span>
+                <span className="text-[9px] text-cyan-400/80 block mt-0.5">১ ছটাক = ৪৫ বর্গফুট</span>
               </div>
-              <div className="p-2 bg-slate-800 rounded-lg">
-                <span className="text-slate-400 text-[10px] block">বর্গফুট:</span>
-                <span className="font-bold font-mono text-white">{convSqFt.toFixed(1)} sq ft</span>
+
+              <div className="p-3 rounded-2xl bg-rose-500/15 border border-rose-500/30">
+                <span className="text-[10px] text-rose-400 font-bold block">গণ্ডা (Ganda):</span>
+                <span className="text-base font-extrabold text-rose-300 font-mono">
+                  {formatNumber(ganda.toFixed(2), lang)}
+                </span>
+                <span className="text-[9px] text-rose-400/80 block mt-0.5">১ গণ্ডা = ৮৭১.২ বর্গফুট (২ শতক)</span>
               </div>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-slate-800/80 flex items-center justify-between text-xs text-slate-300 font-mono">
+              <span>বর্গফুট: {formatNumber(totalSqFt.toFixed(2), lang)} sq ft</span>
+              <span>বর্গমিটার: {formatNumber(sqMeter.toFixed(2), lang)} sq m</span>
             </div>
           </div>
         </div>
       )}
 
       {/* =========================================================================
-          TAB 3: SHARES & DIVISION (অংশীদার ভাগ)
+          TAB 2: ISLAMIC FARAEZ (ইসলামিক ফারায়েজ ও ওয়ারিশ সম্পত্তি বণ্টন)
          ========================================================================= */}
-      {activeTab === 'share' && (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex flex-col gap-4">
-          <div>
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-              মোট জমির পরিমাণ (শতক):
-            </label>
-            <input
-              type="number"
-              value={totalLandShotok || ''}
-              onChange={(e) => setTotalLandShotok(Math.max(0, parseFloat(e.target.value) || 0))}
-              className="w-full h-11 bg-slate-50 dark:bg-slate-800 border rounded-xl px-3 font-bold text-sm"
-            />
+      {activeTab === 'faraez' && (
+        <div className="flex flex-col gap-4">
+          {/* Faraez Config Card */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 flex items-center gap-1.5 uppercase">
+                <BookOpen size={13} className="text-emerald-500" />
+                {lang === 'bn' ? 'মৃত ব্যক্তি ও মোট সম্পত্তির পরিমাণ:' : 'Deceased & Property Assets:'}
+              </span>
+            </div>
+
+            {/* Deceased Gender */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() =>
+                  setFaraezState({
+                    ...faraezState,
+                    deceasedGender: 'male',
+                    hasHusband: false,
+                    wifeCount: faraezState.wifeCount || 1,
+                  })
+                }
+                className={`py-2.5 rounded-2xl border text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                  faraezState.deceasedGender === 'male'
+                    ? 'border-[#0B63F6] bg-blue-50 dark:bg-blue-950/40 text-[#0B63F6]'
+                    : 'border-slate-200 dark:border-slate-800 text-slate-600'
+                }`}
+              >
+                <span>মৃত ব্যক্তি: পুরুষ (স্বামী/পিতা)</span>
+              </button>
+
+              <button
+                onClick={() =>
+                  setFaraezState({
+                    ...faraezState,
+                    deceasedGender: 'female',
+                    hasHusband: true,
+                    wifeCount: 0,
+                  })
+                }
+                className={`py-2.5 rounded-2xl border text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                  faraezState.deceasedGender === 'female'
+                    ? 'border-[#0B63F6] bg-blue-50 dark:bg-blue-950/40 text-[#0B63F6]'
+                    : 'border-slate-200 dark:border-slate-800 text-slate-600'
+                }`}
+              >
+                <span>মৃত ব্যক্তি: মহিলা (স্ত্রী/মাতা)</span>
+              </button>
+            </div>
+
+            {/* Total Land & Valuation */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  মোট জমির পরিমাণ (শতক):
+                </label>
+                <input
+                  type="number"
+                  value={faraezState.totalLandShotok || ''}
+                  onChange={(e) =>
+                    setFaraezState({
+                      ...faraezState,
+                      totalLandShotok: Math.max(0, parseFloat(e.target.value) || 0),
+                    })
+                  }
+                  className="w-full h-10 bg-slate-50 dark:bg-slate-800 border rounded-xl px-3 font-bold font-mono text-sm text-emerald-600 dark:text-emerald-400"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  মোট মূল্যায়ন / টাকা (ঐচ্ছিক):
+                </label>
+                <input
+                  type="number"
+                  value={faraezState.totalValuationTaka || ''}
+                  onChange={(e) =>
+                    setFaraezState({
+                      ...faraezState,
+                      totalValuationTaka: Math.max(0, parseFloat(e.target.value) || 0),
+                    })
+                  }
+                  className="w-full h-10 bg-slate-50 dark:bg-slate-800 border rounded-xl px-3 font-bold font-mono text-sm"
+                  placeholder="টাকায় মূল্যমান"
+                />
+              </div>
+            </div>
+
+            <hr className="border-slate-100 dark:border-slate-800" />
+
+            {/* Heirs Selector Grid */}
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+              জীবিত ওয়ারিশদের সংখ্যা নির্বাচন করুন:
+            </span>
+
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              {/* Spouse */}
+              {faraezState.deceasedGender === 'male' ? (
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border flex items-center justify-between">
+                  <span className="font-bold text-slate-700 dark:text-slate-300">স্ত্রী (Wife):</span>
+                  <select
+                    value={faraezState.wifeCount}
+                    onChange={(e) =>
+                      setFaraezState({ ...faraezState, wifeCount: parseInt(e.target.value) || 0 })
+                    }
+                    className="h-8 bg-white dark:bg-slate-900 border rounded-lg px-2 text-xs font-bold"
+                  >
+                    <option value="0">নেই (০)</option>
+                    <option value="1">১ জন</option>
+                    <option value="2">২ জন</option>
+                    <option value="3">৩ জন</option>
+                    <option value="4">৪ জন</option>
+                  </select>
+                </div>
+              ) : (
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border flex items-center justify-between">
+                  <span className="font-bold text-slate-700 dark:text-slate-300">স্বামী (Husband):</span>
+                  <input
+                    type="checkbox"
+                    checked={faraezState.hasHusband}
+                    onChange={(e) =>
+                      setFaraezState({ ...faraezState, hasHusband: e.target.checked })
+                    }
+                    className="w-4 h-4 rounded text-[#0B63F6]"
+                  />
+                </div>
+              )}
+
+              {/* Mother */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border flex items-center justify-between">
+                <span className="font-bold text-slate-700 dark:text-slate-300">মাতা (Mother):</span>
+                <input
+                  type="checkbox"
+                  checked={faraezState.hasMother}
+                  onChange={(e) =>
+                    setFaraezState({ ...faraezState, hasMother: e.target.checked })
+                  }
+                  className="w-4 h-4 rounded text-[#0B63F6]"
+                />
+              </div>
+
+              {/* Father */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border flex items-center justify-between">
+                <span className="font-bold text-slate-700 dark:text-slate-300">পিতা (Father):</span>
+                <input
+                  type="checkbox"
+                  checked={faraezState.hasFather}
+                  onChange={(e) =>
+                    setFaraezState({ ...faraezState, hasFather: e.target.checked })
+                  }
+                  className="w-4 h-4 rounded text-[#0B63F6]"
+                />
+              </div>
+
+              {/* Sons */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border flex items-center justify-between">
+                <span className="font-bold text-slate-700 dark:text-slate-300">পুত্র (Sons):</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="20"
+                  value={faraezState.sons}
+                  onChange={(e) =>
+                    setFaraezState({ ...faraezState, sons: Math.max(0, parseInt(e.target.value) || 0) })
+                  }
+                  className="w-16 h-8 bg-white dark:bg-slate-900 border rounded-lg text-xs font-bold text-center"
+                />
+              </div>
+
+              {/* Daughters */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border flex items-center justify-between">
+                <span className="font-bold text-slate-700 dark:text-slate-300">কন্যা (Daughters):</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="20"
+                  value={faraezState.daughters}
+                  onChange={(e) =>
+                    setFaraezState({
+                      ...faraezState,
+                      daughters: Math.max(0, parseInt(e.target.value) || 0),
+                    })
+                  }
+                  className="w-16 h-8 bg-white dark:bg-slate-900 border rounded-lg text-xs font-bold text-center"
+                />
+              </div>
+
+              {/* Brothers / Sisters (if no sons & father) */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border flex items-center justify-between">
+                <span className="font-bold text-slate-700 dark:text-slate-300">সহোদর ভাই:</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={faraezState.fullBrothers}
+                  onChange={(e) =>
+                    setFaraezState({
+                      ...faraezState,
+                      fullBrothers: Math.max(0, parseInt(e.target.value) || 0),
+                    })
+                  }
+                  className="w-16 h-8 bg-white dark:bg-slate-900 border rounded-lg text-xs font-bold text-center"
+                />
+              </div>
+            </div>
           </div>
 
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">অংশীদার তালিকা ({shares.length} জন):</span>
-            <button
-              onClick={() => {
-                setShares([
-                  ...shares,
-                  { id: `s-${Date.now()}`, name: `অংশীদার ${shares.length + 1}`, shareRatio: 1 },
-                ]);
-              }}
-              className="px-2.5 py-1 bg-[#0B63F6] text-white rounded-lg text-xs font-bold shadow-xs active:scale-95 transition"
-            >
-              + অংশীদার যোগ
-            </button>
-          </div>
+          {/* Faraez Output Cards */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <Scale size={14} className="text-emerald-500" />
+                ওয়ারিশদের মধ্যে সম্পত্তি বণ্টনের ফলাফল:
+              </span>
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400">
+                মোট বণ্টন: {faraezResult.totalDistributedPercentage.toFixed(1)}%
+              </span>
+            </div>
 
-          <div className="flex flex-col gap-2">
-            {shares.map((s, idx) => {
-              const personShotok = (totalLandShotok * s.shareRatio) / totalShareSum;
-              const personSqFt = personShotok * 435.6;
-              return (
+            {/* Explanation / Notes Banner */}
+            <div className="p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-2xl text-xs text-blue-900 dark:text-blue-300 leading-relaxed">
+              <span className="font-bold block mb-1">কুরআন-সুন্নাহ ও ফিকহ নীতিমালা:</span>
+              <p>{faraezResult.explanationBn}</p>
+            </div>
+
+            {/* Heir Cards */}
+            <div className="flex flex-col gap-2.5">
+              {faraezResult.heirs.map((heir, idx) => (
                 <div
-                  key={s.id}
-                  className="p-3 bg-slate-50 dark:bg-slate-800 border rounded-xl flex items-center justify-between gap-2"
+                  key={idx}
+                  className="p-3.5 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl flex flex-col gap-1.5"
                 >
-                  <div className="flex-1">
-                    <input
-                      type="text"
-                      value={s.name}
-                      onChange={(e) => {
-                        const updated = [...shares];
-                        updated[idx].name = e.target.value;
-                        setShares(updated);
-                      }}
-                      className="text-xs font-bold bg-transparent border-b border-slate-300 dark:border-slate-600 pb-0.5 w-full"
-                    />
-                    <span className="text-[11px] text-[#0B63F6] font-bold font-mono block mt-1">
-                      পাবে: {personShotok.toFixed(2)} শতক ({personSqFt.toFixed(0)} বর্গফুট)
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-slate-900 dark:text-slate-100">
+                      {heir.roleBn}
+                    </span>
+                    <span className="text-[11px] font-bold text-[#0B63F6] font-mono">
+                      {heir.totalPercentage.toFixed(2)}% ({heir.quranicShareLabel})
                     </span>
                   </div>
 
-                  <div className="w-20 text-right">
-                    <label className="text-[9px] text-slate-400 block font-bold">অনুপাত / আনা</label>
-                    <input
-                      type="number"
-                      value={s.shareRatio || ''}
-                      onChange={(e) => {
-                        const updated = [...shares];
-                        updated[idx].shareRatio = parseFloat(e.target.value) || 0;
-                        setShares(updated);
-                      }}
-                      className="w-full h-8 bg-white dark:bg-slate-900 border rounded-lg px-2 text-xs font-bold text-center"
-                    />
+                  <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                    <div className="p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
+                      <span className="text-[10px] text-slate-400 block font-medium">প্রাপ্ত জমি:</span>
+                      <span className="font-bold font-mono text-emerald-600 dark:text-emerald-400 text-sm">
+                        {heir.totalShotok.toFixed(3)} শতক
+                      </span>
+                      {heir.count > 1 && (
+                        <span className="text-[9px] text-slate-500 block">
+                          (জনপ্রতি {heir.individualShotok.toFixed(3)} শতক)
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
+                      <span className="text-[10px] text-slate-400 block font-medium">খতিয়ান আনা-গণ্ডা:</span>
+                      <span className="font-bold font-mono text-purple-600 dark:text-purple-400 text-xs truncate block">
+                        {heir.anaGondaText}
+                      </span>
+                      <span className="text-[9px] text-slate-500 block">
+                        {heir.totalSqFt.toFixed(0)} বর্গফুট
+                      </span>
+                    </div>
                   </div>
 
-                  {shares.length > 1 && (
-                    <button
-                      onClick={() => setShares(shares.filter((_, i) => i !== idx))}
-                      className="text-xs text-rose-500 font-bold ml-1 hover:text-rose-700"
-                    >
-                      ×
-                    </button>
+                  {faraezState.totalValuationTaka > 0 && (
+                    <div className="flex items-center justify-between text-xs px-1 text-slate-600 dark:text-slate-300 font-mono">
+                      <span>মূল্যমান: ৳{heir.totalTaka.toLocaleString('en-IN')}</span>
+                      {heir.count > 1 && (
+                        <span>(জনপ্রতি ৳{heir.individualTaka.toLocaleString('en-IN')})</span>
+                      )}
+                    </div>
                   )}
                 </div>
-              );
-            })}
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          TAB 3: KHATIYAN ANA-GONDA CONVERTER (খতিয়ানের আনা-গণ্ডা ক্যালকুলেটর)
+         ========================================================================= */}
+      {activeTab === 'khatiyan' && (
+        <div className="flex flex-col gap-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <FileText size={14} className="text-emerald-500" />
+                সিএস, এসএ, আরএস, বিএস খতিয়ান রূপান্তর (১৬ আনা = সম্পূর্ণ):
+              </span>
+            </div>
+
+            <div className="grid grid-cols-5 gap-1.5 text-xs">
+              <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-center">
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">আনা (Ana)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="16"
+                  value={khAna}
+                  onChange={(e) => setKhAna(parseFloat(e.target.value) || 0)}
+                  className="w-full h-8 bg-white dark:bg-slate-900 border rounded-lg text-xs font-bold text-center font-mono"
+                />
+              </div>
+
+              <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-center">
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">গণ্ডা (Gonda)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="20"
+                  value={khGonda}
+                  onChange={(e) => setKhGonda(parseFloat(e.target.value) || 0)}
+                  className="w-full h-8 bg-white dark:bg-slate-900 border rounded-lg text-xs font-bold text-center font-mono"
+                />
+              </div>
+
+              <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-center">
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">কড়া (Kora)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="4"
+                  value={khKora}
+                  onChange={(e) => setKhKora(parseFloat(e.target.value) || 0)}
+                  className="w-full h-8 bg-white dark:bg-slate-900 border rounded-lg text-xs font-bold text-center font-mono"
+                />
+              </div>
+
+              <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-center">
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">ক্রান্তি (Kranti)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="3"
+                  value={khKranti}
+                  onChange={(e) => setKhKranti(parseFloat(e.target.value) || 0)}
+                  className="w-full h-8 bg-white dark:bg-slate-900 border rounded-lg text-xs font-bold text-center font-mono"
+                />
+              </div>
+
+              <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-center">
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">তিল (Til)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="20"
+                  value={khTil}
+                  onChange={(e) => setKhTil(parseFloat(e.target.value) || 0)}
+                  className="w-full h-8 bg-white dark:bg-slate-900 border rounded-lg text-xs font-bold text-center font-mono"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                উক্ত দাগের মোট জমির পরিমাণ (শতক):
+              </label>
+              <input
+                type="number"
+                value={khTotalPlotShotok || ''}
+                onChange={(e) => setKhTotalPlotShotok(Math.max(0, parseFloat(e.target.value) || 0))}
+                className="w-full h-10 bg-slate-50 dark:bg-slate-800 border rounded-xl px-3 font-bold font-mono text-sm"
+              />
+            </div>
+
+            {/* Result Box */}
+            <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-2xl flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-emerald-900 dark:text-emerald-300">
+                  খতিয়ানের অংশ থেকে প্রাপ্ত শতক:
+                </span>
+                <span className="text-lg font-extrabold text-emerald-600 dark:text-emerald-400 font-mono">
+                  {khCalculatedShotok.toFixed(3)} শতক
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-300 font-mono pt-1 border-t border-emerald-200 dark:border-emerald-800/60">
+                <span>সহস্রাংশ: {khResult.sahasrangsho} / ১০০০</span>
+                <span>শতকরা হার: {khResult.percentage.toFixed(2)}%</span>
+              </div>
+            </div>
+
+            <hr className="border-slate-100 dark:border-slate-800" />
+
+            {/* Reverse Converter */}
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+              বিপরীত হিসাব: শতক থেকে খতিয়ানের আনা-গণ্ডা নির্ণয়
+            </span>
+
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">ব্যক্তির জমি (শতক):</label>
+                <input
+                  type="number"
+                  value={revShotokInput || ''}
+                  onChange={(e) => setRevShotokInput(parseFloat(e.target.value) || 0)}
+                  className="w-full h-9 bg-slate-50 dark:bg-slate-800 border rounded-xl px-3 font-bold font-mono"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">মোট দাগের জমি (শতক):</label>
+                <input
+                  type="number"
+                  value={revDagTotalShotok || ''}
+                  onChange={(e) => setRevDagTotalShotok(parseFloat(e.target.value) || 0)}
+                  className="w-full h-9 bg-slate-50 dark:bg-slate-800 border rounded-xl px-3 font-bold font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="p-3 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded-2xl flex items-center justify-between text-xs">
+              <span className="text-purple-900 dark:text-purple-300 font-bold">পর্চায় লেখার আনা-গণ্ডা:</span>
+              <span className="font-extrabold text-purple-700 dark:text-purple-300 font-mono">
+                {revAnaGonda.textBn}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          TAB 4: LAND REGISTRATION FEES (দলিল রেজিস্ট্রি ও সরকারি ফি)
+         ========================================================================= */}
+      {activeTab === 'registry' && (
+        <div className="flex flex-col gap-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex flex-col gap-4">
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 uppercase">
+              <DollarSign size={14} className="text-emerald-500" />
+              দলিল ও এলাকার ধরন নির্বাচন:
+            </span>
+
+            {/* Deed Type */}
+            <div>
+              <label className="text-[11px] font-bold text-slate-500 block mb-1">দলিলের প্রকার:</label>
+              <select
+                value={regDeedType}
+                onChange={(e) => setRegDeedType(e.target.value as DeedType)}
+                className="w-full h-10 bg-slate-50 dark:bg-slate-800 border rounded-xl px-3 text-xs font-bold"
+              >
+                <option value="saf_kabala">সাফ-কবলা দলিল (জমি বিক্রয় ও ক্রয়)</option>
+                <option value="heba_blood">রক্তের সম্পর্কের হেবা দলিল (পিতা, মাতা, সন্তান, ভাই-বোন)</option>
+                <option value="bonton_nama">আপস বণ্টননামা দলিল (ওয়ারিশদের মধ্যে জমি ভাগ)</option>
+                <option value="danpotro">সাধারণ দানপত্র দলিল</option>
+              </select>
+            </div>
+
+            {/* Area Type */}
+            <div>
+              <label className="text-[11px] font-bold text-slate-500 block mb-1">এলাকার ধরন:</label>
+              <select
+                value={regAreaType}
+                onChange={(e) => setRegAreaType(e.target.value as AreaType)}
+                className="w-full h-10 bg-slate-50 dark:bg-slate-800 border rounded-xl px-3 text-xs font-bold"
+              >
+                <option value="city_corp">সিটি কর্পোরেশন এলাকা</option>
+                <option value="pouroshova">পৌরসভা এলাকা</option>
+                <option value="union_parishad">ইউনিয়ন পরিষদ (পল্লী এলাকা)</option>
+              </select>
+            </div>
+
+            {/* Deed Value */}
+            <div>
+              <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                দলিলের মূল্য বা মৌজা রেট (টাকা):
+              </label>
+              <input
+                type="number"
+                value={regDeedValue || ''}
+                onChange={(e) => setRegDeedValue(Math.max(0, parseFloat(e.target.value) || 0))}
+                className="w-full h-11 bg-slate-50 dark:bg-slate-800 border rounded-xl px-3 font-bold font-mono text-emerald-600 dark:text-emerald-400 text-sm"
+              />
+            </div>
+
+            {/* Total Fees Card */}
+            <div className="p-4 bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-2xl flex items-center justify-between shadow-md">
+              <div>
+                <span className="text-[10px] text-blue-200 block font-medium">আনুমানিক সর্বমোট সরকারি ফি:</span>
+                <span className="text-xl font-extrabold font-mono">
+                  ৳{regResult.totalGovtFees.toLocaleString('en-IN')}
+                </span>
+              </div>
+              <span className="text-xs bg-white/20 px-2.5 py-1 rounded-xl backdrop-blur-xs font-bold">
+                {regResult.areaTitleBn}
+              </span>
+            </div>
+
+            {/* Fee Itemized List */}
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-bold text-slate-600 dark:text-slate-400">
+                সরকারি ফি ও চালানের বিস্তারিত বিবরণ:
+              </span>
+
+              {regResult.feeItems.map((item, idx) => (
+                <div
+                  key={idx}
+                  className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs"
+                >
+                  <div>
+                    <span className="font-bold text-slate-800 dark:text-slate-200 block">
+                      {item.nameBn}
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-normal">{item.noteBn}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-bold font-mono text-emerald-600 dark:text-emerald-400 block">
+                      ৳{item.amountTaka.toLocaleString('en-IN')}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">({item.rateLabel})</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Legal Tips */}
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-2xl text-xs text-amber-900 dark:text-amber-300 leading-relaxed">
+              <span className="font-bold block mb-1">গুরুত্বপূর্ণ সরকারি পরামর্শ:</span>
+              <ul className="list-disc list-inside space-y-0.5 text-[11px]">
+                {regResult.tipsBn.map((tip, idx) => (
+                  <li key={idx}>{tip}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          TAB 5: CONVERTER (একক রূপান্তর)
+         ========================================================================= */}
+      {activeTab === 'converter' && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex flex-col gap-4">
+          <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            জমির একক রূপান্তর ক্যালকুলেটর:
+          </label>
+
+          <div className="flex gap-2">
+            <input
+              type="number"
+              value={convValue || ''}
+              onChange={(e) => setConvValue(parseFloat(e.target.value) || 0)}
+              className="flex-1 h-11 bg-slate-50 dark:bg-slate-800 border rounded-xl px-3 font-bold text-sm"
+            />
+            <select
+              value={convUnit}
+              onChange={(e) => setConvUnit(e.target.value)}
+              className="w-32 h-11 bg-slate-50 dark:bg-slate-800 border rounded-xl px-2 text-xs font-bold"
+            >
+              <option value="shotok">শতক (Decimal)</option>
+              <option value="katha">কাঠা (Katha)</option>
+              <option value="bigha">বিঘা (Bigha)</option>
+              <option value="acre">একর (Acre)</option>
+              <option value="chhatak">ছটাক (Chhatak)</option>
+              <option value="ganda">গণ্ডা (Ganda)</option>
+              <option value="sqft">বর্গফুট (Sq Ft)</option>
+              <option value="sqm">বর্গমিটার (Sq M)</option>
+            </select>
+          </div>
+
+          <div className="p-4 bg-slate-900 text-white rounded-2xl flex flex-col gap-2">
+            <span className="text-[11px] text-slate-400 font-bold">সমপরিমাণ রূপান্তর:</span>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="p-2.5 bg-slate-800 rounded-xl">
+                <span className="text-slate-400 text-[10px] block">শতক / ডেসিমেল:</span>
+                <span className="font-bold font-mono text-emerald-400">
+                  {(convSqFt / 435.6).toFixed(3)} শতক
+                </span>
+              </div>
+              <div className="p-2.5 bg-slate-800 rounded-xl">
+                <span className="text-slate-400 text-[10px] block">কাঠা:</span>
+                <span className="font-bold font-mono text-blue-400">
+                  {(convSqFt / 720).toFixed(3)} কাঠা
+                </span>
+              </div>
+              <div className="p-2.5 bg-slate-800 rounded-xl">
+                <span className="text-slate-400 text-[10px] block">বিঘা:</span>
+                <span className="font-bold font-mono text-amber-400">
+                  {(convSqFt / 14400).toFixed(4)} বিঘা
+                </span>
+              </div>
+              <div className="p-2.5 bg-slate-800 rounded-xl">
+                <span className="text-slate-400 text-[10px] block">ছটাক:</span>
+                <span className="font-bold font-mono text-teal-400">
+                  {(convSqFt / 45).toFixed(2)} ছটাক
+                </span>
+              </div>
+              <div className="p-2.5 bg-slate-800 rounded-xl">
+                <span className="text-slate-400 text-[10px] block">একর:</span>
+                <span className="font-bold font-mono text-purple-400">
+                  {(convSqFt / 43560).toFixed(4)} একর
+                </span>
+              </div>
+              <div className="p-2.5 bg-slate-800 rounded-xl">
+                <span className="text-slate-400 text-[10px] block">বর্গফুট:</span>
+                <span className="font-bold font-mono text-white">
+                  {convSqFt.toFixed(1)} sq ft
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       )}

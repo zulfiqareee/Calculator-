@@ -14,11 +14,26 @@ import {
   Sunset,
   Navigation,
   CheckCircle2,
+  Volume2,
+  VolumeX,
+  X,
+  BookOpen,
+  Award,
+  Share2,
 } from 'lucide-react';
 import { Language } from '../../types';
 import { formatNumber } from '../../i18n/translations';
 import { requestLocationPermission } from '../../utils/permissionManager';
 import { calculateQiblaAngle } from './CompassTool';
+import { TasbeehCounterView } from './TasbeehCounterView';
+import { RamadanHubView } from './RamadanHubView';
+import {
+  addOrUpdateAlarm,
+  getStoredAlarms,
+  AlarmItem,
+  unlockAudio,
+} from '../../utils/alarmEngine';
+import { tallySounds, speakBengali } from '../../utils/tallyAudioVoice';
 
 interface Props {
   lang: Language;
@@ -43,10 +58,31 @@ const BANGLADESH_DISTRICTS: DistrictOption[] = [
   { nameBn: 'কুমিল্লা (Cumilla)', nameEn: 'Cumilla', lat: 23.4607, lon: 91.1809 },
   { nameBn: 'বগুড়া (Bogura)', nameEn: 'Bogura', lat: 24.8465, lon: 89.3777 },
   { nameBn: 'কক্সবাজার (Cox\'s Bazar)', nameEn: 'Cox\'s Bazar', lat: 21.4272, lon: 92.0058 },
+  { nameBn: 'গাজীপুর (Gazipur)', nameEn: 'Gazipur', lat: 23.9999, lon: 90.4203 },
+  { nameBn: 'নারায়ণগঞ্জ (Narayanganj)', nameEn: 'Narayanganj', lat: 23.6238, lon: 90.5000 },
 ];
 
+/**
+ * Calculate Great-Circle Distance to Kaaba in Mecca
+ */
+export function calculateDistanceToKaabaKm(lat: number, lon: number): number {
+  const kaabaLat = 21.422487;
+  const kaabaLon = 39.826206;
+  const R = 6371; // Earth radius in km
+  const dLat = ((kaabaLat - lat) * Math.PI) / 180;
+  const dLon = ((kaabaLon - lon) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat * Math.PI) / 180) *
+      Math.cos((kaabaLat * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c);
+}
+
 export const PrayerTimesView: React.FC<Props> = ({ lang }) => {
-  const [activeTab, setActiveTab] = useState<'timings' | 'qibla'>('timings');
+  const [activeTab, setActiveTab] = useState<'timings' | 'qibla' | 'ramadan' | 'tasbeeh'>('timings');
   const [selectedDistrict, setSelectedDistrict] = useState<DistrictOption>(BANGLADESH_DISTRICTS[0]);
   const [isUsingGps, setIsUsingGps] = useState<boolean>(() => !!localStorage.getItem('user_gps_coords'));
 
@@ -71,7 +107,7 @@ export const PrayerTimesView: React.FC<Props> = ({ lang }) => {
   const [locationTitle, setLocationTitle] = useState<string>(() => {
     try {
       const saved = localStorage.getItem('user_gps_coords');
-      return saved ? JSON.parse(saved).name || 'বর্তমান লাইভ অবস্থান (Live GPS)' : 'ঢাকা (Dhaka)';
+      return saved ? JSON.parse(saved).name || 'বর্তমান অবস্থান (Live GPS)' : 'ঢাকা (Dhaka)';
     } catch {
       return 'ঢাকা (Dhaka)';
     }
@@ -80,9 +116,14 @@ export const PrayerTimesView: React.FC<Props> = ({ lang }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [gpsLoading, setGpsLoading] = useState<boolean>(false);
   const [gpsToast, setGpsToast] = useState<string | null>(null);
+  const [alarmFeedback, setAlarmFeedback] = useState<string | null>(null);
+  const [showAzanDuaModal, setShowAzanDuaModal] = useState<boolean>(false);
   const [timings, setTimings] = useState<Record<string, string> | null>(null);
   const [hijriDate, setHijriDate] = useState<string>('');
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
+
+  // Native Alarms State
+  const [alarms, setAlarms] = useState<AlarmItem[]>(() => getStoredAlarms());
 
   // Compass Heading State for Qibla
   const [deviceHeading, setDeviceHeading] = useState<number>(0);
@@ -95,6 +136,7 @@ export const PrayerTimesView: React.FC<Props> = ({ lang }) => {
   const activeHeading = isManualHeading ? manualHeading : deviceHeading;
   const qiblaDiff = Math.abs(activeHeading - qiblaAngle);
   const isFacingQibla = qiblaDiff <= 4 || qiblaDiff >= 356;
+  const distanceToKaaba = calculateDistanceToKaabaKm(currentLat, currentLon);
 
   // 12-hour format converter
   const format12Hour = (time24: string) => {
@@ -219,6 +261,67 @@ export const PrayerTimesView: React.FC<Props> = ({ lang }) => {
     }
   };
 
+  // 1-Click Prayer Alarm Toggle
+  const togglePrayerAlarm = (prayerKey: string, nameBn: string, time24: string) => {
+    tallySounds.playClickSound();
+    const alarmId = `alarm_prayer_${prayerKey.toLowerCase()}`;
+    const existing = alarms.find((a) => a.id === alarmId);
+
+    if (existing && existing.enabled) {
+      const updated = addOrUpdateAlarm({ ...existing, enabled: false });
+      setAlarms(updated);
+      setAlarmFeedback(`${nameBn} এর আজান অ্যালার্ম বন্ধ করা হয়েছে`);
+    } else {
+      const updated = addOrUpdateAlarm({
+        id: alarmId,
+        time: time24,
+        labelBn: `${nameBn} এর আজান ও নামাজ`,
+        labelEn: `${prayerKey} Prayer`,
+        enabled: true,
+        repeatDays: [0, 1, 2, 3, 4, 5, 6],
+        soundTone: 'azan',
+        vibrate: true,
+        snoozeEnabled: true,
+        snoozeDuration: 5,
+        createdAt: Date.now(),
+      });
+      setAlarms(updated);
+      setAlarmFeedback(`${nameBn} এর আজান অ্যালার্ম সক্রিয় হয়েছে (${format12Hour(time24)})`);
+      speakBengali(`${nameBn} এর আজান অ্যালার্ম সেট হয়েছে`);
+    }
+    setTimeout(() => setAlarmFeedback(null), 3500);
+  };
+
+  // Tahajjud 1-Click Alarm (45 mins before Fajr)
+  const setTahajjudAlarm = () => {
+    if (!timings?.Fajr) return;
+    tallySounds.playClickSound();
+    const [h, m] = timings.Fajr.split(':').map(Number);
+    let totalM = h * 60 + m - 45;
+    if (totalM < 0) totalM += 24 * 60;
+    const tH = Math.floor(totalM / 60).toString().padStart(2, '0');
+    const tM = (totalM % 60).toString().padStart(2, '0');
+    const tTime = `${tH}:${tM}`;
+
+    const updated = addOrUpdateAlarm({
+      id: 'alarm_prayer_tahajjud',
+      time: tTime,
+      labelBn: 'তাহাজ্জুদ নামাজের অ্যালার্ম',
+      labelEn: 'Tahajjud Prayer',
+      enabled: true,
+      repeatDays: [0, 1, 2, 3, 4, 5, 6],
+      soundTone: 'azan',
+      vibrate: true,
+      snoozeEnabled: true,
+      snoozeDuration: 5,
+      createdAt: Date.now(),
+    });
+    setAlarms(updated);
+    setAlarmFeedback(`তাহাজ্জুদ নামাজের অ্যালার্ম সেট করা হয়েছে: ভোর ${formatNumber(tTime, lang)}`);
+    speakBengali(`ভোর ${tH}টা ${tM} মিনিটে তাহাজ্জুদ নামাজের অ্যালার্ম সেট হয়েছে`);
+    setTimeout(() => setAlarmFeedback(null), 3500);
+  };
+
   // Find next prayer & countdown
   const getNextPrayerCountdown = () => {
     if (!timings) return null;
@@ -241,7 +344,7 @@ export const PrayerTimesView: React.FC<Props> = ({ lang }) => {
         const diffM = pMinutes - nowMinutes;
         const diffH = Math.floor(diffM / 60);
         const remM = Math.floor(diffM % 60);
-        const remS = Math.floor(60 - now.getSeconds());
+        const remS = Math.floor(60 - now.getSeconds()) % 60;
         return {
           nextPrayerName: p.name,
           countdown: `${diffH > 0 ? `${formatNumber(diffH, lang)} ঘণ্টা ` : ''}${formatNumber(remM, lang)} মিনিট ${formatNumber(remS, lang)} সেকেন্ড`,
@@ -274,36 +377,83 @@ export const PrayerTimesView: React.FC<Props> = ({ lang }) => {
 
   return (
     <div className="flex flex-col gap-4 max-w-lg mx-auto w-full select-none pb-6">
-      {/* Top Segmented Navigation Tabs */}
-      <div className="grid grid-cols-2 p-1.5 bg-slate-200/80 dark:bg-slate-800/80 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-inner">
+      {/* Top 4 Segmented Navigation Tabs */}
+      <div className="grid grid-cols-4 p-1.5 bg-slate-200/80 dark:bg-slate-800/80 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-inner text-xs">
         <button
-          onClick={() => setActiveTab('timings')}
-          className={`py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+          type="button"
+          onClick={() => {
+            tallySounds.playClickSound();
+            setActiveTab('timings');
+          }}
+          className={`py-2 px-1 rounded-xl font-bold transition flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer ${
             activeTab === 'timings'
               ? 'bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-400 shadow-sm'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
-          <Clock className="w-4 h-4" />
-          <span>{isBn ? 'নামাজের সময়সূচী' : 'Prayer Times'}</span>
+          <Clock className="w-3.5 h-3.5" />
+          <span className="text-[11px] truncate">{isBn ? 'নামাজ' : 'Prayer'}</span>
         </button>
 
         <button
-          onClick={() => setActiveTab('qibla')}
-          className={`py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+          type="button"
+          onClick={() => {
+            tallySounds.playClickSound();
+            setActiveTab('qibla');
+          }}
+          className={`py-2 px-1 rounded-xl font-bold transition flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer ${
             activeTab === 'qibla'
               ? 'bg-emerald-600 text-white shadow-sm'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
-          <span>🕋</span>
-          <span>{isBn ? 'কেবলা কম্পাস (Qibla)' : 'Qibla Compass'}</span>
+          <span className="text-xs">🕋</span>
+          <span className="text-[11px] truncate">{isBn ? 'কেবলা' : 'Qibla'}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            tallySounds.playClickSound();
+            setActiveTab('ramadan');
+          }}
+          className={`py-2 px-1 rounded-xl font-bold transition flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer ${
+            activeTab === 'ramadan'
+              ? 'bg-teal-600 text-white shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <span className="text-xs">🌙</span>
+          <span className="text-[11px] truncate">{isBn ? 'রমজান' : 'Ramadan'}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            tallySounds.playClickSound();
+            setActiveTab('tasbeeh');
+          }}
+          className={`py-2 px-1 rounded-xl font-bold transition flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer ${
+            activeTab === 'tasbeeh'
+              ? 'bg-emerald-700 text-white shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <span className="text-xs">📿</span>
+          <span className="text-[11px] truncate">{isBn ? 'তসবিহ' : 'Tasbeeh'}</span>
         </button>
       </div>
 
+      {/* Alarm Feedback Toast */}
+      {alarmFeedback && (
+        <div className="p-3 rounded-2xl bg-emerald-600 text-white text-xs font-bold text-center animate-fadeIn shadow-md">
+          {alarmFeedback}
+        </div>
+      )}
+
       {/* GPS Status Toast */}
       {gpsToast && (
-        <div className="p-3 rounded-2xl bg-emerald-600 text-white text-xs font-bold text-center animate-fade-in shadow-xs">
+        <div className="p-3 rounded-2xl bg-teal-600 text-white text-xs font-bold text-center animate-fadeIn shadow-xs">
           {gpsToast}
         </div>
       )}
@@ -316,9 +466,10 @@ export const PrayerTimesView: React.FC<Props> = ({ lang }) => {
             <span>{isBn ? 'আপনার অবস্থান:' : 'Location:'}</span>
           </div>
           <button
+            type="button"
             onClick={handleUseGps}
             disabled={gpsLoading}
-            className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition text-xs ${
+            className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition text-xs cursor-pointer ${
               isUsingGps
                 ? 'bg-emerald-600 text-white shadow-xs'
                 : 'bg-emerald-50 dark:bg-slate-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100'
@@ -367,7 +518,7 @@ export const PrayerTimesView: React.FC<Props> = ({ lang }) => {
       {activeTab === 'timings' && (
         <>
           {/* Main Countdown & Hero Card */}
-          <div className="bg-gradient-to-br from-emerald-600 via-teal-700 to-slate-900 text-white rounded-3xl p-6 shadow-xl flex flex-col gap-4 relative overflow-hidden">
+          <div className="bg-linear-to-br from-emerald-600 via-teal-700 to-slate-900 text-white rounded-3xl p-6 shadow-xl flex flex-col gap-4 relative overflow-hidden">
             <div className="flex items-center justify-between relative z-10">
               <div>
                 <span className="text-[11px] font-black uppercase tracking-wider text-emerald-200 flex items-center gap-1">
@@ -378,8 +529,9 @@ export const PrayerTimesView: React.FC<Props> = ({ lang }) => {
               </div>
 
               <button
+                type="button"
                 onClick={() => fetchPrayerTimes(currentLat, currentLon)}
-                className="p-2 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 transition"
+                className="p-2 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 transition cursor-pointer"
                 title="Refresh"
               >
                 <RefreshCw className={`w-4 h-4 text-white ${loading ? 'animate-spin' : ''}`} />
@@ -399,7 +551,7 @@ export const PrayerTimesView: React.FC<Props> = ({ lang }) => {
               </div>
             )}
 
-            {/* Sehri & Iftar Times */}
+            {/* Sehri & Iftar Times Banner */}
             <div className="p-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/10 grid grid-cols-2 text-center text-xs divide-x divide-white/20 relative z-10">
               <div>
                 <span className="text-[10px] text-emerald-100 block">{isBn ? 'সেহরির শেষ সময়:' : 'Sehri Ends:'}</span>
@@ -412,45 +564,67 @@ export const PrayerTimesView: React.FC<Props> = ({ lang }) => {
             </div>
           </div>
 
-          {/* Quick Action Button to Open Qibla Compass */}
-          <button
-            onClick={() => setActiveTab('qibla')}
-            className="p-4 rounded-3xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-emerald-500/10 dark:from-emerald-950/40 dark:to-teal-950/40 border border-emerald-500/30 flex items-center justify-between text-left hover:border-emerald-500 transition active:scale-98 shadow-xs"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-emerald-600 text-white flex items-center justify-center text-xl shrink-0 shadow-sm">
-                🕋
+          {/* Quick Smart Actions: Tahajjud Alarm & Dua after Azan */}
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <button
+              type="button"
+              onClick={setTahajjudAlarm}
+              className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 flex items-center justify-between text-left hover:border-indigo-400 transition cursor-pointer"
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                  <Moon className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="font-bold text-indigo-900 dark:text-indigo-200 block text-[11px]">
+                    তাহাজ্জুদ অ্যালার্ম
+                  </span>
+                  <span className="text-[9px] text-slate-500">ফজরের ৪৫ মি. আগে</span>
+                </div>
               </div>
-              <div>
-                <h4 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
-                  {isBn ? 'কেবলা দিক নির্দেশনা ও কম্পাস' : 'Qibla Direction & Compass'}
-                </h4>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  {isBn
-                    ? `আপনার অবস্থান থেকে কেবলা কোণ: ${formatNumber(qiblaAngle, lang)}° (কম্পাস দিয়ে দিক দেখুন)`
-                    : `Bearing to Kaaba: ${qiblaAngle}° from true North (Open Compass)`}
-                </p>
-              </div>
-            </div>
-            <span className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold shrink-0">
-              {isBn ? 'কম্পাস খুলুন' : 'Open'}
-            </span>
-          </button>
+              <Bell className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+            </button>
 
-          {/* 5 Daily Prayers Time List */}
+            <button
+              type="button"
+              onClick={() => {
+                tallySounds.playClickSound();
+                setShowAzanDuaModal(true);
+              }}
+              className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 flex items-center justify-between text-left hover:border-amber-400 transition cursor-pointer"
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-600 text-white flex items-center justify-center shrink-0">
+                  <BookOpen className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="font-bold text-amber-900 dark:text-amber-200 block text-[11px]">
+                    আজানের দোয়া
+                  </span>
+                  <span className="text-[9px] text-slate-500">অর্থ ও উচ্চারণ</span>
+                </div>
+              </div>
+              <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+            </button>
+          </div>
+
+          {/* 5 Daily Prayers Time List with 1-Click Alarm Bell */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-xs flex flex-col gap-2.5">
             <h3 className="font-bold text-xs text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1 flex items-center justify-between">
-              <span>{isBn ? 'আজকের নামাজের সঠিক সময়সূচী:' : 'Daily Prayer Schedule:'}</span>
-              <span className="text-[10px] text-slate-400 font-normal">{isBn ? 'হানাফী ও ইসলামিক ফাউন্ডেশন' : 'Karachi Method'}</span>
+              <span>{isBn ? 'নামাজের সময়সূচী ও ১-ক্লিকে আজান অ্যালার্ম:' : 'Daily Prayer Schedule & Azan Alarms:'}</span>
+              <span className="text-[10px] text-slate-400 font-normal">{isBn ? 'ইসলামিক ফাউন্ডেশন' : 'Karachi Method'}</span>
             </h3>
 
             <div className="flex flex-col gap-2">
               {prayerCards.map((p) => {
                 const Icon = p.icon;
+                const alarmId = `alarm_prayer_${p.id.toLowerCase()}`;
+                const isAlarmActive = alarms.some((a) => a.id === alarmId && a.enabled);
+
                 return (
                   <div
                     key={p.id}
-                    className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-between"
+                    className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2"
                   >
                     <div className="flex items-center gap-3">
                       <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${p.bg}`}>
@@ -464,11 +638,29 @@ export const PrayerTimesView: React.FC<Props> = ({ lang }) => {
                       </div>
                     </div>
 
-                    <div className="text-right">
-                      <span className="text-sm font-black font-mono text-slate-900 dark:text-white block">
-                        {format12Hour(p.time)}
-                      </span>
-                      <span className="text-[10px] font-mono text-slate-400">{p.time}</span>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <span className="text-sm font-black font-mono text-slate-900 dark:text-white block">
+                          {format12Hour(p.time)}
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-400">{p.time}</span>
+                      </div>
+
+                      {/* 1-Click Alarm Sync Button */}
+                      {p.id !== 'Sunrise' && (
+                        <button
+                          type="button"
+                          onClick={() => togglePrayerAlarm(p.id, p.nameBn, p.time)}
+                          className={`p-2 rounded-xl transition flex items-center gap-1 cursor-pointer ${
+                            isAlarmActive
+                              ? 'bg-emerald-600 text-white shadow-xs'
+                              : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+                          }`}
+                          title={isAlarmActive ? 'আজান অ্যালার্ম সচল রয়েছে' : 'আজানের সময় স্মার্ট অ্যালার্ম সেট করুন'}
+                        >
+                          <Bell className={`w-3.5 h-3.5 ${isAlarmActive ? 'animate-pulse' : ''}`} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -479,13 +671,13 @@ export const PrayerTimesView: React.FC<Props> = ({ lang }) => {
       )}
 
       {/* =========================================================
-          VIEW 2: QIBLA COMPASS TAB (Requested specifically by user)
+          VIEW 2: QIBLA COMPASS TAB
          ========================================================= */}
       {activeTab === 'qibla' && (
-        <div className="space-y-4">
+        <div className="space-y-4 animate-fadeIn">
           {/* Status Header */}
-          <div className="p-5 rounded-3xl bg-gradient-to-br from-[#071B35] to-[#112B48] text-white border border-[#153D55] text-center shadow-lg relative overflow-hidden">
-            <span className="text-xs font-bold text-emerald-400 flex items-center justify-center gap-1.5 uppercase tracking-wider mb-1">
+          <div className="p-5 rounded-3xl bg-linear-to-br from-[#071B35] to-[#112B48] text-white border border-[#153D55] text-center shadow-lg relative overflow-hidden flex flex-col gap-2">
+            <span className="text-xs font-bold text-emerald-400 flex items-center justify-center gap-1.5 uppercase tracking-wider">
               <span>🕋</span>
               <span>{isBn ? 'কাবা শরীফের সরাসরি কেবলা কোণ' : 'Exact Bearing to Holy Kaaba'}</span>
             </span>
@@ -494,7 +686,12 @@ export const PrayerTimesView: React.FC<Props> = ({ lang }) => {
               {formatNumber(qiblaAngle, lang)}°
             </h2>
 
-            <p className="text-xs text-emerald-200 font-semibold">
+            {/* Distance to Kaaba in Mecca */}
+            <div className="inline-block mx-auto px-3 py-1 rounded-full bg-white/10 border border-white/20 text-xs font-bold text-amber-300">
+              মক্কা শরীফের সরাসরি দূরত্ব: প্রায় {formatNumber(distanceToKaaba, lang)} কিলোমিটার
+            </div>
+
+            <p className="text-xs text-emerald-200 font-semibold mt-1">
               {isBn
                 ? `আপনার বর্তমান অবস্থান (${locationTitle}) থেকে কেবলা প্রায় ${formatNumber(qiblaAngle, lang)}° পশ্চিম-দক্ষিণে`
                 : `Qibla angle from your location is ${qiblaAngle}° West`}
@@ -502,7 +699,7 @@ export const PrayerTimesView: React.FC<Props> = ({ lang }) => {
 
             {/* Alignment alert */}
             <div
-              className={`mt-3 p-2.5 rounded-2xl border text-xs font-bold transition flex items-center justify-center gap-2 ${
+              className={`mt-2 p-2.5 rounded-2xl border text-xs font-bold transition flex items-center justify-center gap-2 ${
                 isFacingQibla
                   ? 'bg-emerald-500/25 border-emerald-400 text-emerald-200 animate-pulse'
                   : 'bg-black/30 border-white/10 text-slate-300'
@@ -588,7 +785,7 @@ export const PrayerTimesView: React.FC<Props> = ({ lang }) => {
               </div>
             </div>
 
-            {/* Top Red Needle (Current Device Heading) */}
+            {/* Top Green Pointer */}
             <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center pointer-events-none">
               <div className="w-0 h-0 border-l-[9px] border-l-transparent border-r-[9px] border-r-transparent border-t-[14px] border-t-emerald-500 filter drop-shadow" />
             </div>
@@ -638,6 +835,85 @@ export const PrayerTimesView: React.FC<Props> = ({ lang }) => {
                 ? 'নির্দেশনা: ফোনটি অনুভূমিকভাবে সমান করে ধরুন। যখন উপরের তীর চিহ্নটি সবুজ কাবা মার্কারের সাথে মিলে যাবে, তখন আপনার মুখ সরাসরি কাবা শরীফের দিকে থাকবে।'
                 : 'Instructions: Hold phone flat. When top arrow aligns with the green Kaaba marker, you are facing Qibla.'}
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================
+          VIEW 3: RAMADAN HUB TAB
+         ========================================================= */}
+      {activeTab === 'ramadan' && (
+        <RamadanHubView
+          lang={lang}
+          timings={timings}
+          locationTitle={locationTitle}
+        />
+      )}
+
+      {/* =========================================================
+          VIEW 4: DIGITAL TASBEEH COUNTER TAB
+         ========================================================= */}
+      {activeTab === 'tasbeeh' && (
+        <TasbeehCounterView lang={lang} />
+      )}
+
+      {/* =========================================================
+          MODAL: DUA AFTER AZAN
+         ========================================================= */}
+      {showAzanDuaModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 animate-fadeIn">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-3xl p-5 shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col gap-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="text-xs font-black uppercase text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <BookOpen className="w-4 h-4 text-emerald-600" />
+                আজানের পরের মাসনূন দোয়া
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAzanDuaModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex flex-col gap-2">
+              <p className="text-base sm:text-lg font-serif font-black text-right text-emerald-950 dark:text-emerald-200 leading-relaxed">
+                اَللَّهُمَّ رَبَّ هَذِهِ الدَّعْوَةِ التَّامَّةِ وَالصَّلَاةِ الْقَائِمَةِ آتِ مُحَمَّدَانِ الْوَسِيلَةَ وَالْفَضِيلَةَ وَابْعَثْهُ مَقَامًا مَحْمُودَانِ الَّذِي وَعَدْتَهُ
+              </p>
+
+              <div className="text-xs text-slate-700 dark:text-slate-300 space-y-1.5 mt-1 border-t border-emerald-200/60 dark:border-emerald-800/60 pt-2">
+                <p>
+                  <strong>উচ্চারণ:</strong> আল্লাহুম্মা রব্বা হাযিহিদ দাওয়াতিত তাম্মাহ, ওয়াস সালাতিল ক্বা-য়িমাহ, আ-তি মুহাম্মাদানিল ওয়াসীলাতা ওয়াল ফাদীলাহ, ওয়াব‘আসহু মাক্বামাম মাহমূদানিল্লাযী ওয়া‘আদতাহ।
+                </p>
+                <p className="text-slate-600 dark:text-slate-400">
+                  <strong>অর্থ:</strong> হে আল্লাহ! এই পরিপূর্ণ আহ্বান এবং প্রতিষ্ঠিত সালাতের তুমিই প্রতিপালক। হযরত মুহাম্মদ (সাঃ)-কে সর্বোচ্চ মর্যাদা ‘ওয়াসীলাহ’ ও বিশেষ ফজিলত দান করুন এবং তাঁকে সেই প্রশংসিত স্থানে পৌঁছান যার প্রতিশ্রুতি আপনি তাঁকে দিয়েছেন।
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() =>
+                  speakBengali(
+                    'আল্লাহুম্মা রব্বা হাযিহিদ দাওয়াতিত তাম্মাহ, ওয়াস সালাতিল ক্বা-য়িমাহ, আ-তি মুহাম্মাদানিল ওয়াসীলাতা ওয়াল ফাদীলাহ, ওয়াব‘আসহু মাক্বামাম মাহমূদানিল্লাযী ওয়া‘আদতাহ।'
+                  )
+                }
+                className="flex-1 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 text-emerald-800 dark:text-emerald-200 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+              >
+                <Volume2 className="w-4 h-4" />
+                <span>উচ্চারণ শুনুন</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowAzanDuaModal(false)}
+                className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition cursor-pointer"
+              >
+                বন্ধ করুন
+              </button>
+            </div>
           </div>
         </div>
       )}
