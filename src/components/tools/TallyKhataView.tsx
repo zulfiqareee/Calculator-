@@ -40,13 +40,29 @@ import {
   Mic,
   FileSpreadsheet,
   Volume2,
+  QrCode,
+  AlertTriangle,
+  ArrowRight,
+  Sparkles,
 } from 'lucide-react';
 import { Language } from '../../types';
 import { CustomerLedgerDetailView } from './CustomerLedgerDetailView';
 import { PinSecurityLock, PIN_ENABLED_KEY, PIN_STORAGE_KEY } from './PinSecurityLock';
-import { TallyStockAndProfit } from './TallyStockAndProfit';
-import { tallySounds, BengaliVoiceRecognition } from '../../utils/tallyAudioVoice';
+import {
+  TallyStockAndProfit,
+  ProductItem,
+  loadStoredProducts,
+  saveStoredProducts,
+} from './TallyStockAndProfit';
+import { PaymentQrCard } from './PaymentQrCard';
+import { VoiceTransactionModal } from './VoiceTransactionModal';
+import { tallySounds, BengaliVoiceRecognition, speakBengali } from '../../utils/tallyAudioVoice';
 import { exportCustomersToExcel, exportTransactionsToExcel } from '../../utils/tallyExport';
+import { CustomerCreditBadge } from './CustomerCreditBadge';
+import { SmartTagadaModal } from './SmartTagadaModal';
+import { PrintablePosReceipt } from './PrintablePosReceipt';
+import { BusinessHealthCard } from './BusinessHealthCard';
+import { calculateCustomerCreditScore } from '../../utils/tallyCreditScorer';
 
 interface Props {
   lang: Language;
@@ -59,6 +75,12 @@ export interface ShopProfile {
   phone: string;
   address: string;
   currency: string;
+  // Step 1: Digital payment settings
+  bkashNumber?: string;
+  bkashType?: 'personal' | 'merchant';
+  nagadNumber?: string;
+  rocketNumber?: string;
+  paymentInstructions?: string;
 }
 
 // Customer interface
@@ -107,6 +129,11 @@ const DEFAULT_SHOP: ShopProfile = {
   phone: '০১৭১২-৩৪৫৬৭৮',
   address: 'প্রধান সড়ক, ঢাকা, বাংলাদেশ',
   currency: '৳',
+  bkashNumber: '০১৭১২-৩৪৫৬৭৮',
+  bkashType: 'personal',
+  nagadNumber: '০১৭১২-৩৪৫৬৭৮',
+  rocketNumber: '',
+  paymentInstructions: 'রেফারেন্সে আপনার নাম অথবা ভাউচার নম্বর দিন।',
 };
 
 // Convert number to Bengali digits
@@ -120,19 +147,100 @@ export function formatMoney(amount: number): string {
   return toBn(Math.abs(amount).toLocaleString('en-IN'));
 }
 
+// Calculate Customer Due Aging in Days (FIFO based on transactions)
+export function getCustomerDueAgingDays(customer: Customer, transactions: Transaction[]): number {
+  if (customer.balance <= 0) return 0;
+
+  const custTxs = transactions
+    .filter((t) => t.customerId === customer.id)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  if (custTxs.length === 0) {
+    const diffMs = Date.now() - (customer.createdAt || Date.now());
+    return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+  }
+
+  // FIFO Calculation: Deduct collections from oldest dues
+  const dueEntries: { amount: number; date: string }[] = [];
+  let collections = 0;
+
+  for (const tx of custTxs) {
+    if (tx.type === 'sale_due') {
+      dueEntries.push({ amount: tx.amount, date: tx.date });
+    } else if (tx.type === 'due_collection') {
+      collections += tx.amount;
+    }
+  }
+
+  let remainingPaid = collections;
+  let oldestUnpaidDate: string | null = null;
+
+  for (const entry of dueEntries) {
+    if (remainingPaid >= entry.amount) {
+      remainingPaid -= entry.amount;
+    } else {
+      oldestUnpaidDate = entry.date;
+      break;
+    }
+  }
+
+  const referenceDateStr = oldestUnpaidDate || custTxs[custTxs.length - 1]?.date;
+  if (!referenceDateStr) return 0;
+
+  const refTime = new Date(referenceDateStr).getTime();
+  const diffDays = Math.floor((Date.now() - refTime) / (1000 * 60 * 60 * 24));
+  return Math.max(0, diffDays);
+}
+
+// Get color-coded aging tier badge
+export function getAgingTier(days: number): {
+  label: string;
+  badgeClass: string;
+  dotClass: string;
+  isUrgent: boolean;
+} {
+  if (days <= 7) {
+    return {
+      label: '১-৭ দিন',
+      badgeClass: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+      dotClass: 'bg-emerald-500',
+      isUrgent: false,
+    };
+  } else if (days <= 15) {
+    return {
+      label: '৮-১৫ দিন',
+      badgeClass: 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+      dotClass: 'bg-blue-500',
+      isUrgent: false,
+    };
+  } else if (days <= 30) {
+    return {
+      label: '১৬-৩০ দিন',
+      badgeClass: 'bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300 dark:border-amber-800',
+      dotClass: 'bg-amber-500',
+      isUrgent: true,
+    };
+  } else {
+    return {
+      label: `${toBn(days)} দিন পুরনো`,
+      badgeClass: 'bg-rose-50 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300 border-rose-300 dark:border-rose-800 font-black',
+      dotClass: 'bg-rose-500',
+      isUrgent: true,
+    };
+  }
+}
+
 export const TallyKhataView: React.FC<Props> = ({ lang }) => {
   const isBn = lang === 'bn';
 
   // Navigation tab inside Tally Khata
   const [activeTab, setActiveTab] = useState<'dashboard' | 'customers' | 'stock' | 'profit' | 'cashbook' | 'voucher' | 'reports' | 'settings'>('dashboard');
 
-  // Security PIN Lock State
+  // Security PIN Lock State (Disabled/Unlocked by default)
   const [isPinEnabled, setIsPinEnabled] = useState<boolean>(() => {
     return localStorage.getItem(PIN_ENABLED_KEY) === 'true';
   });
-  const [isLocked, setIsLocked] = useState<boolean>(() => {
-    return localStorage.getItem(PIN_ENABLED_KEY) === 'true';
-  });
+  const [isLocked, setIsLocked] = useState<boolean>(false);
   const [pinCodeInput, setPinCodeInput] = useState<string>(() => {
     return localStorage.getItem(PIN_STORAGE_KEY) || '1234';
   });
@@ -226,10 +334,20 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
   // Search query for customer
   const [customerSearch, setCustomerSearch] = useState<string>('');
 
+  // Step 1 & 4: Customer due aging & AI Credit score filter
+  const [customerAgingFilter, setCustomerAgingFilter] = useState<'all' | 'due' | '15' | '30' | 'credit_high' | 'credit_risk'>('all');
+
+  // Step 1: Digital payment QR Modal state
+  const [activePaymentQr, setActivePaymentQr] = useState<{ amount?: number; customerName?: string } | null>(null);
+
+  // Step 4: Active Tagada Modal customer
+  const [activeTagadaCustomer, setActiveTagadaCustomer] = useState<Customer | null>(null);
+
   // Modals state
   const [showAddCustomerModal, setShowAddCustomerModal] = useState<boolean>(false);
   const [showTransactionModal, setShowTransactionModal] = useState<boolean>(false);
   const [showVoucherModal, setShowVoucherModal] = useState<boolean>(false);
+  const [showVoiceModal, setShowVoiceModal] = useState<boolean>(false);
   const [currentVoucher, setCurrentVoucher] = useState<Transaction | null>(null);
 
   // Transaction form state
@@ -241,6 +359,18 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
   const [voucherItems, setVoucherItems] = useState<VoucherItem[]>([
     { id: 'item_1', name: '', quantity: 1, unitPrice: 0, total: 0 },
   ]);
+
+  // Step 3: Inventory Products state & Low stock memo
+  const [products, setProducts] = useState<ProductItem[]>(() => loadStoredProducts());
+  const [selectedProductToAdd, setSelectedProductToAdd] = useState<string>('');
+
+  useEffect(() => {
+    saveStoredProducts(products);
+  }, [products]);
+
+  const lowStockProducts = useMemo(() => {
+    return products.filter((p) => p.stock <= p.minStock);
+  }, [products]);
 
   // Customer form state
   const [custName, setCustName] = useState<string>('');
@@ -279,6 +409,7 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
         shop,
         customers,
         transactions,
+        products,
         syncedAt: Date.now(),
       };
       const response = await fetch('/api/tally/sync', {
@@ -314,6 +445,10 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
         if (resData.data.shop) setShop(resData.data.shop);
         if (resData.data.customers) setCustomers(resData.data.customers);
         if (resData.data.transactions) setTransactions(resData.data.transactions);
+        if (resData.data.products && Array.isArray(resData.data.products)) {
+          setProducts(resData.data.products);
+          saveStoredProducts(resData.data.products);
+        }
         setSyncStatus('synced');
         setSyncMessage('সার্ভার থেকে সফলভাবে রিস্টোর সম্পন্ন হয়েছে!');
       } else {
@@ -541,16 +676,60 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
     };
   }, [customers, transactions, todayStr]);
 
-  // Filtered customers
+  // Step 1: Aging Counts & Overdue Stats
+  const agingCounts = useMemo(() => {
+    let dueCount = 0;
+    let count15 = 0;
+    let count30 = 0;
+    let total30 = 0;
+    let total15 = 0;
+
+    customers.forEach((c) => {
+      if (c.type === 'customer' && c.balance > 0) {
+        dueCount += 1;
+        const days = getCustomerDueAgingDays(c, transactions);
+        if (days > 30) {
+          count30 += 1;
+          total30 += c.balance;
+        } else if (days > 15) {
+          count15 += 1;
+          total15 += c.balance;
+        }
+      }
+    });
+
+    return { dueCount, count15, count30, total30, total15, allCount: customers.length };
+  }, [customers, transactions]);
+
+  // Filtered customers with search and due aging filter
   const filteredCustomers = useMemo(() => {
     const q = customerSearch.trim().toLowerCase();
-    return customers.filter(
-      (c) =>
+    return customers.filter((c) => {
+      const matchesSearch =
         c.name.toLowerCase().includes(q) ||
         c.phone.includes(q) ||
-        (c.address && c.address.toLowerCase().includes(q))
-    );
-  }, [customers, customerSearch]);
+        (c.address && c.address.toLowerCase().includes(q));
+      if (!matchesSearch) return false;
+
+      if (customerAgingFilter === 'all') return true;
+      if (customerAgingFilter === 'due') return c.balance > 0;
+
+      if (customerAgingFilter === 'credit_high') {
+        const credit = calculateCustomerCreditScore(c, transactions);
+        return credit.score >= 80;
+      }
+      if (customerAgingFilter === 'credit_risk') {
+        const credit = calculateCustomerCreditScore(c, transactions);
+        return credit.score < 55;
+      }
+
+      const ageDays = getCustomerDueAgingDays(c, transactions);
+      if (customerAgingFilter === '15') return c.balance > 0 && ageDays > 15;
+      if (customerAgingFilter === '30') return c.balance > 0 && ageDays > 30;
+
+      return true;
+    });
+  }, [customers, customerSearch, customerAgingFilter, transactions]);
 
   // Add customer handler
   const handleAddCustomer = (e: React.FormEvent) => {
@@ -610,6 +789,34 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
     // Filter valid items if any
     const validItems = voucherItems.filter((it) => it.name.trim() && it.total > 0);
 
+    // Step 3: Auto-deduct stock from inventory for sale items
+    if (validItems.length > 0 && (txType === 'sale_cash' || txType === 'sale_due')) {
+      let lowStockAlertName: string | null = null;
+      setProducts((prev) => {
+        const updated = prev.map((prod) => {
+          const matchedItem = validItems.find(
+            (it) => it.name.trim().toLowerCase() === prod.name.trim().toLowerCase()
+          );
+          if (matchedItem) {
+            const newStock = Math.max(0, prod.stock - matchedItem.quantity);
+            if (newStock <= prod.minStock && prod.stock > prod.minStock) {
+              lowStockAlertName = prod.name;
+            }
+            return { ...prod, stock: newStock };
+          }
+          return prod;
+        });
+        saveStoredProducts(updated);
+        return updated;
+      });
+
+      if (lowStockAlertName) {
+        setTimeout(() => {
+          speakBengali(`সতর্কতা: ${lowStockAlertName} এর স্টক ফুরিয়ে যাচ্ছে`);
+        }, 2200);
+      }
+    }
+
     const newTx: Transaction = {
       id: `tx_${Date.now()}`,
       voucherNo,
@@ -630,12 +837,22 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
 
     setTransactions([newTx, ...transactions]);
 
-    // Sound feedback
+    // Sound & Voice feedback
     if (txType === 'due_collection' || txType === 'sale_cash') {
       tallySounds.playCashChime();
     } else {
       tallySounds.playDueAlert();
     }
+
+    const typeName =
+      txType === 'sale_due'
+        ? 'বাকি'
+        : txType === 'due_collection'
+        ? 'জমা গ্রহণ'
+        : txType === 'expense'
+        ? 'খরচ'
+        : 'নগদ বিক্রি';
+    speakBengali(`৳ ${toBn(amountNum)} টাকা ${typeName} এন্ট্রি সম্পন্ন হয়েছে`);
 
     // Reset Form
     setTxAmount('');
@@ -661,9 +878,24 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
     window.print();
   };
 
-  // Generate WhatsApp / SMS Reminder
+  // Generate WhatsApp / SMS Reminder with Digital Payment Options
   const handleCopyTagada = (cust: Customer) => {
-    const text = `সম্মানিত গ্রাহক ${cust.name}, আপনার কাছে ${shop.name}-এর বকেয়া বাকি ${shop.currency} ${toBn(cust.balance)} টাকা। দ্রুত পরিশোধ করার অনুরোধ রইল। যোগাযোগ: ${shop.phone}`;
+    const paymentMethods: string[] = [];
+    if (shop.bkashNumber) {
+      paymentMethods.push(`বিকাশ (${shop.bkashType === 'merchant' ? 'মার্চেন্ট' : 'পার্সোনাল'}): ${shop.bkashNumber}`);
+    }
+    if (shop.nagadNumber) {
+      paymentMethods.push(`নগদ: ${shop.nagadNumber}`);
+    }
+    if (shop.rocketNumber) {
+      paymentMethods.push(`রকেট: ${shop.rocketNumber}`);
+    }
+
+    const paySection = paymentMethods.length > 0
+      ? ` | পেমেন্ট পাঠানোর মাধ্যম: ${paymentMethods.join(', ')}`
+      : '';
+
+    const text = `সম্মানিত গ্রাহক ${cust.name}, আপনার কাছে ${shop.name}-এর বকেয়া বাকি ${shop.currency} ${toBn(cust.balance)} টাকা।${paySection} দ্রুত পরিশোধ করার অনুরোধ রইল। যোগাযোগ: ${shop.phone}`;
     navigator.clipboard.writeText(text);
     setCopiedTagada(true);
     setTimeout(() => setCopiedTagada(false), 3000);
@@ -812,7 +1044,7 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
             tallySounds.playClickSound();
             setActiveTab('stock');
           }}
-          className={`shrink-0 py-2 px-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+          className={`shrink-0 py-2 px-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer relative ${
             activeTab === 'stock'
               ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-sm'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -820,6 +1052,11 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
         >
           <Package className="w-4 h-4 text-amber-500" />
           <span>পণ্য স্টক</span>
+          {lowStockProducts.length > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white animate-pulse">
+              {toBn(lowStockProducts.length)}
+            </span>
+          )}
         </button>
 
         <button
@@ -886,6 +1123,17 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
       {/* ================= TAB 1: DASHBOARD ================= */}
       {activeTab === 'dashboard' && (
         <div className="flex flex-col gap-4 animate-fadeIn">
+          {/* Step 4: AI Business Health Scorecard */}
+          <BusinessHealthCard
+            customers={customers}
+            transactions={transactions}
+            products={products}
+            onNavigateToStock={() => {
+              tallySounds.playClickSound();
+              setActiveTab('stock');
+            }}
+          />
+
           {/* Quick Balance Cards Grid */}
           <div className="grid grid-cols-2 gap-3">
             {/* Total Due to Receive (পাবো) */}
@@ -949,8 +1197,142 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
             </div>
           </div>
 
+          {/* Overdue Debt Aging Alert Banner */}
+          {agingCounts.count30 > 0 ? (
+            <div className="p-4 rounded-3xl bg-linear-to-r from-rose-50 to-amber-50 dark:from-rose-950/50 dark:to-amber-950/40 border border-rose-200 dark:border-rose-900/60 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-sm animate-pulse">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white uppercase tracking-wider">
+                      জরুরি তাগাদা সতর্কতা
+                    </span>
+                    <span className="text-xs font-bold text-rose-900 dark:text-rose-200">
+                      ৩০+ দিনের পুরনো বকেয়া
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-700 dark:text-slate-300 mt-1">
+                    <span className="font-bold text-rose-600 dark:text-rose-400">{toBn(agingCounts.count30)} জন</span> কাস্টমারের কাছে মোট{' '}
+                    <span className="font-black text-rose-600 dark:text-rose-400">{shop.currency} {formatMoney(agingCounts.total30)}</span> টাকা ১ মাসেরও বেশি সময় ধরে বাকি রয়েছে!
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setCustomerAgingFilter('30');
+                  setActiveTab('customers');
+                  tallySounds.playClickSound();
+                }}
+                className="shrink-0 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span>বাকিদের দেখুন ও তাগাদা দিন</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : agingCounts.count15 > 0 ? (
+            <div className="p-4 rounded-3xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                    <span>১৫+ দিনের পুরনো বকেয়া নোটিশ</span>
+                  </h4>
+                  <p className="text-xs text-slate-700 dark:text-slate-300 mt-0.5">
+                    {toBn(agingCounts.count15)} জনের কাছে {shop.currency} {formatMoney(agingCounts.total15)} টাকা ১৫ দিনের বেশি পুরনো বাকি রয়েছে।
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setCustomerAgingFilter('15');
+                  setActiveTab('customers');
+                  tallySounds.playClickSound();
+                }}
+                className="shrink-0 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer"
+              >
+                <span>তালিকা ফিল্টার করুন</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : null}
+
+          {/* Step 3: Low Stock Alert Banner */}
+          {lowStockProducts.length > 0 && (
+            <div className="p-4 rounded-3xl bg-linear-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/30 border border-amber-300 dark:border-amber-900/60 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                  <Package className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-600 text-white uppercase tracking-wider">
+                      স্টক সতর্কতা (Low Stock Alert)
+                    </span>
+                    <span className="text-xs font-bold text-amber-900 dark:text-amber-200">
+                      {toBn(lowStockProducts.length)}টি পণ্যের স্টক শেষ হয়ে আসছে!
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-700 dark:text-slate-300 mt-1">
+                    {lowStockProducts.slice(0, 3).map((p) => `${p.name} (বাকি: ${toBn(p.stock)} ${p.unit})`).join(', ')}
+                    {lowStockProducts.length > 3 ? ` এবং আরও ${toBn(lowStockProducts.length - 3)}টি পণ্য` : ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  tallySounds.playClickSound();
+                  setActiveTab('stock');
+                }}
+                className="shrink-0 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span>স্টক দেখুন ও রিস্টক করুন</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Bengali Voice Quick Assistant Card */}
+          <div className="p-4 rounded-3xl bg-linear-to-r from-purple-700 via-indigo-700 to-slate-900 text-white shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white shrink-0 shadow-inner">
+                <Mic className="w-6 h-6 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider bg-white/20 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-amber-300" />
+                    AI ভয়েস সহকারী
+                  </span>
+                  <span className="text-xs font-bold text-purple-200">মুখে বললেই অটো এন্ট্রি</span>
+                </div>
+                <h4 className="text-sm font-black mt-1">
+                  বাংলায় কথা বলে যেকোনো হিসাব এন্ট্রি করুন
+                </h4>
+                <p className="text-[11px] text-purple-200 mt-0.5">
+                  যেমন: "করিম ৫০০ টাকা বাকি" অথবা "রহিম ১০০০ টাকা দিল"
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                tallySounds.playClickSound();
+                setShowVoiceModal(true);
+              }}
+              className="shrink-0 px-4 py-2.5 rounded-2xl bg-white text-purple-900 hover:bg-purple-50 font-black text-xs shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+            >
+              <Mic className="w-4 h-4 text-purple-700" />
+              <span>মুখে বলুন</span>
+            </button>
+          </div>
+
           {/* Quick Action Buttons Bar */}
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             <button
               onClick={() => {
                 setTxType('sale_due');
@@ -1082,13 +1464,28 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
                 </p>
               </div>
 
-              <button
-                onClick={() => setShowAddCustomerModal(true)}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md transition cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                নতুন কাস্টমার
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    tallySounds.playClickSound();
+                    setShowVoiceModal(true);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-md transition cursor-pointer active:scale-95"
+                  title="মুখে বলে লেনদেন এন্ট্রি করুন"
+                >
+                  <Mic className="w-4 h-4" />
+                  <span>ভয়েস এন্ট্রি</span>
+                </button>
+
+                <button
+                  onClick={() => setShowAddCustomerModal(true)}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md transition cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  নতুন কাস্টমার
+                </button>
+              </div>
             </div>
 
             {/* Search Input */}
@@ -1101,6 +1498,99 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
                 placeholder="কাস্টমারের নাম বা মোবাইল নম্বর খুঁজুন..."
                 className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl pl-10 pr-4 py-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500"
               />
+            </div>
+
+            {/* Filter Pills: সব | বাকি রয়েছে | ১৫+ দিন পুরনো | ৩০+ দিন পুরনো */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomerAgingFilter('all');
+                  tallySounds.playClickSound();
+                }}
+                className={`shrink-0 px-3 py-1.5 rounded-full font-bold transition cursor-pointer ${
+                  customerAgingFilter === 'all'
+                    ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xs'
+                    : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 hover:bg-slate-200'
+                }`}
+              >
+                সব ({toBn(agingCounts.allCount)})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomerAgingFilter('due');
+                  tallySounds.playClickSound();
+                }}
+                className={`shrink-0 px-3 py-1.5 rounded-full font-bold transition cursor-pointer ${
+                  customerAgingFilter === 'due'
+                    ? 'bg-red-600 text-white shadow-xs'
+                    : 'bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300 hover:bg-red-100'
+                }`}
+              >
+                বাকি রয়েছে ({toBn(agingCounts.dueCount)})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomerAgingFilter('15');
+                  tallySounds.playClickSound();
+                }}
+                className={`shrink-0 px-3 py-1.5 rounded-full font-bold transition cursor-pointer ${
+                  customerAgingFilter === '15'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 hover:bg-amber-100'
+                }`}
+              >
+                ১৫+ দিন পুরনো ({toBn(agingCounts.count15)})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomerAgingFilter('30');
+                  tallySounds.playClickSound();
+                }}
+                className={`shrink-0 px-3 py-1.5 rounded-full font-black transition cursor-pointer ${
+                  customerAgingFilter === '30'
+                    ? 'bg-rose-600 text-white shadow-xs'
+                    : 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 hover:bg-rose-100'
+                }`}
+              >
+                ⚠️ ৩০+ দিন বাকি ({toBn(agingCounts.count30)})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomerAgingFilter('credit_high');
+                  tallySounds.playClickSound();
+                }}
+                className={`shrink-0 px-3 py-1.5 rounded-full font-bold transition cursor-pointer ${
+                  customerAgingFilter === 'credit_high'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 hover:bg-emerald-100'
+                }`}
+              >
+                🌟 বিশ্বস্ত গ্রাহক (৮০+)
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomerAgingFilter('credit_risk');
+                  tallySounds.playClickSound();
+                }}
+                className={`shrink-0 px-3 py-1.5 rounded-full font-bold transition cursor-pointer ${
+                  customerAgingFilter === 'credit_risk'
+                    ? 'bg-rose-700 text-white shadow-xs'
+                    : 'bg-rose-50 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 hover:bg-rose-100'
+                }`}
+              >
+                ⚠️ ঝুঁকিপূর্ণ ক্রেডিট
+              </button>
             </div>
           </div>
 
@@ -1120,6 +1610,9 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
                     .map((p) => p[0].toUpperCase())
                     .join('') || 'C';
 
+                const dueDays = getCustomerDueAgingDays(cust, transactions);
+                const agingTier = getAgingTier(dueDays);
+
                 return (
                   <div
                     key={cust.id}
@@ -1138,7 +1631,7 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
                         </div>
 
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
                             <h4 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
                               {cust.name}
                             </h4>
@@ -1151,6 +1644,20 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
                             >
                               {cust.type === 'customer' ? 'কাস্টমার' : 'সাপ্লায়ার'}
                             </span>
+
+                            {cust.type === 'customer' && (
+                              <CustomerCreditBadge customer={cust} transactions={transactions} compact />
+                            )}
+
+                            {cust.balance > 0 && (
+                              <span
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${agingTier.badgeClass}`}
+                                title={`এই বকেয়াটি ${toBn(dueDays)} দিন পুরনো`}
+                              >
+                                <span className={`w-1.5 h-1.5 rounded-full ${agingTier.dotClass}`} />
+                                {agingTier.label}
+                              </span>
+                            )}
                           </div>
                           <span className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 block flex items-center gap-1.5">
                             <Phone className="w-3 h-3" /> {cust.phone}
@@ -1207,17 +1714,39 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
                           <FileText className="w-3.5 h-3.5 text-slate-500" />
                           <span>রিপোর্ট</span>
                         </button>
+
+                        {/* Digital Payment QR Modal Trigger */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActivePaymentQr({
+                              amount: cust.balance > 0 ? cust.balance : undefined,
+                              customerName: cust.name,
+                            });
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 dark:bg-pink-950/50 dark:text-pink-300 font-bold transition flex items-center gap-1 cursor-pointer"
+                          title="বিকাশ / নগদ পেমেন্ট কিউআর কোড"
+                        >
+                          <QrCode className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400" />
+                          <span>কিউআর</span>
+                        </button>
                       </div>
 
-                      {/* Tagada SMS */}
+                      {/* Tagada SMS & WhatsApp Multi-Template Modal */}
                       {cust.balance > 0 && (
                         <button
-                          onClick={() => handleCopyTagada(cust)}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-orange-50 dark:bg-orange-950/40 hover:bg-orange-100 text-orange-700 dark:text-orange-300 font-medium transition"
-                          title="বাকি তাগাদা মেসেজ কপি করুন"
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            tallySounds.playClickSound();
+                            setActiveTagadaCustomer(cust);
+                          }}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-orange-50 dark:bg-orange-950/40 hover:bg-orange-100 text-orange-700 dark:text-orange-300 font-bold transition cursor-pointer shadow-2xs"
+                          title="স্মার্ট তাগাদা মেসেজ ও হোয়াটসঅ্যাপ রিমাইন্ডার পাঠান"
                         >
-                          <Send className="w-3 h-3 text-orange-600" />
-                          <span>{copiedTagada ? 'কপি হয়েছে!' : 'তাগাদা SMS'}</span>
+                          <Send className="w-3.5 h-3.5 text-orange-600" />
+                          <span>তাগাদা পাঠান</span>
                         </button>
                       )}
                     </div>
@@ -1235,6 +1764,8 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
           shop={shop}
           transactions={transactions}
           activeSubView="stock"
+          products={products}
+          onUpdateProducts={(updated) => setProducts(updated)}
         />
       )}
 
@@ -1244,6 +1775,8 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
           shop={shop}
           transactions={transactions}
           activeSubView="profit"
+          products={products}
+          onUpdateProducts={(updated) => setProducts(updated)}
         />
       )}
 
@@ -1378,6 +1911,17 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
               <Printer className="w-3.5 h-3.5" /> প্রিন্ট রিপোর্ট
             </button>
           </div>
+
+          {/* Step 4: AI Business Health Scorecard */}
+          <BusinessHealthCard
+            customers={customers}
+            transactions={transactions}
+            products={products}
+            onNavigateToStock={() => {
+              tallySounds.playClickSound();
+              setActiveTab('stock');
+            }}
+          />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
             <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-between">
@@ -1519,6 +2063,106 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
                 onChange={(e) => setShop({ ...shop, address: e.target.value })}
                 className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs"
               />
+            </div>
+
+            {/* Digital Payment QR & Mobile Banking Configuration Card */}
+            <div className="p-4 rounded-2xl bg-pink-50/70 dark:bg-pink-950/20 border border-pink-200 dark:border-pink-900/50 flex flex-col gap-3.5">
+              <div className="flex items-center justify-between pb-2 border-b border-pink-200/60 dark:border-pink-900/40">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-pink-500/15 text-pink-600 dark:text-pink-400 flex items-center justify-center font-bold">
+                    <QrCode className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-900 dark:text-white">ডিজিটাল পেমেন্ট কিউআর ও অনলাইন সেটিংস</h4>
+                    <p className="text-[11px] text-slate-500">বিকাশ, নগদ ও রকেট পেমেন্ট গ্রহণ ও তাগাদায় যুক্ত করুন</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    tallySounds.playClickSound();
+                    setActivePaymentQr({ amount: 500, customerName: 'কাস্টমার টেস্ট' });
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer"
+                >
+                  <QrCode className="w-3.5 h-3.5" />
+                  <span>কিউআর টেস্ট</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* bKash Number */}
+                <div>
+                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    বিকাশ নম্বর
+                  </label>
+                  <input
+                    type="text"
+                    value={shop.bkashNumber || ''}
+                    onChange={(e) => setShop({ ...shop, bkashNumber: e.target.value })}
+                    placeholder="০১৭১২-৩৪৫৬৭৮"
+                    className="w-full p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-semibold"
+                  />
+                </div>
+
+                {/* bKash Type */}
+                <div>
+                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    বিকাশ অ্যাকাউন্ট ধরন
+                  </label>
+                  <select
+                    value={shop.bkashType || 'personal'}
+                    onChange={(e) => setShop({ ...shop, bkashType: e.target.value as 'personal' | 'merchant' })}
+                    className="w-full p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-bold"
+                  >
+                    <option value="personal">পার্সোনাল (Personal Send Money)</option>
+                    <option value="merchant">মার্চেন্ট (Merchant Payment)</option>
+                  </select>
+                </div>
+
+                {/* Nagad Number */}
+                <div>
+                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    নগদ নম্বর
+                  </label>
+                  <input
+                    type="text"
+                    value={shop.nagadNumber || ''}
+                    onChange={(e) => setShop({ ...shop, nagadNumber: e.target.value })}
+                    placeholder="০১৭১২-৩৪৫৬৭৮"
+                    className="w-full p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-semibold"
+                  />
+                </div>
+
+                {/* Rocket Number */}
+                <div>
+                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    রকেট নম্বর (ঐচ্ছিক)
+                  </label>
+                  <input
+                    type="text"
+                    value={shop.rocketNumber || ''}
+                    onChange={(e) => setShop({ ...shop, rocketNumber: e.target.value })}
+                    placeholder="০১৭১২-৩৪৫৬৭৮-৯"
+                    className="w-full p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-semibold"
+                  />
+                </div>
+              </div>
+
+              {/* Payment Instructions */}
+              <div>
+                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                  পেমেন্ট নির্দেশনা বার্তা (মেমো ও তাগাদায় যুক্ত হবে)
+                </label>
+                <input
+                  type="text"
+                  value={shop.paymentInstructions || ''}
+                  onChange={(e) => setShop({ ...shop, paymentInstructions: e.target.value })}
+                  placeholder="রেফারেন্সে আপনার নাম অথবা ভাউচার নম্বর লিখুন..."
+                  className="w-full p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs"
+                />
+              </div>
             </div>
 
             {/* 4-Digit PIN Security Management Card */}
@@ -1756,12 +2400,23 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
                 <FileText className="w-4 h-4 text-emerald-500" />
                 নতুন হিসাব ও লেনদেন এন্ট্রি
               </h3>
-              <button
-                onClick={() => setShowTransactionModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowVoiceModal(true)}
+                  className="px-2.5 py-1 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer transition active:scale-95 shadow-xs"
+                  title="মুখে বলে লেনদেন পূরণ করুন"
+                >
+                  <Mic className="w-3.5 h-3.5" />
+                  <span>মুখে বলুন</span>
+                </button>
+                <button
+                  onClick={() => setShowTransactionModal(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             <form onSubmit={handleSaveTransaction} className="flex flex-col gap-3 text-xs">
@@ -1854,6 +2509,164 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
                 </div>
               )}
 
+              {/* Step 3: Stock Product Selector & Auto Deduction for Sales */}
+              {(txType === 'sale_cash' || txType === 'sale_due') && (
+                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 text-xs">
+                      <Package className="w-3.5 h-3.5 text-amber-500" />
+                      <span>ইনভেন্টরি স্টক থেকে পণ্য যোগ করুন (ঐচ্ছিক)</span>
+                    </span>
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
+                      অটো স্টক কমবে
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={selectedProductToAdd}
+                      onChange={(e) => setSelectedProductToAdd(e.target.value)}
+                      className="flex-1 p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-medium"
+                    >
+                      <option value="">— স্টক থেকে পণ্য বেছে নিন —</option>
+                      {products.map((p) => (
+                        <option key={p.id} value={p.id} disabled={p.stock <= 0}>
+                          {p.name} (স্টক: {toBn(p.stock)} {p.unit}) — ৳ {toBn(p.sellPrice)}
+                          {p.stock <= p.minStock ? ' ⚠️ স্বল্প স্টক' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={!selectedProductToAdd}
+                      onClick={() => {
+                        const prod = products.find((p) => p.id === selectedProductToAdd);
+                        if (!prod) return;
+                        tallySounds.playClickSound();
+
+                        const existingIdx = voucherItems.findIndex(
+                          (it) => it.name.trim().toLowerCase() === prod.name.trim().toLowerCase()
+                        );
+
+                        let updatedItems: VoucherItem[];
+                        if (existingIdx >= 0) {
+                          updatedItems = voucherItems.map((it, idx) => {
+                            if (idx === existingIdx) {
+                              const newQty = it.quantity + 1;
+                              return { ...it, quantity: newQty, total: newQty * it.unitPrice };
+                            }
+                            return it;
+                          });
+                        } else {
+                          const isFirstEmpty = voucherItems.length === 1 && !voucherItems[0].name.trim();
+                          const newItem: VoucherItem = {
+                            id: `item_${Date.now()}`,
+                            name: prod.name,
+                            quantity: 1,
+                            unitPrice: prod.sellPrice,
+                            total: prod.sellPrice,
+                          };
+                          updatedItems = isFirstEmpty ? [newItem] : [...voucherItems, newItem];
+                        }
+
+                        setVoucherItems(updatedItems);
+                        const sumTotal = updatedItems.reduce((acc, curr) => acc + curr.total, 0);
+                        setTxAmount(String(sumTotal));
+                        const itemSummary = updatedItems.map((it) => `${it.name} (${toBn(it.quantity)})`).join(', ');
+                        setTxNote(itemSummary);
+                        setSelectedProductToAdd('');
+                      }}
+                      className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-slate-950 font-bold text-xs shrink-0 transition flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>যোগ করুন</span>
+                    </button>
+                  </div>
+
+                  {/* Selected items list */}
+                  {voucherItems.filter((it) => it.name.trim()).length > 0 && (
+                    <div className="mt-1 flex flex-col gap-1.5 border-t border-slate-200 dark:border-slate-800 pt-2">
+                      {voucherItems
+                        .filter((it) => it.name.trim())
+                        .map((item) => (
+                          <div
+                            key={item.id}
+                            className="flex items-center justify-between p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px]"
+                          >
+                            <div className="flex-1 min-w-0 pr-2">
+                              <span className="font-bold text-slate-800 dark:text-slate-200 truncate block">
+                                {item.name}
+                              </span>
+                              <span className="text-[10px] text-slate-400">
+                                দর: ৳ {toBn(item.unitPrice)}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newQty = Math.max(1, item.quantity - 1);
+                                    const updated = voucherItems.map((it) =>
+                                      it.id === item.id ? { ...it, quantity: newQty, total: newQty * it.unitPrice } : it
+                                    );
+                                    setVoucherItems(updated);
+                                    const sum = updated.reduce((acc, c) => acc + c.total, 0);
+                                    setTxAmount(String(sum));
+                                    setTxNote(updated.map((it) => `${it.name} (${toBn(it.quantity)})`).join(', '));
+                                  }}
+                                  className="w-5 h-5 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded cursor-pointer"
+                                >
+                                  -
+                                </button>
+                                <span className="font-bold px-1 text-slate-800 dark:text-slate-100">
+                                  {toBn(item.quantity)}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newQty = item.quantity + 1;
+                                    const updated = voucherItems.map((it) =>
+                                      it.id === item.id ? { ...it, quantity: newQty, total: newQty * it.unitPrice } : it
+                                    );
+                                    setVoucherItems(updated);
+                                    const sum = updated.reduce((acc, c) => acc + c.total, 0);
+                                    setTxAmount(String(sum));
+                                    setTxNote(updated.map((it) => `${it.name} (${toBn(it.quantity)})`).join(', '));
+                                  }}
+                                  className="w-5 h-5 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded cursor-pointer"
+                                >
+                                  +
+                                </button>
+                              </div>
+
+                              <span className="font-black text-emerald-600 dark:text-emerald-400 min-w-14 text-right">
+                                ৳ {toBn(item.total)}
+                              </span>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = voucherItems.filter((it) => it.id !== item.id);
+                                  const effective = updated.length > 0 ? updated : [{ id: 'item_1', name: '', quantity: 1, unitPrice: 0, total: 0 }];
+                                  setVoucherItems(effective);
+                                  const sum = updated.reduce((acc, c) => acc + c.total, 0);
+                                  setTxAmount(sum > 0 ? String(sum) : '');
+                                  setTxNote(updated.map((it) => `${it.name} (${toBn(it.quantity)})`).join(', '));
+                                }}
+                                className="p-1 rounded text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Amount */}
               <div>
                 <label className="font-bold text-slate-600 dark:text-slate-300 block mb-1">
@@ -1905,151 +2718,94 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
 
       {/* ================= MODAL: PRINTABLE CASH MEMO / VOUCHER ================= */}
       {showVoucherModal && currentVoucher && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
-          <div className="w-full max-w-md max-h-[92vh] overflow-y-auto bg-white text-slate-900 rounded-3xl p-5 shadow-2xl flex flex-col gap-4">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-              <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider">
-                ক্যাশ মেমো ও ভাউচার প্রিভিউ
-              </h3>
-              <button
-                onClick={() => setShowVoucherModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-800"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+        <PrintablePosReceipt
+          transaction={currentVoucher}
+          shop={shop}
+          customer={customers.find((c) => c.id === currentVoucher.customerId)}
+          onClose={() => setShowVoucherModal(false)}
+        />
+      )}
 
-            {/* Printable Memo Layout (Thermal POS / Official Invoice Style) */}
-            <div
-              ref={printAreaRef}
-              id="printable-voucher-area"
-              className="p-5 bg-white border border-slate-300 rounded-2xl shadow-sm text-slate-900 font-sans flex flex-col gap-3"
-            >
-              {/* Shop Header */}
-              <div className="text-center pb-2 border-b-2 border-dashed border-slate-400">
-                <h2 className="text-lg font-black tracking-tight">{shop.name}</h2>
-                <p className="text-[11px] text-slate-600 font-medium">{shop.address}</p>
-                <p className="text-[11px] text-slate-600 font-medium">মোবাইল: {shop.phone}</p>
-                <div className="mt-1.5 inline-block px-3 py-0.5 rounded-full bg-slate-100 text-[10px] font-black uppercase tracking-wider">
-                  {currentVoucher.type === 'sale_cash'
-                    ? 'নগদ ক্যাশ মেমো'
-                    : currentVoucher.type === 'sale_due'
-                    ? 'বাকি ভাউচার'
-                    : currentVoucher.type === 'due_collection'
-                    ? 'মানি রিসিট (জমা রশিদ)'
-                    : 'ডেবিট ভাউচার'}
-                </div>
-              </div>
+      {/* ================= MODAL: SMART MULTI-TEMPLATE TAGADA ================= */}
+      {activeTagadaCustomer && (
+        <SmartTagadaModal
+          customer={activeTagadaCustomer}
+          shop={shop}
+          onClose={() => setActiveTagadaCustomer(null)}
+        />
+      )}
 
-              {/* Memo Info Bar */}
-              <div className="flex justify-between text-[11px] text-slate-700 py-1 border-b border-slate-200">
-                <div>
-                  <span className="font-bold">ভাউচার নং: </span>
-                  <span className="font-mono">{currentVoucher.voucherNo}</span>
-                </div>
-                <div>
-                  <span className="font-bold">তারিখ: </span>
-                  <span>{currentVoucher.date} {currentVoucher.time}</span>
-                </div>
-              </div>
+      {/* ================= MODAL: DIGITAL PAYMENT QR CODE ================= */}
+      {activePaymentQr && (
+        <PaymentQrCard
+          shop={shop}
+          amount={activePaymentQr.amount}
+          customerName={activePaymentQr.customerName}
+          showInModal={true}
+          onClose={() => setActivePaymentQr(null)}
+        />
+      )}
 
-              {/* Customer Info */}
-              {currentVoucher.customerName && (
-                <div className="text-[11px] py-1 border-b border-slate-200">
-                  <div className="font-bold text-slate-900">গ্রাহক: {currentVoucher.customerName}</div>
-                  {currentVoucher.customerPhone && (
-                    <div className="text-slate-600">মোবাইল: {currentVoucher.customerPhone}</div>
-                  )}
-                </div>
-              )}
+      {/* ================= MODAL: BENGALI VOICE TRANSACTION ================= */}
+      {showVoiceModal && (
+        <VoiceTransactionModal
+          isOpen={showVoiceModal}
+          onClose={() => setShowVoiceModal(false)}
+          customers={customers}
+          onConfirmVoiceTx={(data) => {
+            const now = new Date();
+            const dateStr = now.toISOString().slice(0, 10);
+            const timeStr = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+            const voucherNo = `VCH-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(transactions.length + 1).padStart(3, '0')}`;
 
-              {/* Items List / Description */}
-              <div className="py-2">
-                <table className="w-full text-left text-[11px]">
-                  <thead>
-                    <tr className="border-b border-slate-300 font-bold text-slate-800">
-                      <th className="py-1">বিবরণ</th>
-                      <th className="py-1 text-right">পরিমাণ</th>
-                      <th className="py-1 text-right">টাকা</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {currentVoucher.items && currentVoucher.items.length > 0 ? (
-                      currentVoucher.items.map((it) => (
-                        <tr key={it.id} className="border-b border-slate-100">
-                          <td className="py-1">{it.name}</td>
-                          <td className="py-1 text-right">{toBn(it.quantity)}</td>
-                          <td className="py-1 text-right">{shop.currency} {formatMoney(it.total)}</td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr className="border-b border-slate-100">
-                        <td className="py-1">{currentVoucher.note || currentVoucher.category || 'নগদ লেনদেন'}</td>
-                        <td className="py-1 text-right">১</td>
-                        <td className="py-1 text-right">{shop.currency} {formatMoney(currentVoucher.amount)}</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+            const targetCust = customers.find((c) => c.id === data.customerId);
+            let prevDue = targetCust ? targetCust.balance : 0;
+            let newDue = prevDue;
 
-              {/* Total Calculation Summary */}
-              <div className="flex flex-col gap-1 pt-1 border-t-2 border-slate-300 text-xs">
-                <div className="flex justify-between font-bold">
-                  <span>মোট টাকার পরিমাণ:</span>
-                  <span>{shop.currency} {formatMoney(currentVoucher.amount)}</span>
-                </div>
+            if (targetCust) {
+              if (data.type === 'sale_due') {
+                newDue = prevDue + data.amount;
+              } else if (data.type === 'due_collection') {
+                newDue = prevDue - data.amount;
+              }
+              setCustomers((prev) =>
+                prev.map((c) => (c.id === targetCust.id ? { ...c, balance: newDue } : c))
+              );
+            }
 
-                {currentVoucher.previousDue !== undefined && (
-                  <div className="flex justify-between text-slate-600 text-[11px]">
-                    <span>পূর্বের বকেয়া বাকি:</span>
-                    <span>{shop.currency} {formatMoney(currentVoucher.previousDue)}</span>
-                  </div>
-                )}
+            let cat = 'ভয়েস এন্ট্রি';
+            if (data.type === 'sale_due') cat = 'বাকি বিক্রি';
+            else if (data.type === 'due_collection') cat = 'বাকি আদায়';
+            else if (data.type === 'expense') cat = 'খরচ';
+            else if (data.type === 'sale_cash') cat = 'নগদ বিক্রি';
 
-                {currentVoucher.currentDue !== undefined && (
-                  <div className="flex justify-between font-black text-red-600 pt-1 border-t border-slate-200">
-                    <span>বর্তমান মোট বকেয়া:</span>
-                    <span>{shop.currency} {formatMoney(currentVoucher.currentDue)}</span>
-                  </div>
-                )}
-              </div>
+            const newTx: Transaction = {
+              id: `tx_${Date.now()}`,
+              voucherNo,
+              type: data.type,
+              customerId: targetCust?.id,
+              customerName: targetCust?.name,
+              customerPhone: targetCust?.phone,
+              amount: data.amount,
+              category: cat,
+              note: data.note,
+              previousDue: targetCust ? prevDue : undefined,
+              currentDue: targetCust ? newDue : undefined,
+              date: dateStr,
+              time: timeStr,
+              createdAt: Date.now(),
+            };
 
-              {/* Footer Signatures */}
-              <div className="flex justify-between items-end pt-8 text-[10px] text-slate-500">
-                <div className="border-t border-slate-400 pt-1 text-center w-24">ক্রেতার স্বাক্ষর</div>
-                <div className="border-t border-slate-400 pt-1 text-center w-24">বিক্রেতার স্বাক্ষর</div>
-              </div>
+            setTransactions([newTx, ...transactions]);
 
-              <div className="text-center text-[10px] text-slate-400 pt-2 border-t border-dashed border-slate-300">
-                ধন্যবাদ, আবার আসবেন। স্মার্টহাব ডিজিটাল টালি খাতা।
-              </div>
-            </div>
+            setTimeout(() => {
+              handleServerSync();
+            }, 300);
 
-            {/* Print & Share Buttons */}
-            <div className="flex items-center gap-2 pt-1">
-              <button
-                onClick={handlePrint}
-                className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Printer className="w-4 h-4" />
-                ভাউচার প্রিন্ট করুন
-              </button>
-
-              <button
-                onClick={() => {
-                  const memoText = `রশিদ: ${currentVoucher.voucherNo}\nদোকান: ${shop.name}\nতারিখ: ${currentVoucher.date}\nপরিমাণ: ${shop.currency} ${toBn(currentVoucher.amount)}\n${currentVoucher.currentDue ? `বর্তমান বাকি: ${shop.currency} ${toBn(currentVoucher.currentDue)}` : ''}\nধন্যবাদ।`;
-                  navigator.clipboard.writeText(memoText);
-                  alert('ভাউচার বিবরণ ক্লিপবোর্ডে কপি হয়েছে!');
-                }}
-                className="py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Copy className="w-4 h-4" />
-                মেমো কপি
-              </button>
-            </div>
-          </div>
-        </div>
+            setCurrentVoucher(newTx);
+            setShowVoucherModal(true);
+          }}
+        />
       )}
     </div>
   );

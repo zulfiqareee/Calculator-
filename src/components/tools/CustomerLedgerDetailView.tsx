@@ -23,8 +23,16 @@ import {
   ExternalLink,
   Info,
   Send,
+  QrCode,
+  Mic,
+  Volume2,
 } from 'lucide-react';
 import { Customer, Transaction, ShopProfile, toBn, formatMoney } from './TallyKhataView';
+import { PaymentQrCard } from './PaymentQrCard';
+import { VoiceTransactionModal } from './VoiceTransactionModal';
+import { CustomerCreditBadge } from './CustomerCreditBadge';
+import { SmartTagadaModal } from './SmartTagadaModal';
+import { tallySounds, speakBengali } from '../../utils/tallyAudioVoice';
 
 interface CustomerLedgerDetailViewProps {
   customer: Customer;
@@ -127,6 +135,8 @@ export const CustomerLedgerDetailView: React.FC<CustomerLedgerDetailViewProps> =
   const [reportShareActive, setReportShareActive] = useState<boolean>(false);
   const [showTagadaModal, setShowTagadaModal] = useState<boolean>(false);
   const [showDownloadModal, setShowDownloadModal] = useState<boolean>(false);
+  const [showPaymentQrModal, setShowPaymentQrModal] = useState<boolean>(false);
+  const [showVoiceModal, setShowVoiceModal] = useState<boolean>(false);
   const [copiedTagadaMsg, setCopiedTagadaMsg] = useState<boolean>(false);
 
   // Edit / Delete Transaction Modal State
@@ -248,6 +258,10 @@ export const CustomerLedgerDetailView: React.FC<CustomerLedgerDetailViewProps> =
       photoUrl: attachedPhoto || undefined,
     });
 
+    // Step 2: Audio chime & Bengali voice confirmation
+    tallySounds.playCashChime();
+    speakBengali(`৳ ${toBn(amount)} টাকা ${type === 'sale_due' ? 'বাকি' : 'জমা'} এন্ট্রি সম্পন্ন হয়েছে`);
+
     // Reset fields
     setDebitAmount('');
     setCreditAmount('');
@@ -327,10 +341,25 @@ export const CustomerLedgerDetailView: React.FC<CustomerLedgerDetailViewProps> =
     onBack();
   };
 
-  // Send / Copy Tagada Message
+  // Send / Copy Tagada Message with bKash / Nagad payment options
   const getTagadaText = () => {
     const dueAmount = formatMoney(customer.balance);
-    return `প্রিয় ${customer.name}, ${shop.name}-এ আপনার বকেয়া হিসাব ৳ ${dueAmount}। অনুগ্রহ করে বকেয়া পরিশোধ করার অনুরোধ রইল। যোগাযোগ: ${shop.phone}। ধন্যবাদ।`;
+    const paymentMethods: string[] = [];
+    if (shop.bkashNumber) {
+      paymentMethods.push(`বিকাশ (${shop.bkashType === 'merchant' ? 'মার্চেন্ট' : 'পার্সোনাল'}): ${shop.bkashNumber}`);
+    }
+    if (shop.nagadNumber) {
+      paymentMethods.push(`নগদ: ${shop.nagadNumber}`);
+    }
+    if (shop.rocketNumber) {
+      paymentMethods.push(`রকেট: ${shop.rocketNumber}`);
+    }
+
+    const paySection = paymentMethods.length > 0
+      ? `\n\n💳 অনলাইনে পেমেন্ট পাঠানোর মাধ্যম:\n` + paymentMethods.join('\n') + (shop.paymentInstructions ? `\n(${shop.paymentInstructions})` : '')
+      : '';
+
+    return `প্রিয় ${customer.name}, ${shop.name}-এ আপনার বকেয়া হিসাব ৳ ${dueAmount}। অনুগ্রহ করে বকেয়া পরিশোধ করার অনুরোধ রইল।${paySection}\n\nযোগাযোগ: ${shop.phone}। ধন্যবাদ।`;
   };
 
   const handleCopyTagadaText = () => {
@@ -383,9 +412,12 @@ export const CustomerLedgerDetailView: React.FC<CustomerLedgerDetailViewProps> =
                 </div>
 
                 <div className="flex flex-col">
-                  <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white leading-tight">
-                    {customer.name}
-                  </h2>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white leading-tight">
+                      {customer.name}
+                    </h2>
+                    <CustomerCreditBadge customer={customer} transactions={transactions} compact />
+                  </div>
                   <span className="text-[11px] text-slate-400 font-mono">
                     {customer.phone}
                   </span>
@@ -427,6 +459,15 @@ export const CustomerLedgerDetailView: React.FC<CustomerLedgerDetailViewProps> =
                     >
                       <Edit2 className="w-4 h-4 text-blue-500" />
                       <span>কাস্টমার তথ্য এডিট করুন</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowPaymentQrModal(true)}
+                      className="w-full px-4 py-2.5 text-left text-pink-600 dark:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-950/30 flex items-center gap-2.5 transition cursor-pointer"
+                    >
+                      <QrCode className="w-4 h-4 text-pink-500" />
+                      <span>কিউআর পেমেন্ট কোড</span>
                     </button>
 
                     <button
@@ -477,15 +518,38 @@ export const CustomerLedgerDetailView: React.FC<CustomerLedgerDetailViewProps> =
                 </span>
               </div>
 
-              {/* [📋 রিপোর্ট] Button */}
-              <button
-                type="button"
-                onClick={() => setCurrentScreen('report')}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition shadow-2xs cursor-pointer"
-              >
-                <FileText className="w-4 h-4 text-slate-600 dark:text-slate-300" />
-                <span>রিপোর্ট</span>
-              </button>
+              <div className="flex items-center gap-1.5">
+                {/* [🎙️ মুখে বলুন] Voice Entry Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowVoiceModal(true)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-purple-200 dark:border-purple-900/60 bg-purple-50 dark:bg-purple-950/40 text-xs font-bold text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 active:scale-95 transition shadow-2xs cursor-pointer"
+                  title="মুখে বলে বাংলায় হিসাব এন্ট্রি করুন"
+                >
+                  <Mic className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                  <span>মুখে বলুন</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowPaymentQrModal(true)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-pink-200 dark:border-pink-900/60 bg-pink-50 dark:bg-pink-950/40 text-xs font-bold text-pink-700 dark:text-pink-300 hover:bg-pink-100 dark:hover:bg-pink-900/40 active:scale-95 transition shadow-2xs cursor-pointer"
+                  title="বিকাশ / নগদ পেমেন্ট কিউআর কোড"
+                >
+                  <QrCode className="w-3.5 h-3.5" />
+                  <span>কিউআর</span>
+                </button>
+
+                {/* [📋 রিপোর্ট] Button */}
+                <button
+                  type="button"
+                  onClick={() => setCurrentScreen('report')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition shadow-2xs cursor-pointer"
+                >
+                  <FileText className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                  <span>রিপোর্ট</span>
+                </button>
+              </div>
             </div>
 
             {/* Amount Input Row: [ ৳ দিলাম/বেচা ]  [ ৳ পেলাম ] */}
@@ -682,9 +746,12 @@ export const CustomerLedgerDetailView: React.FC<CustomerLedgerDetailViewProps> =
               </div>
 
               <div>
-                <h2 className="text-base font-black text-slate-900 dark:text-white leading-tight">
-                  {customer.name}
-                </h2>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <h2 className="text-base font-black text-slate-900 dark:text-white leading-tight">
+                    {customer.name}
+                  </h2>
+                  <CustomerCreditBadge customer={customer} transactions={transactions} compact />
+                </div>
                 <div className="flex items-center gap-1 mt-0.5">
                   <span className="text-[11px] font-bold text-slate-500">
                     {customer.balance >= 0 ? 'পাবো' : 'দেবো'}
@@ -704,15 +771,27 @@ export const CustomerLedgerDetailView: React.FC<CustomerLedgerDetailViewProps> =
               </div>
             </div>
 
-            {/* Top Right: [📥 ডাউনলোড] Button */}
-            <button
-              type="button"
-              onClick={() => setShowDownloadModal(true)}
-              className="flex flex-col items-center text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
-            >
-              <Download className="w-5 h-5" />
-              <span className="text-[10px] font-bold mt-0.5">ডাউনলোড</span>
-            </button>
+            {/* Top Right Actions: [💳 কিউআর] & [📥 ডাউনলোড] */}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowPaymentQrModal(true)}
+                className="flex flex-col items-center text-pink-600 dark:text-pink-400 hover:text-pink-700 transition cursor-pointer"
+                title="বিকাশ / নগদ কিউআর কোড"
+              >
+                <QrCode className="w-5 h-5" />
+                <span className="text-[10px] font-bold mt-0.5">কিউআর</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowDownloadModal(true)}
+                className="flex flex-col items-center text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
+              >
+                <Download className="w-5 h-5" />
+                <span className="text-[10px] font-bold mt-0.5">ডাউনলোড</span>
+              </button>
+            </div>
           </div>
 
           {/* Quick Tagada Action Bar: [ 🔔 তাগাদা মেসেজ পাঠাই ] */}
@@ -1146,68 +1225,14 @@ export const CustomerLedgerDetailView: React.FC<CustomerLedgerDetailViewProps> =
       )}
 
       {/* ======================================================== */}
-      {/* MODAL 4: TAGADA REMINDER MODAL                          */}
+      {/* MODAL 4: SMART MULTI-TEMPLATE TAGADA REMINDER MODAL      */}
       {/* ======================================================== */}
       {showTagadaModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div className="w-full max-w-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-3xl p-5 shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col gap-4">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
-              <h3 className="text-sm font-black flex items-center gap-1.5">
-                <Bell className="w-4 h-4 text-amber-500" />
-                তাগাদা মেসেজ পাঠান
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowTagadaModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-800 dark:hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs font-mono leading-relaxed text-slate-700 dark:text-slate-300">
-              {getTagadaText()}
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={handleCopyTagadaText}
-                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
-              >
-                {copiedTagadaMsg ? (
-                  <>
-                    <Check className="w-4 h-4 text-emerald-500" />
-                    <span>মেসেজ কপি হয়েছে!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4" />
-                    <span>মেসেজ কপি করুন</span>
-                  </>
-                )}
-              </button>
-
-              <a
-                href={`sms:${customer.phone}?body=${encodeURIComponent(getTagadaText())}`}
-                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition shadow-xs"
-              >
-                <MessageSquare className="w-4 h-4" />
-                <span>সরাসরি SMS পাঠান</span>
-              </a>
-
-              <a
-                href={`https://wa.me/?text=${encodeURIComponent(getTagadaText())}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition shadow-xs"
-              >
-                <Send className="w-4 h-4" />
-                <span>WhatsApp এ পাঠান</span>
-              </a>
-            </div>
-          </div>
-        </div>
+        <SmartTagadaModal
+          customer={customer}
+          shop={shop}
+          onClose={() => setShowTagadaModal(false)}
+        />
       )}
 
       {/* ======================================================== */}
@@ -1351,6 +1376,44 @@ export const CustomerLedgerDetailView: React.FC<CustomerLedgerDetailViewProps> =
             <span className="text-xs text-slate-300 font-semibold">সংযুক্ত ভাউচার / রশিদের ছবি</span>
           </div>
         </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL 7: DIGITAL PAYMENT QR CODE MODAL                  */}
+      {/* ======================================================== */}
+      {showPaymentQrModal && (
+        <PaymentQrCard
+          shop={shop}
+          amount={customer.balance > 0 ? customer.balance : undefined}
+          customerName={customer.name}
+          showInModal={true}
+          onClose={() => setShowPaymentQrModal(false)}
+        />
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL 8: BENGALI VOICE TRANSACTION MODAL                */}
+      {/* ======================================================== */}
+      {showVoiceModal && (
+        <VoiceTransactionModal
+          isOpen={showVoiceModal}
+          onClose={() => setShowVoiceModal(false)}
+          customers={[]}
+          selectedCustomer={customer}
+          onConfirmVoiceTx={(data) => {
+            const entryType = data.type === 'due_collection' ? 'due_collection' : 'sale_due';
+            onSaveTransaction({
+              type: entryType,
+              amount: data.amount,
+              note: data.note,
+              date: entryDate,
+            });
+            setEntrySuccessToast(
+              `৳ ${formatMoney(data.amount)} ভয়েস লেনদেন সফলভাবে যুক্ত হয়েছে!`
+            );
+            setTimeout(() => setEntrySuccessToast(null), 3000);
+          }}
+        />
       )}
     </div>
   );
