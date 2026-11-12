@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   BookOpen,
   Search,
@@ -7,6 +7,13 @@ import {
   ChevronRight,
   ArrowLeft,
   Volume2,
+  VolumeX,
+  Play,
+  Pause,
+  SkipForward,
+  SkipBack,
+  Headphones,
+  Radio,
   Copy,
   Check,
   ZoomIn,
@@ -38,6 +45,12 @@ interface Props {
   onRegisterBackAction?: (handler: (() => boolean) | null) => void;
 }
 
+const RECITERS = [
+  { id: 'Alafasy_128kbps', nameBn: 'মিশারী রশিদ আল-আফাসী', nameEn: 'Mishary Rashid Alafasy', quality: 'HD 128kbps' },
+  { id: 'AbdulSamad_64kbps_QuranExplorer.Com', nameBn: 'আব্দুল বাসিত মুজাওয়াদ', nameEn: 'Abdul Basit Mujawwad', quality: 'Classic' },
+  { id: 'Ghamadi_40kbps', nameBn: 'সাআদ আল-গামদী', nameEn: 'Saad Al-Ghamadi', quality: 'Standard' },
+];
+
 export const QuranPdfReader: React.FC<Props> = ({ lang, onRegisterBackAction }) => {
   const [surahs, setSurahs] = useState<QuranSurah[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -55,6 +68,15 @@ export const QuranPdfReader: React.FC<Props> = ({ lang, onRegisterBackAction }) 
     return localStorage.getItem('smart_quran_bookmark_surah') || null;
   });
 
+  // Audio Player States
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playingAyah, setPlayingAyah] = useState<number | null>(null);
+  const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
+  const [isAudioLoading, setIsAudioLoading] = useState<boolean>(false);
+  const [autoPlayNext, setAutoPlayNext] = useState<boolean>(true);
+  const [selectedReciter, setSelectedReciter] = useState<string>('Alafasy_128kbps');
+  const [showReciterPicker, setShowReciterPicker] = useState<boolean>(false);
+
   // Hierarchical back action registration
   useEffect(() => {
     if (!onRegisterBackAction) return;
@@ -64,7 +86,16 @@ export const QuranPdfReader: React.FC<Props> = ({ lang, onRegisterBackAction }) 
         setShowTajweedModal(false);
         return true;
       }
+      if (showReciterPicker) {
+        setShowReciterPicker(false);
+        return true;
+      }
+      if (playingAyah !== null) {
+        handleStopAudio();
+        return true;
+      }
       if (selectedSurah) {
+        handleStopAudio();
         setSelectedSurah(null);
         return true;
       }
@@ -79,7 +110,121 @@ export const QuranPdfReader: React.FC<Props> = ({ lang, onRegisterBackAction }) 
     return () => {
       onRegisterBackAction(null);
     };
-  }, [selectedSurah, showTajweedModal, searchQuery, filterType, onRegisterBackAction]);
+  }, [selectedSurah, showTajweedModal, showReciterPicker, playingAyah, searchQuery, filterType, onRegisterBackAction]);
+
+  // Audio helper functions
+  const getAudioUrl = (surahNum: number, ayahNum: number, reciterId: string) => {
+    const sStr = String(surahNum).padStart(3, '0');
+    const aStr = String(ayahNum).padStart(3, '0');
+    return `https://everyayah.com/data/${reciterId}/${sStr}${aStr}.mp3`;
+  };
+
+  const handleStopAudio = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    setPlayingAyah(null);
+    setIsPlayingAudio(false);
+    setIsAudioLoading(false);
+  };
+
+  const handlePlayAyah = (ayahNum: number) => {
+    if (!selectedSurah) return;
+
+    if (playingAyah === ayahNum && audioRef.current) {
+      if (isPlayingAudio) {
+        audioRef.current.pause();
+        setIsPlayingAudio(false);
+      } else {
+        audioRef.current
+          .play()
+          .then(() => setIsPlayingAudio(true))
+          .catch(() => setIsPlayingAudio(false));
+      }
+      return;
+    }
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+
+    const audio = new Audio(getAudioUrl(selectedSurah.surahNumber, ayahNum, selectedReciter));
+    audioRef.current = audio;
+    setPlayingAyah(ayahNum);
+    setIsAudioLoading(true);
+    setIsPlayingAudio(false);
+
+    audio.oncanplay = () => {
+      setIsAudioLoading(false);
+    };
+
+    audio.onplaying = () => {
+      setIsAudioLoading(false);
+      setIsPlayingAudio(true);
+    };
+
+    audio.onpause = () => {
+      setIsPlayingAudio(false);
+    };
+
+    audio.onerror = () => {
+      setIsAudioLoading(false);
+      setIsPlayingAudio(false);
+    };
+
+    audio.onended = () => {
+      setIsPlayingAudio(false);
+      if (autoPlayNext && selectedSurah?.ayahs) {
+        const curIdx = selectedSurah.ayahs.findIndex((a) => a.ayahNumber === ayahNum);
+        if (curIdx !== -1 && curIdx < selectedSurah.ayahs.length - 1) {
+          const nextAyah = selectedSurah.ayahs[curIdx + 1];
+          handlePlayAyah(nextAyah.ayahNumber);
+        } else {
+          setPlayingAyah(null);
+        }
+      } else {
+        setPlayingAyah(null);
+      }
+    };
+
+    audio.play().catch((err) => {
+      console.warn('Audio play error:', err);
+      setIsAudioLoading(false);
+      setIsPlayingAudio(false);
+    });
+  };
+
+  const handleNextAyah = () => {
+    if (!selectedSurah?.ayahs || playingAyah === null) return;
+    const curIdx = selectedSurah.ayahs.findIndex((a) => a.ayahNumber === playingAyah);
+    if (curIdx !== -1 && curIdx < selectedSurah.ayahs.length - 1) {
+      handlePlayAyah(selectedSurah.ayahs[curIdx + 1].ayahNumber);
+    }
+  };
+
+  const handlePrevAyah = () => {
+    if (!selectedSurah?.ayahs || playingAyah === null) return;
+    const curIdx = selectedSurah.ayahs.findIndex((a) => a.ayahNumber === playingAyah);
+    if (curIdx > 0) {
+      handlePlayAyah(selectedSurah.ayahs[curIdx - 1].ayahNumber);
+    }
+  };
+
+  const handlePlayFullSurah = () => {
+    if (!selectedSurah?.ayahs || selectedSurah.ayahs.length === 0) return;
+    handlePlayAyah(selectedSurah.ayahs[0].ayahNumber);
+  };
+
+  // Stop audio on unmount
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const list = getStoredSurahs();
@@ -376,7 +521,7 @@ export const QuranPdfReader: React.FC<Props> = ({ lang, onRegisterBackAction }) 
 
       {/* Surah Reading View */}
       {selectedSurah ? (
-        <div className="space-y-4">
+        <div className={`space-y-4 ${playingAyah !== null ? 'pb-32' : 'pb-6'}`}>
           {/* Navigation & Controls Top Bar */}
           <div className="sticky top-0 z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center justify-between gap-2">
             <button
@@ -503,6 +648,69 @@ export const QuranPdfReader: React.FC<Props> = ({ lang, onRegisterBackAction }) 
                   </p>
                 </div>
               )}
+
+              {/* Audio Recitation Bar in Surah Header */}
+              <div className="mt-4 pt-3 border-t border-emerald-600/40 flex flex-wrap items-center justify-center gap-2">
+                <button
+                  onClick={handlePlayFullSurah}
+                  className="px-4 py-2 rounded-xl bg-white text-emerald-950 font-bold text-xs flex items-center gap-2 hover:bg-emerald-50 active:scale-95 transition shadow-sm"
+                >
+                  {isPlayingAudio && playingAyah !== null ? (
+                    <>
+                      <Pause className="w-4 h-4 fill-emerald-800" />
+                      <span>{lang === 'bn' ? 'তিলাওয়াত বিরতি দিন' : 'Pause Recitation'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4 fill-emerald-800" />
+                      <span>{lang === 'bn' ? 'পুরো সূরা তিলাওয়াত শুনুন' : 'Play Full Surah'}</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Reciter selector button */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowReciterPicker(!showReciterPicker)}
+                    className="px-3 py-2 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-100 hover:text-white font-medium text-xs flex items-center gap-1.5 transition"
+                  >
+                    <Headphones className="w-3.5 h-3.5" />
+                    <span>{RECITERS.find((r) => r.id === selectedReciter)?.nameBn || 'মিশারী আল-আফাসী'}</span>
+                    <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+                  </button>
+
+                  {showReciterPicker && (
+                    <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 p-1.5 rounded-2xl bg-slate-900 text-left border border-emerald-500/30 shadow-2xl z-30">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold px-2 py-1">
+                        {lang === 'bn' ? 'ক্বারী নির্বাচন করুন' : 'Select Reciter'}
+                      </p>
+                      {RECITERS.map((r) => (
+                        <button
+                          key={r.id}
+                          onClick={() => {
+                            setSelectedReciter(r.id);
+                            setShowReciterPicker(false);
+                            if (playingAyah !== null) {
+                              handlePlayAyah(playingAyah);
+                            }
+                          }}
+                          className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs transition flex items-center justify-between ${
+                            selectedReciter === r.id
+                              ? 'bg-emerald-600 text-white font-bold'
+                              : 'text-slate-200 hover:bg-slate-800'
+                          }`}
+                        >
+                          <div>
+                            <div>{lang === 'bn' ? r.nameBn : r.nameEn}</div>
+                            <span className="text-[10px] opacity-70">{r.quality}</span>
+                          </div>
+                          {selectedReciter === r.id && <Check className="w-3.5 h-3.5 shrink-0" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -581,12 +789,21 @@ export const QuranPdfReader: React.FC<Props> = ({ lang, onRegisterBackAction }) 
               selectedSurah.ayahs.map((ayah) => (
                 <div
                   key={ayah.ayahNumber}
-                  className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3"
+                  id={`ayah-${ayah.ayahNumber}`}
+                  className={`p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border transition-all duration-300 shadow-xs space-y-3 ${
+                    playingAyah === ayah.ayahNumber
+                      ? 'border-emerald-500 ring-2 ring-emerald-500/40 bg-emerald-50/20 dark:bg-emerald-950/20'
+                      : 'border-slate-200/80 dark:border-slate-800'
+                  }`}
                 >
-                  {/* Ayah Number Badge & Copy */}
+                  {/* Ayah Number Badge, Audio Play & Copy */}
                   <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2">
                     <div className="flex items-center gap-2">
-                      <span className="w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold text-xs flex items-center justify-center border border-emerald-200 dark:border-emerald-800">
+                      <span className={`w-7 h-7 rounded-full font-bold text-xs flex items-center justify-center border transition ${
+                        playingAyah === ayah.ayahNumber
+                          ? 'bg-emerald-600 text-white border-emerald-600 scale-105'
+                          : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                      }`}>
                         {toBn(ayah.ayahNumber)}
                       </span>
                       <span className="text-[11px] text-slate-400 font-medium">
@@ -594,17 +811,45 @@ export const QuranPdfReader: React.FC<Props> = ({ lang, onRegisterBackAction }) 
                       </span>
                     </div>
 
-                    <button
-                      onClick={() => handleCopyAyah(ayah.arabic, ayah.bangla, ayah.ayahNumber)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-800 transition"
-                      title={lang === 'bn' ? 'আয়াত কপি করুন' : 'Copy Ayah'}
-                    >
-                      {copiedAyah === ayah.ayahNumber ? (
-                        <Check className="w-4 h-4 text-emerald-600" />
-                      ) : (
-                        <Copy className="w-4 h-4" />
-                      )}
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handlePlayAyah(ayah.ayahNumber)}
+                        className={`px-2.5 py-1 rounded-xl text-xs font-bold flex items-center gap-1 transition active:scale-95 ${
+                          playingAyah === ayah.ayahNumber && isPlayingAudio
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : playingAyah === ayah.ayahNumber && isAudioLoading
+                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200'
+                            : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 hover:bg-emerald-100'
+                        }`}
+                        title={lang === 'bn' ? 'আয়াত শুনুন' : 'Listen to Ayah'}
+                      >
+                        {playingAyah === ayah.ayahNumber && isAudioLoading ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : playingAyah === ayah.ayahNumber && isPlayingAudio ? (
+                          <>
+                            <Pause className="w-3.5 h-3.5 fill-current" />
+                            <span>{lang === 'bn' ? 'চলছে' : 'Playing'}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-3.5 h-3.5 fill-current" />
+                            <span>{lang === 'bn' ? 'তেলাওয়াত' : 'Play'}</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        onClick={() => handleCopyAyah(ayah.arabic, ayah.bangla, ayah.ayahNumber)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-800 transition"
+                        title={lang === 'bn' ? 'আয়াত কপি করুন' : 'Copy Ayah'}
+                      >
+                        {copiedAyah === ayah.ayahNumber ? (
+                          <Check className="w-4 h-4 text-emerald-600" />
+                        ) : (
+                          <Copy className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                   {/* Arabic Text */}
@@ -889,6 +1134,86 @@ export const QuranPdfReader: React.FC<Props> = ({ lang, onRegisterBackAction }) 
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Floating Sticky Audio Player Dock */}
+      {playingAyah !== null && selectedSurah && (
+        <div className="fixed bottom-4 left-3 right-3 sm:left-auto sm:right-6 sm:w-[420px] z-50 animate-slide-up">
+          <div className="p-3.5 rounded-3xl bg-slate-900/95 backdrop-blur-xl text-white shadow-2xl border border-emerald-500/40 flex flex-col gap-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-2xl bg-emerald-600 flex items-center justify-center shrink-0 shadow-md">
+                  {isPlayingAudio ? (
+                    <Headphones className="w-4 h-4 animate-pulse text-white" />
+                  ) : (
+                    <Volume2 className="w-4 h-4 text-white" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold truncate">
+                    {lang === 'bn' ? `সূরা ${selectedSurah.nameBn}` : selectedSurah.nameEn} • {lang === 'bn' ? `আয়াত ${toBn(playingAyah)}` : `Ayah ${playingAyah}`}
+                  </p>
+                  <p className="text-[10px] text-emerald-300 truncate">
+                    {RECITERS.find((r) => r.id === selectedReciter)?.nameBn || 'মিশারী আল-আফাসী'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  onClick={() => setAutoPlayNext(!autoPlayNext)}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition ${
+                    autoPlayNext
+                      ? 'bg-emerald-600/40 text-emerald-300 border border-emerald-500/50'
+                      : 'text-slate-400 bg-slate-800'
+                  }`}
+                  title={lang === 'bn' ? 'পরবর্তী আয়াত স্বয়ংক্রিয়ভাবে চলবে' : 'Autoplay next ayah'}
+                >
+                  {autoPlayNext ? (lang === 'bn' ? 'অটো: চালু' : 'Auto: On') : (lang === 'bn' ? 'অটো: বন্ধ' : 'Auto: Off')}
+                </button>
+                <button
+                  onClick={handleStopAudio}
+                  className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                  title={lang === 'bn' ? 'বন্ধ করুন' : 'Close player'}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-center gap-5 pt-1.5 border-t border-slate-800/80">
+              <button
+                onClick={handlePrevAyah}
+                className="p-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 active:scale-90 transition"
+                title={lang === 'bn' ? 'পূর্ববর্তী আয়াত' : 'Previous Ayah'}
+              >
+                <SkipBack className="w-4 h-4" />
+              </button>
+
+              <button
+                onClick={() => handlePlayAyah(playingAyah)}
+                className="w-10 h-10 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold flex items-center justify-center shadow-lg active:scale-95 transition"
+                title={isPlayingAudio ? 'থামান' : 'শুনুন'}
+              >
+                {isAudioLoading ? (
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                ) : isPlayingAudio ? (
+                  <Pause className="w-5 h-5 fill-current" />
+                ) : (
+                  <Play className="w-5 h-5 fill-current ml-0.5" />
+                )}
+              </button>
+
+              <button
+                onClick={handleNextAyah}
+                className="p-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 active:scale-90 transition"
+                title={lang === 'bn' ? 'পরবর্তী আয়াত' : 'Next Ayah'}
+              >
+                <SkipForward className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
