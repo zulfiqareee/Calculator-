@@ -4,6 +4,47 @@
     <script>
       // Suppress benign Vite dev WebSocket disconnection noise in sandbox
       (function() {
+        // Intercept Vite HMR WebSocket in cloud preview container
+        var NativeWebSocket = window.WebSocket;
+        if (NativeWebSocket) {
+          window.WebSocket = function(url, protocols) {
+            var urlStr = String(url || '');
+            var isViteHmr = protocols === 'vite-hmr' ||
+              (Array.isArray(protocols) && protocols.indexOf('vite-hmr') !== -1) ||
+              urlStr.indexOf('vite') !== -1 ||
+              urlStr.indexOf('@vite') !== -1;
+
+            if (isViteHmr) {
+              var dummy = new EventTarget();
+              dummy.readyState = 1; // WebSocket.OPEN
+              dummy.url = urlStr;
+              dummy.protocol = 'vite-hmr';
+              dummy.bufferedAmount = 0;
+              dummy.extensions = '';
+              dummy.binaryType = 'blob';
+              dummy.send = function() {};
+              dummy.close = function() {};
+              dummy.addEventListener = EventTarget.prototype.addEventListener.bind(dummy);
+              dummy.removeEventListener = EventTarget.prototype.removeEventListener.bind(dummy);
+              dummy.dispatchEvent = EventTarget.prototype.dispatchEvent.bind(dummy);
+              setTimeout(function() {
+                try {
+                  var openEvt = new Event('open');
+                  if (typeof dummy.onopen === 'function') dummy.onopen(openEvt);
+                  dummy.dispatchEvent(openEvt);
+                } catch(e) {}
+              }, 10);
+              return dummy;
+            }
+            return new NativeWebSocket(url, protocols);
+          };
+          window.WebSocket.prototype = NativeWebSocket.prototype;
+          window.WebSocket.CONNECTING = 0;
+          window.WebSocket.OPEN = 1;
+          window.WebSocket.CLOSING = 2;
+          window.WebSocket.CLOSED = 3;
+        }
+
         var isWsError = function(str) {
           if (!str) return false;
           str = String(str);
