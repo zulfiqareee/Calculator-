@@ -168,6 +168,26 @@ async function startServer() {
       },
       appType: 'spa',
     });
+
+    // Intercept /@vite/client to disable WebSocket HMR connection in AI Studio preview sandbox
+    app.use('/@vite/client', async (req, res, next) => {
+      try {
+        const result = await vite.transformRequest(req.originalUrl || '/@vite/client');
+        if (result && result.code) {
+          const cleanCode = result.code.replace(
+            /await wsTransport\.connect\(handlers\);/g,
+            '/* WebSocket HMR disabled in sandbox */'
+          );
+          res.setHeader('Content-Type', 'application/javascript');
+          res.setHeader('Cache-Control', 'no-cache');
+          return res.send(cleanCode);
+        }
+      } catch (err) {
+        console.warn('Vite client transform error:', err);
+      }
+      next();
+    });
+
     app.use(vite.middlewares);
   } else {
     app.use(express.static('dist'));

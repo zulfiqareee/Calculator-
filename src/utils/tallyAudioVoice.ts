@@ -141,6 +141,7 @@ export const tallySounds = new TallyAudioEngine();
 export class BengaliVoiceRecognition {
   private recognition: any = null;
   public isSupported: boolean = false;
+  private isListeningActive: boolean = false;
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -148,60 +149,98 @@ export class BengaliVoiceRecognition {
         (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (SpeechRecognition) {
         this.isSupported = true;
-        this.recognition = new SpeechRecognition();
-        this.recognition.continuous = false;
-        this.recognition.interimResults = true;
-        this.recognition.lang = 'bn-BD';
       }
     }
   }
 
-  start(
+  async start(
     onResult: (text: string, isFinal: boolean) => void,
     onError?: (err: any) => void,
     onEnd?: () => void
-  ): void {
-    if (!this.recognition) {
-      if (onError) onError('Speech recognition not supported in this browser.');
+  ): Promise<void> {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      this.isSupported = false;
+      if (onError) onError('not-supported');
       return;
     }
 
-    this.recognition.onresult = (event: any) => {
-      let interim = '';
-      let final = '';
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          final += event.results[i][0].transcript;
-        } else {
-          interim += event.results[i][0].transcript;
+    // Request mic permission explicitly so browser prompt appears on user gesture
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((track) => track.stop());
+      } catch (permErr: any) {
+        console.warn('Microphone permission error:', permErr);
+        if (permErr?.name === 'NotAllowedError' || permErr?.name === 'PermissionDeniedError') {
+          if (onError) onError('not-allowed');
+          return;
         }
       }
-      const text = final || interim;
-      onResult(text, Boolean(final));
-    };
-
-    this.recognition.onerror = (err: any) => {
-      if (onError) onError(err);
-    };
-
-    this.recognition.onend = () => {
-      if (onEnd) onEnd();
-    };
+    }
 
     try {
+      if (this.recognition) {
+        try {
+          this.recognition.abort();
+        } catch {}
+      }
+
+      this.recognition = new SpeechRecognition();
+      this.recognition.continuous = true;
+      this.recognition.interimResults = true;
+      this.recognition.maxAlternatives = 1;
+      this.recognition.lang = 'bn-BD';
+
+      this.isListeningActive = true;
+
+      this.recognition.onresult = (event: any) => {
+        let interim = '';
+        let final = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            final += event.results[i][0].transcript;
+          } else {
+            interim += event.results[i][0].transcript;
+          }
+        }
+        const text = (final || interim).trim();
+        if (text) {
+          onResult(text, Boolean(final));
+        }
+      };
+
+      this.recognition.onerror = (err: any) => {
+        const errorType = err?.error || err;
+        console.warn('SpeechRecognition error:', errorType);
+        // Ignore silent / non-fatal errors
+        if (errorType === 'no-speech' || errorType === 'aborted') {
+          return;
+        }
+        if (onError) onError(errorType);
+      };
+
+      this.recognition.onend = () => {
+        if (this.isListeningActive) {
+          if (onEnd) onEnd();
+        }
+      };
+
       this.recognition.start();
-    } catch {
-      // If already started, ignore
+    } catch (err: any) {
+      console.error('Speech recognition start failed:', err);
+      if (onError) onError(err);
     }
   }
 
   stop(): void {
+    this.isListeningActive = false;
     if (this.recognition) {
       try {
         this.recognition.stop();
-      } catch {
-        // Ignore
-      }
+      } catch {}
     }
   }
 }
