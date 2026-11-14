@@ -15,18 +15,10 @@ import { Language, CalculationRecord } from '../../types';
 import { UI_TEXT, formatNumber } from '../../i18n/translations';
 import { addStoredHistory, getStoredHistory, clearStoredHistory } from '../../utils/storage';
 import { copyToClipboard } from '../../utils/clipboard';
+import { evaluateSafeMath } from '../../utils/safeMathParser';
 
 interface Props {
   lang: Language;
-}
-
-// Factorial helper
-function factorial(n: number): number {
-  if (n < 0 || !Number.isInteger(n)) return NaN;
-  if (n === 0 || n === 1) return 1;
-  let res = 1;
-  for (let i = 2; i <= Math.min(n, 170); i++) res *= i;
-  return res;
 }
 
 export const BasicCalculator: React.FC<Props> = ({ lang }) => {
@@ -48,86 +40,48 @@ export const BasicCalculator: React.FC<Props> = ({ lang }) => {
     setHistoryList(getStoredHistory());
   };
 
-  // Safe Mathematical Evaluation Engine (Supporting Basic + Scientific)
+  // Safe Mathematical Evaluation Engine (Supporting Basic + Scientific without eval/Function)
   const calculateResult = (
     expr: string,
     angle: 'deg' | 'rad'
   ): { success: boolean; value: string; error?: string } => {
-    try {
-      if (!expr || expr === '0') return { success: false, value: '' };
+    if (!expr || expr === '0') return { success: false, value: '' };
 
-      // Replace visual operators with JavaScript counterparts
-      let clean = expr
-        .replace(/×/g, '*')
-        .replace(/÷/g, '/')
-        .replace(/π/g, '(Math.PI)')
-        .replace(/\be\b/g, '(Math.E)');
+    // Incomplete trailing operator/bracket is silent during live typing
+    if (/[\+\-\*\/(\^×÷]$/.test(expr.trim())) {
+      return { success: false, value: '' };
+    }
 
-      // Check for division by zero: / 0 or / 0.0 with no following nonzero digit
-      if (/\/0(?!\.)|\/0\.0+(?![1-9])/.test(clean)) {
+    const res = evaluateSafeMath(expr, {
+      angleUnit: angle,
+      percentageMode: 'postfix',
+      logBase: '10',
+    });
+
+    if (!res.success) {
+      if (res.errorCode === 'DIV_ZERO') {
         return {
           success: false,
           value: '',
           error: lang === 'bn' ? 'শূন্য দিয়ে ভাগ করা যায় না' : 'Cannot divide by zero',
         };
       }
-
-      // Check if expression is incomplete
-      if (/[\+\-\*\/(\^]$/.test(clean.trim())) {
-        return { success: false, value: '' };
-      }
-
-      // Factorial: e.g. 5! or 10!
-      clean = clean.replace(/(\d+)!/g, 'factorial($1)');
-
-      // Power: x^y -> x**y
-      clean = clean.replace(/\^/g, '**');
-
-      // Trigonometric Functions
-      if (angle === 'deg') {
-        clean = clean.replace(/sin\(/g, 'Math.sin((Math.PI/180)*');
-        clean = clean.replace(/cos\(/g, 'Math.cos((Math.PI/180)*');
-        clean = clean.replace(/tan\(/g, 'Math.tan((Math.PI/180)*');
-        clean = clean.replace(/asin\(/g, '((180/Math.PI)*Math.asin(');
-        clean = clean.replace(/acos\(/g, '((180/Math.PI)*Math.acos(');
-        clean = clean.replace(/atan\(/g, '((180/Math.PI)*Math.atan(');
-      } else {
-        clean = clean.replace(/sin\(/g, 'Math.sin(');
-        clean = clean.replace(/cos\(/g, 'Math.cos(');
-        clean = clean.replace(/tan\(/g, 'Math.tan(');
-        clean = clean.replace(/asin\(/g, 'Math.asin(');
-        clean = clean.replace(/acos\(/g, 'Math.acos(');
-        clean = clean.replace(/atan\(/g, 'Math.atan(');
-      }
-
-      // Logarithmic & Roots
-      clean = clean.replace(/log\(/g, 'Math.log10(');
-      clean = clean.replace(/ln\(/g, 'Math.log(');
-      clean = clean.replace(/√\(/g, 'Math.sqrt(');
-      clean = clean.replace(/∛\(/g, 'Math.cbrt(');
-      clean = clean.replace(/abs\(/g, 'Math.abs(');
-
-      // Percentage: e.g. 50% -> (50/100)
-      clean = clean.replace(/(\d+(?:\.\d+)?)%/g, '($1/100)');
-
-      // Evaluate safely
-      const evalFn = new Function('factorial', `"use strict"; return (${clean});`);
-      const evaluated = evalFn(factorial);
-
-      if (Number.isNaN(evaluated) || !Number.isFinite(evaluated)) {
+      if (res.errorCode === 'MATH_ERROR' || res.errorCode === 'TOO_LONG' || res.errorCode === 'DEPTH_LIMIT') {
         return {
           success: false,
           value: '',
           error: lang === 'bn' ? 'অকার্যকর গাণিতিক মান' : 'Math error',
         };
       }
-
-      // Floating point cleanup to avoid 0.30000000000000004
-      const formatted = Math.round(evaluated * 1e10) / 1e10;
-      return { success: true, value: String(formatted) };
-    } catch {
       return { success: false, value: '' };
     }
+
+    // Floating point cleanup to avoid 0.30000000000000004
+    const formatted =
+      Math.abs(res.result) < 1e15
+        ? Math.round(res.result * 1e10) / 1e10
+        : res.result;
+    return { success: true, value: String(formatted) };
   };
 
   // Live preview evaluation

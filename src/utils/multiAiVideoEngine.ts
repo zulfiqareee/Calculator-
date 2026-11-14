@@ -32,10 +32,13 @@ export async function generateSmartScript(
   return executeWithSmartFallback<VideoScript>(
     'script_generation',
     {
-      // 1. Google Gemini 3.8 Flash Executor
+      // 1. Google Gemini 3.8 Flash Executor (Backend proxy first; optional BYOK fallback)
       gemini: async (_provider: AIProviderConfig, apiKey: string) => {
-        const ai = new GoogleGenAI({ apiKey });
-        const prompt = `You are a world-class viral video director and scriptwriter.
+        let parsed: any;
+
+        if (apiKey) {
+          const ai = new GoogleGenAI({ apiKey });
+          const prompt = `You are a world-class viral video director and scriptwriter.
 Generate a high-retention video script for YouTube Shorts / Facebook Reels / Landscape.
 Topic: "${topic}"
 Video Mode: ${mode === 'voiceless' ? 'VOICE-LESS (No narration speech, focus on punchy ON-SCREEN bold text and visual storytelling)' : 'VOICE NARRATED (High-engagement narration voiceover)'}
@@ -67,24 +70,39 @@ Return STRICT JSON:
   "totalEstimatedSeconds": ${durationSec}
 }`;
 
-        const res = await ai.models.generateContent({
-          model: 'gemini-3.8-flash',
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-            temperature: 0.7,
-          },
-        });
+          const res = await ai.models.generateContent({
+            model: 'gemini-3.8-flash',
+            contents: prompt,
+            config: {
+              responseMimeType: 'application/json',
+              temperature: 0.7,
+            },
+          });
 
-        const text = res.text?.trim() || '';
-        const clean = text.replace(/^```json/i, '').replace(/```$/i, '').trim();
-        const parsed = JSON.parse(clean);
+          const text = res.text?.trim() || '';
+          const clean = text.replace(/^```json/i, '').replace(/```$/i, '').trim();
+          parsed = JSON.parse(clean);
+        } else {
+          const proxyRes = await fetch('/api/ai/gemini', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              task: 'script_generation',
+              payload: { topic, mode, language, durationSec, style, customInstructions },
+            }),
+          });
+          const proxyData = await proxyRes.json().catch(() => null);
+          if (!proxyRes.ok || !proxyData?.success || !proxyData?.data) {
+            throw new Error(proxyData?.error || `Backend AI proxy HTTP ${proxyRes.status}`);
+          }
+          parsed = proxyData.data;
+        }
 
         return {
           topic: parsed.topic || topic,
           mode,
           hookOpening: parsed.hookOpening || (isBn ? 'আপনি কি জানেন এই সত্যটি?' : 'Did you know this?'),
-          scenes: parsed.scenes.map((s: any, idx: number) => ({
+          scenes: (parsed.scenes || []).map((s: any, idx: number) => ({
             id: `scene-${Date.now()}-${idx}`,
             sceneNumber: idx + 1,
             durationSec: s.durationSec || sceneDuration,
@@ -219,8 +237,10 @@ export async function generateSmartSEO(
     'seo_metadata',
     {
       gemini: async (_p, apiKey) => {
-        const ai = new GoogleGenAI({ apiKey });
-        const prompt = `Generate viral, high-CTR YouTube & Facebook SEO metadata for:
+        let parsed: any;
+        if (apiKey) {
+          const ai = new GoogleGenAI({ apiKey });
+          const prompt = `Generate viral, high-CTR YouTube & Facebook SEO metadata for:
 Topic: "${topic}"
 Script: "${scriptText.slice(0, 400)}"
 Language: ${isBn ? 'Bengali' : 'English'}
@@ -246,13 +266,28 @@ Strict JSON schema:
   }
 }`;
 
-        const res = await ai.models.generateContent({
-          model: 'gemini-3.8-flash',
-          contents: prompt,
-          config: { responseMimeType: 'application/json' },
-        });
+          const res = await ai.models.generateContent({
+            model: 'gemini-3.8-flash',
+            contents: prompt,
+            config: { responseMimeType: 'application/json' },
+          });
 
-        const parsed = JSON.parse(res.text?.trim() || '{}');
+          parsed = JSON.parse(res.text?.trim() || '{}');
+        } else {
+          const proxyRes = await fetch('/api/ai/gemini', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              task: 'seo_metadata',
+              payload: { topic, scriptText, language },
+            }),
+          });
+          const proxyData = await proxyRes.json().catch(() => null);
+          if (!proxyRes.ok || !proxyData?.success || !proxyData?.data) {
+            throw new Error(proxyData?.error || `Backend AI proxy HTTP ${proxyRes.status}`);
+          }
+          parsed = proxyData.data;
+        }
         return {
           ...parsed,
           generatedByProvider: 'gemini',
@@ -321,30 +356,18 @@ export async function generateGeminiTTSAudio(
   text: string,
   gender: 'male' | 'female'
 ): Promise<string | null> {
-  const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
-
   try {
-    const ai = new GoogleGenAI({ apiKey });
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash-lite-tts',
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: text.slice(0, 300), speechMetadata: { style: 'Clear, engaging, articulate narrator' } }],
-        },
-      ],
-      config: {
-        responseModalities: ['AUDIO'],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: gender === 'female' ? 'Kore' : 'Puck' },
-          },
-        },
-      },
+    const res = await fetch('/api/ai/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        task: 'tts',
+        payload: { text: text.slice(0, 300), gender },
+      }),
     });
-
-    return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || null;
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.audioData || null;
   } catch (err) {
     console.warn('[Gemini TTS] Error:', err);
     return null;

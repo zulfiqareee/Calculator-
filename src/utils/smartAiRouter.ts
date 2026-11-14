@@ -16,13 +16,6 @@ export function getEffectiveApiKey(provider: AIProviderConfig): string {
   if (provider.apiKey && provider.apiKey.trim()) {
     return provider.apiKey.trim();
   }
-  if (provider.id === 'gemini') {
-    return (
-      process.env.VITE_GEMINI_API_KEY ||
-      process.env.GEMINI_API_KEY ||
-      ''
-    );
-  }
   return '';
 }
 
@@ -45,9 +38,9 @@ export async function executeWithSmartFallback<T>(
       if (p.status === 'rate_limited' && p.rateLimitResetAt && p.rateLimitResetAt > now) {
         return false;
       }
-      // Check key requirement
+      // Check key requirement ('gemini' can also run via secure server-side proxy when no BYOK key is set)
       const effectiveKey = getEffectiveApiKey(p);
-      if (p.id !== 'local_offline' && p.id !== 'pollinations' && !effectiveKey) {
+      if (p.id !== 'local_offline' && p.id !== 'pollinations' && p.id !== 'gemini' && !effectiveKey) {
         return false;
       }
       return true;

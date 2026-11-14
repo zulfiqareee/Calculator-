@@ -72,18 +72,39 @@ export const AiProviderManagerModal: React.FC<Props> = ({ isOpen, onClose, lang 
           msg: isBn ? 'লোকাল ইঞ্জিন ১০০% প্রস্তুত ও সক্রিয় রয়েছে।' : 'Local engine is 100% ready & active.',
         });
       } else if (provider.id === 'gemini') {
-        const key = provider.apiKey?.trim() || process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-        if (!key) throw new Error('কোনো এপিআই কি পাওয়া যায়নি। আপনার কি প্রবেশ করান।');
-        const ai = new GoogleGenAI({ apiKey: key });
-        const res = await ai.models.generateContent({
-          model: 'gemini-3.8-flash',
-          contents: 'ping',
-        });
-        if (res.text) {
+        const key = provider.apiKey?.trim();
+        if (key) {
+          const ai = new GoogleGenAI({ apiKey: key });
+          const res = await ai.models.generateContent({
+            model: 'gemini-3.8-flash',
+            contents: 'ping',
+          });
+          if (res.text) {
+            setTestResult({
+              id: provider.id,
+              success: true,
+              msg: isBn ? 'গুগল জেমিনাই (BYOK) সংযুক্ত! ফ্রি টিয়ার কার্যকর।' : 'Google Gemini (BYOK) Connected!',
+            });
+          }
+        } else {
+          const res = await fetch('/api/ai/gemini', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task: 'ping' }),
+          });
+          const data = await res.json().catch(() => null);
+          if (!res.ok || !data?.success) {
+            throw new Error(
+              data?.error ||
+                (isBn
+                  ? 'সার্ভারে Gemini এপিআই কি কনফিগার করা নেই অথবা আপনার ব্যক্তিগত কি দিন।'
+                  : 'Backend Gemini service is not configured. Configure it on the server or enter your personal key.')
+            );
+          }
           setTestResult({
             id: provider.id,
             success: true,
-            msg: isBn ? 'গুগল জেমিনাই সংযুক্ত! ফ্রি টিয়ার কার্যকর।' : 'Google Gemini Connected! Free tier active.',
+            msg: isBn ? 'সার্ভার প্রক্সির মাধ্যমে গুগল জেমিনাই সংযুক্ত!' : 'Google Gemini Connected via secure server proxy!',
           });
         }
       } else if (provider.id === 'groq') {

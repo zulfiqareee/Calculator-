@@ -7,6 +7,59 @@ import {VitePWA} from 'vite-plugin-pwa';
 export default defineConfig(({ command }) => {
   return {
     plugins: [
+      {
+        name: 'dev-sandbox-ws-guard',
+        apply: 'serve',
+        transformIndexHtml(html) {
+          const devGuardScript = `<script>
+      (function() {
+        var NativeWebSocket = window.WebSocket;
+        if (NativeWebSocket) {
+          window.WebSocket = function(url, protocols) {
+            var urlStr = String(url || '');
+            var isViteHmr = protocols === 'vite-hmr' ||
+              (Array.isArray(protocols) && protocols.indexOf('vite-hmr') !== -1) ||
+              urlStr.indexOf('vite') !== -1 ||
+              urlStr.indexOf('@vite') !== -1;
+            if (isViteHmr) {
+              var dummy = new EventTarget();
+              dummy.CONNECTING = 0;
+              dummy.OPEN = 1;
+              dummy.CLOSING = 2;
+              dummy.CLOSED = 3;
+              dummy.readyState = 1;
+              dummy.url = urlStr;
+              dummy.protocol = 'vite-hmr';
+              dummy.bufferedAmount = 0;
+              dummy.extensions = '';
+              dummy.binaryType = 'blob';
+              dummy.send = function() {};
+              dummy.close = function() {};
+              dummy.addEventListener = EventTarget.prototype.addEventListener.bind(dummy);
+              dummy.removeEventListener = EventTarget.prototype.removeEventListener.bind(dummy);
+              dummy.dispatchEvent = EventTarget.prototype.dispatchEvent.bind(dummy);
+              setTimeout(function() {
+                try {
+                  var openEvt = new Event('open');
+                  if (typeof dummy.onopen === 'function') dummy.onopen(openEvt);
+                  dummy.dispatchEvent(openEvt);
+                } catch(e) {}
+              }, 10);
+              return dummy;
+            }
+            return new NativeWebSocket(url, protocols);
+          };
+          window.WebSocket.prototype = NativeWebSocket.prototype;
+          window.WebSocket.CONNECTING = 0;
+          window.WebSocket.OPEN = 1;
+          window.WebSocket.CLOSING = 2;
+          window.WebSocket.CLOSED = 3;
+        }
+      })();
+    </script>`;
+          return html.replace('<head>', `<head>\n    ${devGuardScript}`);
+        },
+      },
       react(),
       tailwindcss(),
       VitePWA({
@@ -65,8 +118,6 @@ export default defineConfig(({ command }) => {
       },
     },
     define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(process.env.GEMINI_API_KEY || ''),
-      'process.env.VITE_GEMINI_API_KEY': JSON.stringify(process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || ''),
       'process.env.APP_URL': JSON.stringify(process.env.APP_URL || ''),
     },
     build: {

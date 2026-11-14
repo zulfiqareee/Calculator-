@@ -1,4 +1,5 @@
 import { CustomTool } from '../types';
+import { evaluateSafeMath } from './safeMathParser';
 
 const STORAGE_KEY_CUSTOM_TOOLS = 'smart_utility_custom_tools_v1';
 const STORAGE_KEY_ADMIN_PIN = 'smart_utility_admin_pin_v1';
@@ -114,45 +115,26 @@ export function setAdminPin(pin: string): void {
 }
 
 /**
- * Safely evaluates a math expression with named variables
+ * Safely evaluates a math expression with named variables (zero eval / new Function)
  */
 export function evaluateCustomFormula(
   formula: string,
   variables: Record<string, number>
 ): { success: boolean; result: number; error?: string } {
-  try {
-    // Only allow alphanumeric variable names, Math.* functions, and math operators
-    const allowedNames = Object.keys(variables);
-    
-    // Create argument names and values
-    const argNames = allowedNames;
-    const argValues = allowedNames.map((k) => variables[k]);
+  const evaluated = evaluateSafeMath(formula, {
+    variables,
+    angleUnit: 'rad',
+    percentageMode: 'modulo',
+    logBase: 'e',
+  });
 
-    // Sanitization: verify formula does not contain malicious tokens
-    if (/[;{}[\]`'"\\]/.test(formula) || formula.includes('window') || formula.includes('document') || formula.includes('eval') || formula.includes('Function') || formula.includes('fetch')) {
-      return { success: false, result: 0, error: 'Illegal character or keyword in formula' };
-    }
-
-    // Replace common shortcuts like sqrt() with Math.sqrt()
-    const sanitizedFormula = formula
-      .replace(/\bsqrt\(/gi, 'Math.sqrt(')
-      .replace(/\bpow\(/gi, 'Math.pow(')
-      .replace(/\bPI\b/gi, 'Math.PI')
-      .replace(/\babs\(/gi, 'Math.abs(')
-      .replace(/\bround\(/gi, 'Math.round(')
-      .replace(/\bceil\(/gi, 'Math.ceil(')
-      .replace(/\bfloor\(/gi, 'Math.floor(');
-
-    // Evaluate
-    const fn = new Function(...argNames, `return (${sanitizedFormula});`);
-    const val = fn(...argValues);
-
-    if (typeof val !== 'number' || isNaN(val) || !isFinite(val)) {
-      return { success: false, result: 0, error: 'Math error: result is NaN or infinite' };
-    }
-
-    return { success: true, result: val };
-  } catch (err: any) {
-    return { success: false, result: 0, error: err?.message || 'Formula evaluation failed' };
+  if (!evaluated.success) {
+    return {
+      success: false,
+      result: 0,
+      error: evaluated.error || 'Formula evaluation failed',
+    };
   }
+
+  return { success: true, result: evaluated.result };
 }
