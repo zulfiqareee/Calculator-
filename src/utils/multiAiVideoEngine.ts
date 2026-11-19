@@ -12,6 +12,14 @@ import {
   AIProviderConfig,
 } from '../types/multiAi';
 import { executeWithSmartFallback } from './smartAiRouter';
+import { getAdminAuthHeaders } from './adminAuth';
+import { getTallyCloudAuthHeaders } from './tallySecurity';
+
+function getAiProxyAuthHeaders(): Record<string, string> {
+  const adminHeaders = getAdminAuthHeaders();
+  if (adminHeaders.Authorization) return adminHeaders;
+  return getTallyCloudAuthHeaders();
+}
 
 // ==========================================
 // 1. Script Generation with Multi-AI Routing
@@ -85,7 +93,10 @@ Return STRICT JSON:
         } else {
           const proxyRes = await fetch('/api/ai/gemini', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              ...getAiProxyAuthHeaders(),
+            },
             body: JSON.stringify({
               task: 'script_generation',
               payload: { topic, mode, language, durationSec, style, customInstructions },
@@ -276,7 +287,10 @@ Strict JSON schema:
         } else {
           const proxyRes = await fetch('/api/ai/gemini', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              ...getAiProxyAuthHeaders(),
+            },
             body: JSON.stringify({
               task: 'seo_metadata',
               payload: { topic, scriptText, language },
@@ -359,7 +373,10 @@ export async function generateGeminiTTSAudio(
   try {
     const res = await fetch('/api/ai/gemini', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAiProxyAuthHeaders(),
+      },
       body: JSON.stringify({
         task: 'tts',
         payload: { text: text.slice(0, 300), gender },

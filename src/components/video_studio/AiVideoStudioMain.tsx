@@ -36,6 +36,12 @@ import { AiProviderManagerModal } from '../admin/AiProviderManagerModal';
 import { SocialAccountsModal } from './SocialAccountsModal';
 import { PublishingModal } from './PublishingModal';
 import { FreeAiVideoPlatformsHub } from './FreeAiVideoPlatformsHub';
+import {
+  getAdminSession,
+  getAdminToken,
+  loginAdmin,
+  verifyAdminSessionWithServer,
+} from '../../utils/adminAuth';
 
 interface AiVideoStudioMainProps {
   onClose: () => void;
@@ -43,25 +49,17 @@ interface AiVideoStudioMainProps {
   isSuperAdmin?: boolean;
 }
 
-const AUTHORIZED_ADMIN_EMAIL = 'zulfiqar1hasan@gmail.com';
-const ADMIN_STUDIO_PASS = 'zulfiqar2026';
-
 export const AiVideoStudioMain: React.FC<AiVideoStudioMainProps> = ({
   onClose,
-  currentUserEmail,
-  isSuperAdmin,
 }) => {
-  // Authentication State
+  // Authentication State (must hold a valid server-issued Admin token)
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    // If explicitly authenticated via super admin email
-    if (currentUserEmail === AUTHORIZED_ADMIN_EMAIL || isSuperAdmin) {
-      return true;
-    }
-    const stored = sessionStorage.getItem('smart_ai_studio_auth');
-    return stored === 'authenticated';
+    return Boolean(getAdminSession() && getAdminToken());
   });
+  const [emailInput, setEmailInput] = useState<string>('');
   const [passInput, setPassInput] = useState<string>('');
   const [authError, setAuthError] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
 
   // Tab State
   const [activeTab, setActiveTab] = useState<'projects' | 'history' | 'social' | 'hub'>('projects');
@@ -81,6 +79,14 @@ export const AiVideoStudioMain: React.FC<AiVideoStudioMainProps> = ({
   const [history, setHistory] = useState<PublishingRecord[]>([]);
 
   useEffect(() => {
+    if (isAuthenticated) {
+      verifyAdminSessionWithServer().then((ok) => {
+        if (!ok) setIsAuthenticated(false);
+      });
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
     loadData();
   }, [isWizardOpen, publishingProject]);
 
@@ -89,14 +95,18 @@ export const AiVideoStudioMain: React.FC<AiVideoStudioMainProps> = ({
     setHistory(getStoredPublishingRecords());
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (passInput === ADMIN_STUDIO_PASS) {
+    setAuthError(null);
+    setIsLoggingIn(true);
+    const res = await loginAdmin(emailInput, passInput);
+    setIsLoggingIn(false);
+    if (res.success) {
       setIsAuthenticated(true);
-      sessionStorage.setItem('smart_ai_studio_auth', 'authenticated');
+      setPassInput('');
       setAuthError(null);
     } else {
-      setAuthError('ভুল পাসওয়ার্ড! শুধুমাত্র অথোরাইজড অ্যাপ ওনার এই স্টুডিওতে এক্সেস করতে পারেন।');
+      setAuthError(res.error || 'ভুল ইমেইল বা পাসওয়ার্ড! শুধুমাত্র অথোরাইজড অ্যাপ ওনার এই স্টুডিওতে এক্সেস করতে পারেন।');
     }
   };
 
@@ -128,6 +138,19 @@ export const AiVideoStudioMain: React.FC<AiVideoStudioMainProps> = ({
           <form onSubmit={handleLogin} className="w-full flex flex-col gap-4">
             <div className="text-left">
               <label className="text-xs font-semibold text-slate-300 mb-1.5 block">
+                অ্যাডমিন ইমেইল
+              </label>
+              <input
+                type="email"
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                placeholder="অথোরাইজড ইমেইল লিখুন"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <div className="text-left">
+              <label className="text-xs font-semibold text-slate-300 mb-1.5 block">
                 অ্যাডমিন ভেরিফিকেশন পাসওয়ার্ড
               </label>
               <input
@@ -145,9 +168,10 @@ export const AiVideoStudioMain: React.FC<AiVideoStudioMainProps> = ({
 
             <button
               type="submit"
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold text-xs shadow-lg hover:brightness-110 transition"
+              disabled={isLoggingIn}
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 disabled:opacity-60 text-white font-bold text-xs shadow-lg hover:brightness-110 transition"
             >
-              আনলক করুন
+              {isLoggingIn ? 'যাচাই হচ্ছে...' : 'আনলক করুন'}
             </button>
           </form>
 

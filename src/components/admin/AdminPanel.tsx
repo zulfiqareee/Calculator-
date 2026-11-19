@@ -59,14 +59,17 @@ import {
   saveManualFirebaseConfig,
   syncAllLocalTipsToFirestore,
   fetchHealthTipsFromFirestore,
+  signInFirebaseAdmin,
+  signOutFirebaseAdmin,
 } from '../../utils/healthStorage';
 import {
   AUTHORIZED_ADMIN_EMAIL,
   getAdminSession,
-  verifyAdminCredentials,
+  loginAdmin,
+  fetchAdminStatus,
+  verifyAdminSessionWithServer,
   clearAdminSession,
-  getAdminPassword,
-  setAdminPassword,
+  changeAdminPasswordOnServer,
 } from '../../utils/adminAuth';
 import {
   getStoredCustomTools,
@@ -109,11 +112,22 @@ type AdminTab = 'health' | 'books' | 'quran' | 'notes' | 'tools' | 'backup' | 's
 
 export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools, onOpenVideoStudio }) => {
   // Auth state
-  const [emailInput, setEmailInput] = useState<string>('zulfiqar1hasan@gmail.com');
+  const [emailInput, setEmailInput] = useState<string>('');
   const [passInput, setPassInput] = useState<string>('');
   const [session, setSession] = useState(getAdminSession());
   const [authError, setAuthError] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
+  const [serverAuthConfigured, setServerAuthConfigured] = useState<boolean | null>(null);
   const [showAiProviderModal, setShowAiProviderModal] = useState<boolean>(false);
+
+  useEffect(() => {
+    fetchAdminStatus().then((st) => setServerAuthConfigured(st.configured));
+    if (getAdminSession()) {
+      verifyAdminSessionWithServer().then((ok) => {
+        if (!ok) setSession(null);
+      });
+    }
+  }, []);
 
   // Active Admin Sub-tab (default to health when entering admin to manage CMS)
   const [activeTab, setActiveTab] = useState<AdminTab>('health');
@@ -174,6 +188,9 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools, 
   const [firebaseStatus, setFirebaseStatus] = useState(getFirebaseStatus());
   const [fbApiKey, setFbApiKey] = useState<string>(getActiveFirebaseConfig()?.apiKey || '');
   const [fbProjectId, setFbProjectId] = useState<string>(getActiveFirebaseConfig()?.projectId || '');
+  const [fbAuthEmail, setFbAuthEmail] = useState<string>('');
+  const [fbAuthPass, setFbAuthPass] = useState<string>('');
+  const [fbAuthMsg, setFbAuthMsg] = useState<string | null>(null);
   const [isSyncingFirebase, setIsSyncingFirebase] = useState<boolean>(false);
   const [firebaseSyncResult, setFirebaseSyncResult] = useState<string | null>(null);
   const [showFirebaseConfigModal, setShowFirebaseConfigModal] = useState<boolean>(false);
@@ -251,14 +268,18 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools, 
   // ==========================================
   // SECURITY & BACKUP
   // ==========================================
+  const [currentPass, setCurrentPass] = useState<string>('');
   const [newPass, setNewPass] = useState<string>('');
-  const [passMessage, setPassMessage] = useState<string | null>(null);
+  const [passMessage, setPassMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [copySuccess, setCopySuccess] = useState<boolean>(false);
 
-  // Login handler
-  const handleLogin = (e: React.FormEvent) => {
+  // Login handler (server-verified scrypt + HMAC session token)
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = verifyAdminCredentials(emailInput, passInput);
+    setAuthError(null);
+    setIsLoggingIn(true);
+    const res = await loginAdmin(emailInput, passInput);
+    setIsLoggingIn(false);
     if (res.success) {
       setSession(getAdminSession());
       setAuthError(null);
@@ -606,6 +627,12 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools, 
               </div>
             </div>
 
+            {serverAuthConfigured === false && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-600 dark:text-amber-300 text-[11px] font-semibold leading-relaxed text-left">
+                সার্ভার এনভায়রনমেন্টে এখনো <code>ADMIN_PASSWORD</code> সেট করা হয়নি। নিরাপদ অ্যাক্সেসের জন্য সার্ভারের <code>.env</code> বা Secrets-এ <code>ADMIN_EMAIL</code> ও <code>ADMIN_PASSWORD</code> যোগ করুন।
+              </div>
+            )}
+
             {authError && (
               <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-500 text-xs font-semibold leading-relaxed text-left flex items-start gap-1.5">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -615,10 +642,11 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools, 
 
             <button
               type="submit"
-              className="w-full h-11 bg-[#0B63F6] hover:bg-blue-600 text-white font-bold rounded-xl transition active:scale-98 shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 text-xs mt-1"
+              disabled={isLoggingIn}
+              className="w-full h-11 bg-[#0B63F6] hover:bg-blue-600 disabled:opacity-60 text-white font-bold rounded-xl transition active:scale-98 shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 text-xs mt-1"
             >
               <Unlock className="w-4 h-4" />
-              <span>লগইন করে প্রবেশ করুন</span>
+              <span>{isLoggingIn ? 'যাচাই করা হচ্ছে...' : 'লগইন করে প্রবেশ করুন'}</span>
             </button>
           </form>
 
@@ -845,7 +873,7 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools, 
 
                   <div>
                     <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                      Firebase Web API Key
+                      Firebase Web API Key (Public App Identifier)
                     </label>
                     <input
                       type="text"
@@ -855,6 +883,74 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools, 
                       className="w-full mt-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
                     />
                   </div>
+
+                  {/* Firebase Auth Sign-In for Authenticated Firestore Admin Writes */}
+                  {firebaseStatus.isConfigured && (
+                    <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                          Firebase Auth অ্যাডমিন সেশন
+                        </span>
+                        {firebaseStatus.authEmail ? (
+                          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                            {firebaseStatus.authEmail}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-amber-600">লগইন নেই</span>
+                        )}
+                      </div>
+                      {firebaseStatus.authEmail ? (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await signOutFirebaseAdmin();
+                            setFirebaseStatus(getFirebaseStatus());
+                            setFbAuthMsg('Firebase Auth থেকে সাইন-আউট হয়েছে।');
+                          }}
+                          className="w-full py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-rose-500 text-xs font-bold"
+                        >
+                          Firebase Auth লগআউট
+                        </button>
+                      ) : (
+                        <div className="space-y-2">
+                          <input
+                            type="email"
+                            value={fbAuthEmail}
+                            onChange={(e) => setFbAuthEmail(e.target.value)}
+                            placeholder="Firebase Auth ইমেইল"
+                            className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
+                          />
+                          <div className="flex gap-2">
+                            <input
+                              type="password"
+                              value={fbAuthPass}
+                              onChange={(e) => setFbAuthPass(e.target.value)}
+                              placeholder="Firebase Auth পাসওয়ার্ড"
+                              className="flex-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
+                            />
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setFbAuthMsg(null);
+                                const r = await signInFirebaseAdmin(fbAuthEmail, fbAuthPass);
+                                setFirebaseStatus(getFirebaseStatus());
+                                if (r.success) {
+                                  setFbAuthPass('');
+                                  setFbAuthMsg(`Firebase Auth সফল (${r.email})`);
+                                } else {
+                                  setFbAuthMsg(r.error || 'সাইন-ইন ব্যর্থ হয়েছে');
+                                }
+                              }}
+                              className="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold shrink-0"
+                            >
+                              সাইন-ইন
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {fbAuthMsg && <p className="text-[11px] font-semibold text-blue-600 dark:text-blue-400">{fbAuthMsg}</p>}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
@@ -3469,37 +3565,56 @@ export const AdminPanel: React.FC<Props> = ({ lang, onOpenTool, onRefreshTools, 
       {activeTab === 'security' && (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col gap-3 text-left">
           <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-            অ্যাডমিন পাসওয়ার্ড পরিবর্তন
+            অ্যাডমিন পাসওয়ার্ড পরিবর্তন (সার্ভার-ভিত্তিক)
           </h3>
           <p className="text-xs text-slate-500">
-            লগইন করার জন্য আপনার নতুন একটি শক্তিশালী সিক্রেট পাসওয়ার্ড সেট করুন।
+            সার্ভারে পাসওয়ার্ড পরিবর্তন করতে বর্তমান পাসওয়ার্ড যাচাই করে কমপক্ষে ৮ অক্ষরের শক্তিশালী নতুন পাসওয়ার্ড দিন।
           </p>
 
-          <div className="flex gap-2 mt-1">
+          <div className="flex flex-col gap-2 mt-1">
             <input
               type="password"
-              value={newPass}
-              onChange={(e) => setNewPass(e.target.value)}
-              placeholder="নতুন পাসওয়ার্ড লিখুন"
-              className="flex-1 h-10 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 text-xs font-bold"
+              value={currentPass}
+              onChange={(e) => setCurrentPass(e.target.value)}
+              placeholder="বর্তমান পাসওয়ার্ড লিখুন"
+              className="w-full h-10 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 text-xs font-bold"
             />
-            <button
-              onClick={() => {
-                if (newPass.trim().length >= 4) {
-                  setAdminPassword(newPass.trim());
-                  setPassMessage('পাসওয়ার্ড সফলভাবে পরিবর্তিত হয়েছে!');
-                  setNewPass('');
-                  setTimeout(() => setPassMessage(null), 2500);
-                } else {
-                  alert('পাসওয়ার্ড কমপক্ষে ৪ অক্ষরের হতে হবে।');
-                }
-              }}
-              className="px-4 h-10 bg-[#0B63F6] text-white rounded-xl text-xs font-bold shrink-0"
-            >
-              সংরক্ষণ
-            </button>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={newPass}
+                onChange={(e) => setNewPass(e.target.value)}
+                placeholder="নতুন পাসওয়ার্ড লিখুন (কমপক্ষে ৮ অক্ষর)"
+                className="flex-1 h-10 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 text-xs font-bold"
+              />
+              <button
+                onClick={async () => {
+                  setPassMessage(null);
+                  if (newPass.trim().length < 8) {
+                    setPassMessage({ ok: false, text: 'নতুন পাসওয়ার্ড কমপক্ষে ৮ অক্ষরের হতে হবে।' });
+                    return;
+                  }
+                  const res = await changeAdminPasswordOnServer(currentPass, newPass.trim());
+                  if (res.success) {
+                    setPassMessage({ ok: true, text: res.message || 'পাসওয়ার্ড সফলভাবে পরিবর্তিত হয়েছে!' });
+                    setCurrentPass('');
+                    setNewPass('');
+                    setTimeout(() => setPassMessage(null), 3500);
+                  } else {
+                    setPassMessage({ ok: false, text: res.error || 'পাসওয়ার্ড পরিবর্তন ব্যর্থ হয়েছে।' });
+                  }
+                }}
+                className="px-4 h-10 bg-[#0B63F6] text-white rounded-xl text-xs font-bold shrink-0"
+              >
+                সংরক্ষণ
+              </button>
+            </div>
           </div>
-          {passMessage && <span className="text-xs text-emerald-500 font-bold">{passMessage}</span>}
+          {passMessage && (
+            <span className={`text-xs font-bold ${passMessage.ok ? 'text-emerald-500' : 'text-rose-500'}`}>
+              {passMessage.text}
+            </span>
+          )}
         </div>
       )}
 

@@ -60,13 +60,19 @@ export const AdMobManager: React.FC<Props> = ({ lang }) => {
               }`}
             />
             {config.isTestMode
-              ? (lang === 'bn' ? 'টেস্ট মোড সক্রিয়' : 'Test Mode Active')
-              : (lang === 'bn' ? 'প্রোডাকশন মোড' : 'Production Mode')}
+              ? (lang === 'bn' ? 'টেস্ট / প্রিভিউ মোড' : 'Test / Preview Mode')
+              : (lang === 'bn' ? 'প্রোডাকশন আইডি সংরক্ষিত (নেটিভ SDK প্রয়োজন)' : 'Production ID Saved (Requires Native SDK)')}
           </span>
           <span className="text-[11px] bg-white/10 px-2.5 py-1 rounded-full font-mono">
-            v1.0.0 Ready
+            Pre-SDK Config
           </span>
         </div>
+      </div>
+
+      <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-200 text-xs leading-relaxed">
+        {lang === 'bn'
+          ? 'নোট: এই অ্যাপে এখনো নেটিভ Google AdMob SDK (@capacitor-community/admob) ও GDPR/UMP কনসেন্ট ইনস্টল করা হয়নি। লাইভ বিজ্ঞাপন চালানোর আগে ওই প্লাগইন ইনস্টল ও AndroidManifest-এ আপনার App ID যুক্ত করতে হবে।'
+          : 'Note: The native Google AdMob SDK (@capacitor-community/admob) and UMP consent flow are not bundled yet. Install the plugin and configure AndroidManifest.xml before serving real ads.'}
       </div>
 
       {/* Step by Step Guide */}

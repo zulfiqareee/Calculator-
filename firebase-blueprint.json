@@ -1,0 +1,70 @@
+{
+  "entities": {
+    "HealthTipItem": {
+      "title": "HealthTipItem",
+      "description": "Published or draft health & wellness article managed by Admin CMS",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "category": { "type": "string" },
+        "titleBn": { "type": "string" },
+        "titleEn": { "type": "string" },
+        "summaryBn": { "type": "string" },
+        "summaryEn": { "type": "string" },
+        "descBn": { "type": "string" },
+        "descEn": { "type": "string" },
+        "isPublished": { "type": "boolean" },
+        "isFeatured": { "type": "boolean" },
+        "isPopular": { "type": "boolean" }
+      },
+      "required": ["id", "category", "titleBn", "titleEn"]
+    },
+    "HealthCategoryItem": {
+      "title": "HealthCategoryItem",
+      "description": "Health article category metadata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nameBn": { "type": "string" },
+        "nameEn": { "type": "string" },
+        "icon": { "type": "string" },
+        "descriptionBn": { "type": "string" },
+        "descriptionEn": { "type": "string" },
+        "order": { "type": "number" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["id", "nameBn", "nameEn"]
+    },
+    "TallyBackup": {
+      "title": "TallyBackup",
+      "description": "Per-user isolated Tally Khata backup record",
+      "type": "object",
+      "properties": {
+        "ownerUid": { "type": "string" },
+        "syncedAt": { "type": "number" }
+      },
+      "required": ["ownerUid", "syncedAt"]
+    }
+  },
+  "auth": {
+    "providers": ["email"]
+  },
+  "firestore": {
+    "/health_tips/{tipId}": {
+      "schema": { "$ref": "#/entities/HealthTipItem" },
+      "description": "Publicly readable published health tips; Admin-only write access."
+    },
+    "/health_articles/{tipId}": {
+      "schema": { "$ref": "#/entities/HealthTipItem" },
+      "description": "Mirrored health article documents; Admin-only write access."
+    },
+    "/health_categories/{catId}": {
+      "schema": { "$ref": "#/entities/HealthCategoryItem" },
+      "description": "Active health categories; Admin-only write access."
+    },
+    "/users/{userId}/tally_backups/{backupId}": {
+      "schema": { "$ref": "#/entities/TallyBackup" },
+      "description": "Private user-scoped Tally Khata backups."
+    }
+  }
+}

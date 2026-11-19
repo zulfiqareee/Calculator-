@@ -47,7 +47,19 @@ import {
 } from 'lucide-react';
 import { Language } from '../../types';
 import { CustomerLedgerDetailView } from './CustomerLedgerDetailView';
-import { PinSecurityLock, PIN_ENABLED_KEY, PIN_STORAGE_KEY } from './PinSecurityLock';
+import { PinSecurityLock, PIN_ENABLED_KEY } from './PinSecurityLock';
+import {
+  hasConfiguredPin,
+  saveHashedTallyPin,
+  clearTallyPin,
+  getTallyCloudAccount,
+  getTallyCloudToken,
+  getTallyCloudAuthHeaders,
+  registerTallyCloudAccount,
+  loginTallyCloudAccount,
+  clearTallyCloudSession,
+  TallyCloudAccount,
+} from '../../utils/tallySecurity';
 import {
   TallyStockAndProfit,
   ProductItem,
@@ -236,15 +248,24 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
   // Navigation tab inside Tally Khata
   const [activeTab, setActiveTab] = useState<'dashboard' | 'customers' | 'stock' | 'profit' | 'cashbook' | 'voucher' | 'reports' | 'settings'>('dashboard');
 
-  // Security PIN Lock State (Disabled/Unlocked by default)
+  // Security PIN Lock State (Locks on open when user enabled a custom PIN)
   const [isPinEnabled, setIsPinEnabled] = useState<boolean>(() => {
-    return localStorage.getItem(PIN_ENABLED_KEY) === 'true';
+    return localStorage.getItem(PIN_ENABLED_KEY) === 'true' && hasConfiguredPin();
   });
-  const [isLocked, setIsLocked] = useState<boolean>(false);
-  const [pinCodeInput, setPinCodeInput] = useState<string>(() => {
-    return localStorage.getItem(PIN_STORAGE_KEY) || '1234';
+  const [isLocked, setIsLocked] = useState<boolean>(() => {
+    return localStorage.getItem(PIN_ENABLED_KEY) === 'true' && hasConfiguredPin();
   });
+  const [pinCodeInput, setPinCodeInput] = useState<string>('');
   const [pinChangeSuccess, setPinChangeSuccess] = useState<boolean>(false);
+
+  // Per-User Cloud Sync Account State
+  const [cloudAccount, setCloudAccount] = useState<TallyCloudAccount | null>(() => getTallyCloudAccount());
+  const [showCloudAuthModal, setShowCloudAuthModal] = useState<boolean>(false);
+  const [cloudAuthMode, setCloudAuthMode] = useState<'login' | 'register'>('login');
+  const [cloudAccountIdInput, setCloudAccountIdInput] = useState<string>('');
+  const [cloudPasscodeInput, setCloudPasscodeInput] = useState<string>('');
+  const [cloudAuthError, setCloudAuthError] = useState<string | null>(null);
+  const [isCloudAuthLoading, setIsCloudAuthLoading] = useState<boolean>(false);
 
   // Shop Profile state
   const [shop, setShop] = useState<ShopProfile>(() => {
@@ -400,10 +421,19 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
     localStorage.setItem('smarthub_tally_transactions', JSON.stringify(transactions));
   }, [transactions]);
 
-  // Cloud Sync to server
-  const handleServerSync = async () => {
+  // Cloud Sync to server (requires per-user isolated cloud account; never hits shared global file)
+  const handleServerSync = async (isExplicitAction: boolean | unknown = false) => {
+    const explicit = isExplicitAction === true;
+    const token = getTallyCloudToken();
+    if (!token) {
+      if (explicit) {
+        setCloudAuthError(null);
+        setShowCloudAuthModal(true);
+      }
+      return;
+    }
     setSyncStatus('syncing');
-    setSyncMessage('সার্ভারে ব্যাকআপ ও সিঙ্ক হচ্ছে...');
+    setSyncMessage('আপনার সুরক্ষিত ক্লাউড অ্যাকাউন্টে ব্যাকআপ হচ্ছে...');
     try {
       const payload = {
         shop,
@@ -414,9 +444,19 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
       };
       const response = await fetch('/api/tally/sync', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...getTallyCloudAuthHeaders(),
+        },
         body: JSON.stringify(payload),
       });
+
+      if (response.status === 401) {
+        clearTallyCloudSession();
+        setCloudAccount(null);
+        if (explicit) setShowCloudAuthModal(true);
+        throw new Error('ক্লাউড সেশন মেয়াদোত্তীর্ণ হয়েছে');
+      }
 
       if (!response.ok) {
         throw new Error(`Server returned HTTP ${response.status}`);
@@ -434,12 +474,28 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
     }
   };
 
-  // Restore from server
+  // Restore from server (per-user isolated backup)
   const handleRestoreFromServer = async () => {
-    if (!window.confirm('আপনি কি সার্ভার থেকে ব্যাকআপ রিস্টোর করতে চান?')) return;
+    const token = getTallyCloudToken();
+    if (!token) {
+      setCloudAuthError(null);
+      setShowCloudAuthModal(true);
+      return;
+    }
+    if (!window.confirm('আপনি কি আপনার ক্লাউড অ্যাকাউন্ট থেকে ব্যাকআপ রিস্টোর করতে চান?')) return;
     setSyncStatus('syncing');
     try {
-      const response = await fetch('/api/tally/sync');
+      const response = await fetch('/api/tally/sync', {
+        headers: {
+          ...getTallyCloudAuthHeaders(),
+        },
+      });
+      if (response.status === 401) {
+        clearTallyCloudSession();
+        setCloudAccount(null);
+        setShowCloudAuthModal(true);
+        return;
+      }
       const resData = await response.json();
       if (resData.success && resData.data) {
         if (resData.data.shop) setShop(resData.data.shop);
@@ -450,10 +506,10 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
           saveStoredProducts(resData.data.products);
         }
         setSyncStatus('synced');
-        setSyncMessage('সার্ভার থেকে সফলভাবে রিস্টোর সম্পন্ন হয়েছে!');
+        setSyncMessage('আপনার ক্লাউড অ্যাকাউন্ট থেকে সফলভাবে রিস্টোর সম্পন্ন হয়েছে!');
       } else {
         setSyncStatus('error');
-        setSyncMessage('সার্ভারে কোনো ব্যাকআপ ফাইল পাওয়া যায়নি।');
+        setSyncMessage('এই অ্যাকাউন্টে এখনো কোনো ব্যাকআপ ফাইল পাওয়া যায়নি।');
       }
       setTimeout(() => setSyncStatus('idle'), 4000);
     } catch (err) {
@@ -961,13 +1017,13 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
               {/* Cloud Server Sync Button */}
               <button
                 type="button"
-                onClick={handleServerSync}
+                onClick={() => handleServerSync(true)}
                 disabled={syncStatus === 'syncing'}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/30 hover:bg-emerald-500/50 border border-emerald-400/40 text-xs font-semibold text-emerald-200 transition cursor-pointer"
-                title="সার্ভারে ক্লাউড সিঙ্ক করুন"
+                title={cloudAccount ? `সিঙ্ক (${cloudAccount.accountId})` : 'ক্লাউড অ্যাকাউন্ট দিয়ে সিঙ্ক করুন'}
               >
                 <Cloud className={`w-3.5 h-3.5 ${syncStatus === 'syncing' ? 'animate-bounce' : ''}`} />
-                <span>{syncStatus === 'syncing' ? 'সিঙ্ক...' : 'সার্ভার সিঙ্ক'}</span>
+                <span>{syncStatus === 'syncing' ? 'সিঙ্ক...' : cloudAccount ? 'সার্ভার সিঙ্ক' : 'ক্লাউড সিঙ্ক'}</span>
               </button>
             </div>
           </div>
@@ -2174,16 +2230,23 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
                   </div>
                   <div>
                     <h4 className="font-bold text-slate-900 dark:text-white">৪-ডিজিট সিকিউরিটি পিন লক</h4>
-                    <p className="text-[11px] text-slate-500">দোকানের গোপনীয় হিসাব রক্ষায় পিন কোড সেট করুন</p>
+                    <p className="text-[11px] text-slate-500">দোকানের হিসাব লক রাখতে নিজস্ব ৪-ডিজিট পিন সেট করুন (SHA-256 হ্যাশড)</p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => {
-                    const next = !isPinEnabled;
-                    setIsPinEnabled(next);
-                    localStorage.setItem(PIN_ENABLED_KEY, next ? 'true' : 'false');
                     tallySounds.playClickSound();
+                    if (isPinEnabled) {
+                      clearTallyPin();
+                      setIsPinEnabled(false);
+                      setPinCodeInput('');
+                    } else {
+                      setIsPinEnabled(true);
+                      if (hasConfiguredPin()) {
+                        localStorage.setItem(PIN_ENABLED_KEY, 'true');
+                      }
+                    }
                   }}
                   className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
                     isPinEnabled ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
@@ -2198,7 +2261,7 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
               {isPinEnabled && (
                 <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex flex-col gap-2">
                   <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
-                    নতুন ৪-ডিজিট পিন কোড:
+                    {hasConfiguredPin() ? 'নতুন ৪-ডিজিট পিন কোড পরিবর্তন করুন:' : 'প্রথমবার ৪-ডিজিট পিন কোড সেট করুন:'}
                   </label>
                   <div className="flex items-center gap-2">
                     <input
@@ -2206,19 +2269,23 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
                       maxLength={4}
                       value={pinCodeInput}
                       onChange={(e) => setPinCodeInput(e.target.value.replace(/\D/g, ''))}
-                      placeholder="১২৩৪"
+                      placeholder="••••"
                       className="w-32 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-center text-sm font-black tracking-widest text-slate-900 dark:text-white"
                     />
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
                         if (pinCodeInput.length === 4) {
-                          localStorage.setItem(PIN_STORAGE_KEY, pinCodeInput);
-                          tallySounds.playSuccessChime();
-                          setPinChangeSuccess(true);
-                          setTimeout(() => setPinChangeSuccess(false), 3000);
+                          const ok = await saveHashedTallyPin(pinCodeInput);
+                          if (ok) {
+                            localStorage.setItem(PIN_ENABLED_KEY, 'true');
+                            setPinCodeInput('');
+                            tallySounds.playSuccessChime();
+                            setPinChangeSuccess(true);
+                            setTimeout(() => setPinChangeSuccess(false), 3000);
+                          }
                         } else {
-                          alert('অনুগ্রহ করে ৪ ডিজিটের পিন লিখুন।');
+                          alert('অনুগ্রহ করে ৪ ডিজিটের নিজস্ব পিন লিখুন।');
                         }
                       }}
                       className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer"
@@ -2228,11 +2295,46 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
                   </div>
                   {pinChangeSuccess && (
                     <span className="text-[11px] text-emerald-600 font-bold flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> পিন সফলভাবে আপডেট হয়েছে!
+                      <CheckCircle2 className="w-3.5 h-3.5" /> পিন নিরাপদে সংরক্ষিত হয়েছে!
                     </span>
                   )}
                 </div>
               )}
+
+              {/* Cloud Sync Account Card */}
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs">
+                  <span className="font-bold text-slate-800 dark:text-slate-200 block">
+                    ক্লাউড সিঙ্ক অ্যাকাউন্ট (বিচ্ছিন্ন ডেটা সুরক্ষা)
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    {cloudAccount ? `লগইন: ${cloudAccount.accountId}` : 'অফলাইন মোড (সার্ভারে ব্যাকআপ নিতে লগইন করুন)'}
+                  </span>
+                </div>
+                {cloudAccount ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearTallyCloudSession();
+                      setCloudAccount(null);
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-rose-500/10 text-rose-500 font-bold text-xs cursor-pointer"
+                  >
+                    ক্লাউড লগআউট
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCloudAuthError(null);
+                      setShowCloudAuthModal(true);
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white font-bold text-xs cursor-pointer"
+                  >
+                    ক্লাউড লগইন / অ্যাকাউন্ট
+                  </button>
+                )}
+              </div>
 
               {/* Sound Test Button */}
               <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
@@ -2806,6 +2908,147 @@ export const TallyKhataView: React.FC<Props> = ({ lang }) => {
             setShowVoucherModal(true);
           }}
         />
+      )}
+
+      {/* ================= MODAL: TALLY CLOUD SYNC AUTHENTICATION ================= */}
+      {showCloudAuthModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 text-emerald-600 flex items-center justify-center">
+                  <Cloud className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">
+                    টালি খাতা ক্লাউড সিঙ্ক অ্যাকাউন্ট
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    প্রতিটি দোকানের ডেটা আলাদা অ্যাকাউন্টে সুরক্ষিত থাকে
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCloudAuthModal(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setCloudAuthMode('login');
+                  setCloudAuthError(null);
+                }}
+                className={`py-2 rounded-lg text-xs font-bold transition ${
+                  cloudAuthMode === 'login'
+                    ? 'bg-white dark:bg-slate-900 text-emerald-600 shadow-xs'
+                    : 'text-slate-500'
+                }`}
+              >
+                লগইন করুন
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCloudAuthMode('register');
+                  setCloudAuthError(null);
+                }}
+                className={`py-2 rounded-lg text-xs font-bold transition ${
+                  cloudAuthMode === 'register'
+                    ? 'bg-white dark:bg-slate-900 text-emerald-600 shadow-xs'
+                    : 'text-slate-500'
+                }`}
+              >
+                নতুন অ্যাকাউন্ট খুলুন
+              </button>
+            </div>
+
+            {cloudAuthError && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-medium flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{cloudAuthError}</span>
+              </div>
+            )}
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setCloudAuthError(null);
+                setIsCloudAuthLoading(true);
+                const result =
+                  cloudAuthMode === 'register'
+                    ? await registerTallyCloudAccount(
+                        cloudAccountIdInput,
+                        cloudPasscodeInput,
+                        shop.name || 'SmartHub Shop'
+                      )
+                    : await loginTallyCloudAccount(cloudAccountIdInput, cloudPasscodeInput);
+                setIsCloudAuthLoading(false);
+                if (!result.success) {
+                  setCloudAuthError(result.error || 'অ্যাকাউন্ট যাচাই ব্যর্থ হয়েছে।');
+                  return;
+                }
+                if (result.account) {
+                  setCloudAccount(result.account);
+                }
+                setCloudPasscodeInput('');
+                setShowCloudAuthModal(false);
+                tallySounds.playSuccessChime();
+              }}
+              className="space-y-3"
+            >
+              <div>
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
+                  দোকানের মোবাইল নম্বর বা ইউনিক অ্যাকাউন্ট আইডি
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={cloudAccountIdInput}
+                  onChange={(e) => setCloudAccountIdInput(e.target.value)}
+                  placeholder="যেমন: 017xxxxxxxx বা shop_name"
+                  className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-900 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
+                  গোপন পাসকোড (কমপক্ষে ৬ অক্ষর)
+                </label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={cloudPasscodeInput}
+                  onChange={(e) => setCloudPasscodeInput(e.target.value)}
+                  placeholder="••••••"
+                  className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-900 dark:text-white"
+                />
+              </div>
+
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                অ্যাকাউন্ট ছাড়াই টালি খাতা ১০০% অফলাইনে কাজ করে। ক্লাউডে নিরাপদে ব্যাকআপ রাখতে চাইলে কেবল আপনার নিজস্ব অ্যাকাউন্টে সাইন ইন করুন।
+              </p>
+
+              <button
+                type="submit"
+                disabled={isCloudAuthLoading}
+                className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md disabled:opacity-50 cursor-pointer"
+              >
+                {isCloudAuthLoading
+                  ? 'যাচাই হচ্ছে...'
+                  : cloudAuthMode === 'register'
+                  ? 'নতুন ক্লাউড অ্যাকাউন্ট তৈরি করুন'
+                  : 'ক্লাউড সিঙ্ক লগইন করুন'}
+              </button>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

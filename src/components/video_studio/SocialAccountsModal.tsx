@@ -61,12 +61,12 @@ export const SocialAccountsModal: React.FC<SocialAccountsModalProps> = ({
           </button>
         </div>
 
-        {/* Security & Free-First Notice */}
-        <div className="p-3.5 rounded-2xl bg-indigo-950/40 border border-indigo-800/40 flex items-start gap-3">
-          <ShieldCheck className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+        {/* Storage Disclosure Notice */}
+        <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-700/40 flex items-start gap-3">
+          <ShieldCheck className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
           <div className="text-xs text-slate-300 leading-relaxed">
-            <strong className="text-white block mb-0.5">নিরাপদ ও ১০০% ফ্রি অফিসিয়াল এপিআই</strong>
-            সমস্ত এক্সেস টোকেন শুধুমাত্র আপনার ব্রাউজারের এনক্রিপ্টেড লোকাল স্টোরেজে সংরক্ষিত থাকে। কোনো বহিরাগত সার্ভারে ডেটা যায় না। মেটা ও গুগলের ফ্রি কোটা ব্যবহার করে প্রতি মাসে আনলিমিটেড ভিডিও শিডিউল ও আপলোড করা যায়।
+            <strong className="text-white block mb-0.5">লোকাল কনফিগারেশন সংরক্ষণ সতর্কতা</strong>
+            এই টোকেনগুলো শুধুমাত্র আপনার ব্রাউজার/ডিভাইসের লোকাল স্টোরেজে (unencrypted localStorage) সংরক্ষিত থাকে এবং সরাসরি কোনো ব্যাকএন্ডে পাঠানো হয় না। শেয়ার করা ডিভাইসে স্থায়ী প্রোডাকশন টোকেন সংরক্ষণ করা থেকে বিরত থাকুন।
           </div>
         </div>
 

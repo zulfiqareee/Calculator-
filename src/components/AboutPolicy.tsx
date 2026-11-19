@@ -54,19 +54,29 @@ export const AboutPolicy: React.FC<Props> = ({ lang }) => {
           {t.about.privacyContent}
         </p>
 
-        <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200/60 dark:border-slate-800 text-[11px] text-slate-500 space-y-1">
+        <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200/60 dark:border-slate-800 text-[11px] text-slate-500 space-y-1.5 leading-relaxed">
           <p className="font-semibold text-slate-700 dark:text-slate-300">
-            {lang === 'bn' ? 'গুগল প্লে কনসোল ডেটা নিরাপত্তা деклараশন:' : 'Google Play Console Data Safety:'}
+            {lang === 'bn' ? 'গুগল প্লে কনসোল ডেটা নিরাপত্তা ডিক্লারেশন:' : 'Google Play Console Data Safety Disclosure:'}
           </p>
           <p>
             {lang === 'bn'
-              ? '• কোনো ব্যক্তিগত তথ্য (নাম, ইমেল, ফোন) সংগ্রহ বা ক্লাউডে পাঠানো হয় না।'
-              : '• No personal information (name, email, phone) is collected or sent to servers.'}
+              ? '• অধিকাংশ টুল (ক্যালকুলেটর, টালি খাতা অফলাইন, জমি ও বিদ্যুৎ হিসাব, কুরআন পাঠ) সম্পূর্ণ অফলাইনে কাজ করে এবং ফোনের লোকাল স্টোরেজে (unencrypted localStorage) ডেটা রাখে।'
+              : '• Core calculators, Quran reader, and offline Tally Khata store records locally on your device (unencrypted browser/WebView storage).'}
           </p>
           <p>
             {lang === 'bn'
-              ? '• ইন্টারনেট সংযোগ শুধুমাত্র গুগল অ্যাডমব টেস্ট/লাইভ বিজ্ঞাপন প্রদর্শনের জন্য ব্যবহৃত হতে পারে।'
-              : '• Network access is only utilized by Google Mobile Ads SDK for serving advertisements.'}
+              ? '• ঐচ্ছিক লাইভ আবহাওয়া (open-meteo.com) ও নামাজের সময়সূচী (aladhan.com) ফিচার ব্যবহার করলে শুধু আপনার অনুমোদিত জিপিএস লোকেশন ওই API-তে পাঠানো হয়।'
+              : '• Optional Weather (open-meteo.com) and Prayer Times (aladhan.com) transmit approximate GPS coordinates only when you invoke those tools.'}
+          </p>
+          <p>
+            {lang === 'bn'
+              ? '• ঐচ্ছিক টালি খাতা ক্লাউড ব্যাকআপ, অ্যাডমিন CMS/Firebase সিঙ্ক এবং AI স্টুডিও কেবল সাইন-ইন করা ব্যবহারকারীর অনুরোধে সার্ভারে ডেটা পাঠায়। ডেটা মুছতে অ্যাপের স্টোরেজ ক্লিয়ার বা ক্লাউড লগআউট/ব্যাকআপ ডিলিট করুন।'
+              : '• Optional Tally Cloud sync, Admin CMS/Firebase sync, and AI Studio send data only when explicitly signed in. You can clear local data anytime via device settings.'}
+          </p>
+          <p>
+            {lang === 'bn'
+              ? '• AdMob বর্তমানে কনফিগারেশন/প্রিভিউ মোডে রয়েছে; লাইভ অ্যাড চালু করতে নেটিভ AdMob SDK ও GDPR/UMP কনসেন্ট যুক্ত করতে হবে।'
+              : '• Google AdMob is currently in configuration/preview mode; native AdMob SDK & UMP consent must be integrated before serving live ads.'}
           </p>
         </div>
       </div>

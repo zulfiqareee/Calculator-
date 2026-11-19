@@ -1,10 +1,8 @@
 import { CustomTool } from '../types';
 import { evaluateSafeMath } from './safeMathParser';
+import { getAdminAuthHeaders, getAdminToken } from './adminAuth';
 
 const STORAGE_KEY_CUSTOM_TOOLS = 'smart_utility_custom_tools_v1';
-const STORAGE_KEY_ADMIN_PIN = 'smart_utility_admin_pin_v1';
-
-export const DEFAULT_ADMIN_PIN = '1234';
 
 export const INITIAL_CUSTOM_TOOLS: CustomTool[] = [];
 
@@ -17,7 +15,6 @@ export function getStoredCustomTools(): CustomTool[] {
     }
     const parsed = JSON.parse(raw);
     const list = Array.isArray(parsed) ? parsed : INITIAL_CUSTOM_TOOLS;
-    // Filter out deleted tools if previously saved in user localStorage
     const filtered = list.filter((t: CustomTool) => t.id !== 'custom-solar-pv' && t.id !== 'custom-led-resistor');
     if (filtered.length !== list.length) {
       localStorage.setItem(STORAGE_KEY_CUSTOM_TOOLS, JSON.stringify(filtered));
@@ -29,10 +26,16 @@ export function getStoredCustomTools(): CustomTool[] {
 }
 
 export async function pushCustomToolsToServer(tools: CustomTool[]): Promise<boolean> {
+  if (!getAdminToken()) {
+    return false;
+  }
   try {
     const res = await fetch('/api/custom-tools', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAdminAuthHeaders(),
+      },
       body: JSON.stringify({ tools }),
     });
     const data = await res.json();
@@ -49,16 +52,13 @@ export async function fetchCustomToolsFromServer(): Promise<CustomTool[]> {
     if (!res.ok) return getStoredCustomTools();
     const data = await res.json();
     if (data?.success && Array.isArray(data.tools)) {
-      // Merge server tools with local tools (server is authority for admin published tools)
       const local = getStoredCustomTools();
       const serverTools: CustomTool[] = data.tools;
-      
-      // If server has tools, ensure local storage is updated so offline works
+
       if (serverTools.length > 0) {
         saveStoredCustomTools(serverTools, false);
         return serverTools;
-      } else if (local.length > 0) {
-        // If server is empty but local has tools, push local to server so new customers get them
+      } else if (local.length > 0 && getAdminToken()) {
         pushCustomToolsToServer(local).catch(() => {});
       }
       return local;
@@ -72,7 +72,7 @@ export async function fetchCustomToolsFromServer(): Promise<CustomTool[]> {
 export function saveStoredCustomTools(tools: CustomTool[], pushToServer: boolean = true): void {
   try {
     localStorage.setItem(STORAGE_KEY_CUSTOM_TOOLS, JSON.stringify(tools));
-    if (pushToServer) {
+    if (pushToServer && getAdminToken()) {
       pushCustomToolsToServer(tools).catch(() => {});
     }
   } catch (err) {
@@ -96,22 +96,6 @@ export function deleteCustomTool(toolId: string): void {
   const current = getStoredCustomTools();
   const updated = current.filter((t) => t.id !== toolId);
   saveStoredCustomTools(updated, true);
-}
-
-export function getAdminPin(): string {
-  try {
-    return localStorage.getItem(STORAGE_KEY_ADMIN_PIN) || DEFAULT_ADMIN_PIN;
-  } catch {
-    return DEFAULT_ADMIN_PIN;
-  }
-}
-
-export function setAdminPin(pin: string): void {
-  try {
-    localStorage.setItem(STORAGE_KEY_ADMIN_PIN, pin);
-  } catch (err) {
-    console.error('Failed to save pin', err);
-  }
 }
 
 /**

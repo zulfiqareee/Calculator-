@@ -1,4 +1,5 @@
 import { BookItem } from '../types';
+import { getAdminAuthHeaders, getAdminToken } from './adminAuth';
 
 const STORAGE_KEY_BOOKS = 'smart_utility_books_v1';
 
@@ -105,10 +106,16 @@ export function getStoredBooks(): BookItem[] {
 }
 
 export async function pushBooksToServer(books: BookItem[]): Promise<boolean> {
+  if (!getAdminToken()) {
+    return false;
+  }
   try {
     const res = await fetch('/api/books', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAdminAuthHeaders(),
+      },
       body: JSON.stringify({ books }),
     });
     const data = await res.json();
@@ -139,7 +146,7 @@ export async function fetchBooksFromServer(): Promise<BookItem[]> {
 export function saveStoredBooks(books: BookItem[], pushToServer: boolean = true): void {
   try {
     localStorage.setItem(STORAGE_KEY_BOOKS, JSON.stringify(books));
-    if (pushToServer) {
+    if (pushToServer && getAdminToken()) {
       pushBooksToServer(books).catch(() => {});
     }
   } catch (err) {

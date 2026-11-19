@@ -28,11 +28,11 @@ export const AdMobBanner: React.FC<Props> = ({ lang, onOpenGuide }) => {
           <div className="flex flex-col min-w-0">
             <span className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 truncate">
               {config.isTestMode
-                ? (lang === 'bn' ? 'গুগল টেস্ট ব্যানার (AdMob 320x50)' : 'Google AdMob Test Banner (320x50)')
-                : 'Sponsored Partner Ad'}
+                ? (lang === 'bn' ? 'AdMob ব্যানার প্রিভিউ (320x50)' : 'AdMob Banner Preview (320x50)')
+                : (lang === 'bn' ? 'AdMob কনফিগ প্রিভিউ (SDK সংযুক্ত নয়)' : 'AdMob Config Preview (SDK Not Bundled)')}
             </span>
             <span className="text-[9px] text-slate-500 dark:text-slate-400 font-mono truncate">
-              {config.isTestMode ? config.bannerAdUnitId : 'Production Ad Unit Active'}
+              {config.bannerAdUnitId}
             </span>
           </div>
         </div>

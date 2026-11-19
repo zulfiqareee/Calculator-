@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Youtube, Facebook, Send, ShieldAlert, CheckCircle2, Loader2, ExternalLink, Globe2 } from 'lucide-react';
+import { X, Youtube, Facebook, Send, ShieldAlert, CheckCircle2, Loader2, Globe2 } from 'lucide-react';
 import { VideoProject, PublishingRecord } from '../../types/multiAi';
 import { getStoredSocialAccounts, addPublishingRecord } from '../../utils/multiAiStudioStorage';
 
@@ -39,33 +39,24 @@ export const PublishingModal: React.FC<PublishingModalProps> = ({
     setIsPublishing(true);
 
     try {
-      // Simulate real API publication or invoke endpoints
-      await new Promise((resolve) => setTimeout(resolve, 2200));
+      await new Promise((resolve) => setTimeout(resolve, 400));
 
       const newRecord: PublishingRecord = {
         id: `pub_${Date.now()}`,
         projectId: project.id,
-        projectTitle: project.title,
+        projectTitle: title.trim() || project.title,
         platform: targetPlatform,
         privacy,
         publishedAt: Date.now(),
-        status: 'published',
-        youtubeUrl:
-          targetPlatform === 'youtube' || targetPlatform === 'both'
-            ? `https://youtube.com/shorts/${Math.random().toString(36).substring(2, 11)}`
-            : undefined,
-        facebookUrl:
-          targetPlatform === 'facebook' || targetPlatform === 'both'
-            ? `https://facebook.com/watch/?v=${Math.floor(Math.random() * 9000000000 + 1000000000)}`
-            : undefined,
-        notes: `Published via Smart AI Studio Router (${privacy})`,
+        status: 'scheduled',
+        notes: `লোকাল পাবলিশিং ড্রাফট সংরক্ষিত (${privacy}) — সরাসরি YouTube/Facebook আপলোডের জন্য এক্সপোর্টকৃত ভিডিও ম্যানুয়ালি আপলোড করুন।`,
       };
 
       addPublishingRecord(newRecord);
       setPublishResult(newRecord);
       if (onPublished) onPublished(newRecord);
     } catch (err: any) {
-      setErrorMessage(err?.message || 'পাবলিশ করার সময় একটি ত্রুটি ঘটেছে');
+      setErrorMessage(err?.message || 'পাবলিশ ড্রাফট সংরক্ষণ করার সময় একটি ত্রুটি ঘটেছে');
     } finally {
       setIsPublishing(false);
     }
@@ -82,10 +73,10 @@ export const PublishingModal: React.FC<PublishingModalProps> = ({
             </div>
             <div>
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                সরাসরি সোশ্যাল পাবলিশিং
+                পাবলিশিং ড্রাফট ও লগ সংরক্ষণ
               </h2>
               <p className="text-xs text-slate-400">
-                এক ক্লিকে YouTube ও Facebook-এ ভিডিও প্রকাশ করুন
+                YouTube ও Facebook-এর জন্য মেটাডাটা প্রস্তুত ও লোকাল রেকর্ড সেভ করুন
               </p>
             </div>
           </div>
@@ -104,43 +95,25 @@ export const PublishingModal: React.FC<PublishingModalProps> = ({
               <CheckCircle2 className="w-8 h-8" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white">ভিডিও সফলভাবে পাবলিশ হয়েছে!</h3>
-              <p className="text-xs text-slate-400 mt-1 max-w-sm">
-                আপনার ভিডিও নির্ধারিত সোশ্যাল চ্যানেলে আপলোড সম্পন্ন হয়েছে।
+              <h3 className="text-lg font-bold text-white">পাবলিশিং ড্রাফট সংরক্ষিত হয়েছে!</h3>
+              <p className="text-xs text-slate-400 mt-1 max-w-sm leading-relaxed">
+                শিরোনাম, বর্ণনা ও প্রাইভেসি সেটিংসসহ লোকাল রেকর্ড সেভ করা হয়েছে। সরাসরি চ্যানেলে লাইভ করতে স্টুডিও থেকে রেন্ডার করা ভিডিও ডাউনলোড করে ম্যানুয়ালি আপলোড করুন।
               </p>
             </div>
 
-            <div className="w-full flex flex-col gap-2 p-3 bg-slate-950 rounded-2xl border border-slate-800 text-left">
-              {publishResult.youtubeUrl && (
-                <div className="flex items-center justify-between text-xs p-2 rounded-lg bg-red-950/30 border border-red-800/30">
-                  <span className="flex items-center gap-2 text-red-300 font-semibold">
-                    <Youtube className="w-4 h-4 text-red-500" /> YouTube Shorts
-                  </span>
-                  <a
-                    href={publishResult.youtubeUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-1 text-slate-400 hover:text-white text-[11px]"
-                  >
-                    লিঙ্ক দেখুন <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-              )}
-              {publishResult.facebookUrl && (
-                <div className="flex items-center justify-between text-xs p-2 rounded-lg bg-blue-950/30 border border-blue-800/30">
-                  <span className="flex items-center gap-2 text-blue-300 font-semibold">
-                    <Facebook className="w-4 h-4 text-blue-500" /> Facebook Reel
-                  </span>
-                  <a
-                    href={publishResult.facebookUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-1 text-slate-400 hover:text-white text-[11px]"
-                  >
-                    লিঙ্ক দেখুন <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-              )}
+            <div className="w-full p-3 bg-slate-950 rounded-2xl border border-slate-800 text-left text-xs text-slate-300 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">প্ল্যাটফর্ম:</span>
+                <span className="font-bold uppercase">{publishResult.platform}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">প্রাইভেসি:</span>
+                <span className="font-bold">{publishResult.privacy}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">অবস্থা:</span>
+                <span className="font-bold text-amber-400">লোকাল ড্রাফট / ম্যানুয়াল আপলোড বাকি</span>
+              </div>
             </div>
 
             <button

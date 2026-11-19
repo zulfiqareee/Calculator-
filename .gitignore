@@ -10,11 +10,14 @@ coverage/
 *.log
 .env*
 !.env.example
+data/
 android/app/build/
 android/.gradle/
 android/app/src/main/assets/public/
 android/app/src/main/assets/capacitor.config.json
 android/app/src/main/assets/capacitor.plugins.json
+android/keystore.properties
 .aistudio/
 public/assets/aistudio/
-smarttools-upload-keystore.jks
+*.jks
+*.keystore

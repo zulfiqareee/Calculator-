@@ -1,5 +1,6 @@
 import { HealthTipItem, HealthCategory, HealthCategoryItem } from '../types';
 import { HEALTH_TIPS_DATA } from '../data/healthTipsData';
+import { getAdminAuthHeaders, getAdminToken } from './adminAuth';
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import {
   getFirestore,
@@ -8,8 +9,16 @@ import {
   doc,
   setDoc,
   deleteDoc,
+  query,
+  where,
   Firestore,
 } from 'firebase/firestore';
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  signOut as fbSignOut,
+  Auth,
+} from 'firebase/auth';
 
 export interface FirebaseHealthConfig {
   apiKey: string;
@@ -334,10 +343,16 @@ export function getStoredHealthTips(): HealthTipItem[] {
 }
 
 export async function pushHealthTipsToServer(tips: HealthTipItem[]): Promise<boolean> {
+  if (!getAdminToken()) {
+    return false;
+  }
   try {
     const res = await fetch('/api/health-tips', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAdminAuthHeaders(),
+      },
       body: JSON.stringify({ tips }),
     });
     const data = await res.json();
@@ -366,7 +381,7 @@ export async function fetchHealthTipsFromServer(): Promise<HealthTipItem[]> {
 export function saveStoredHealthTips(tips: HealthTipItem[], pushToServer: boolean = true): void {
   try {
     localStorage.setItem(STORAGE_KEYS.HEALTH_TIPS, JSON.stringify(tips));
-    if (pushToServer) {
+    if (pushToServer && getAdminToken()) {
       pushHealthTipsToServer(tips).catch(() => {});
     }
   } catch (err) {
@@ -452,12 +467,12 @@ export function resetHealthTipsToDefault(): HealthTipItem[] {
 }
 
 // =========================================================================
-// FIREBASE FIRESTORE INTEGRATION
+// FIREBASE FIRESTORE & AUTHENTICATION INTEGRATION
 // =========================================================================
 let cachedFirestore: Firestore | null = null;
+let cachedAuth: Auth | null = null;
 
 export function getActiveFirebaseConfig(): FirebaseHealthConfig | null {
-  // 1. Check custom manual config saved by admin in UI
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.FIREBASE_CONFIG);
     if (raw) {
@@ -470,7 +485,6 @@ export function getActiveFirebaseConfig(): FirebaseHealthConfig | null {
     // ignore
   }
 
-  // 2. Check Vite client environment variables if provided
   const envApiKey = (import.meta as any).env?.VITE_FIREBASE_API_KEY;
   const envProjectId = (import.meta as any).env?.VITE_FIREBASE_PROJECT_ID;
   if (envApiKey && envProjectId) {
@@ -493,36 +507,57 @@ export function saveManualFirebaseConfig(config: FirebaseHealthConfig | null): v
     } else {
       localStorage.removeItem(STORAGE_KEYS.FIREBASE_CONFIG);
     }
-    cachedFirestore = null; // reset cached instance
+    cachedFirestore = null;
+    cachedAuth = null;
   } catch (err) {
     console.error('Failed to save Firebase config:', err);
   }
 }
 
-export function getFirestoreInstance(): Firestore | null {
-  if (cachedFirestore) return cachedFirestore;
-
+function getOrInitFirebaseApp(): FirebaseApp | null {
   const cfg = getActiveFirebaseConfig();
   if (!cfg) return null;
 
   try {
     const appName = 'SmartHubHealthApp';
-    let app: FirebaseApp;
     const existing = getApps().find((a) => a.name === appName);
-    if (existing) {
-      app = existing;
-    } else {
-      app = initializeApp(
-        {
-          apiKey: cfg.apiKey,
-          authDomain: cfg.authDomain || `${cfg.projectId}.firebaseapp.com`,
-          projectId: cfg.projectId,
-          storageBucket: cfg.storageBucket || `${cfg.projectId}.appspot.com`,
-          appId: cfg.appId,
-        },
-        appName
-      );
-    }
+    if (existing) return existing;
+
+    return initializeApp(
+      {
+        apiKey: cfg.apiKey,
+        authDomain: cfg.authDomain || `${cfg.projectId}.firebaseapp.com`,
+        projectId: cfg.projectId,
+        storageBucket: cfg.storageBucket || `${cfg.projectId}.appspot.com`,
+        appId: cfg.appId,
+      },
+      appName
+    );
+  } catch (err) {
+    console.warn('Could not initialize Firebase App:', err);
+    return null;
+  }
+}
+
+export function getFirebaseAuthInstance(): Auth | null {
+  if (cachedAuth) return cachedAuth;
+  const app = getOrInitFirebaseApp();
+  if (!app) return null;
+  try {
+    cachedAuth = getAuth(app);
+    return cachedAuth;
+  } catch (err) {
+    console.warn('Could not initialize Firebase Auth:', err);
+    return null;
+  }
+}
+
+export function getFirestoreInstance(): Firestore | null {
+  if (cachedFirestore) return cachedFirestore;
+  const app = getOrInitFirebaseApp();
+  if (!app) return null;
+
+  try {
     cachedFirestore = getFirestore(app);
     return cachedFirestore;
   } catch (err) {
@@ -531,13 +566,56 @@ export function getFirestoreInstance(): Firestore | null {
   }
 }
 
+export async function signInFirebaseAdmin(
+  email: string,
+  password: string
+): Promise<{ success: boolean; email?: string | null; error?: string }> {
+  const auth = getFirebaseAuthInstance();
+  if (!auth) {
+    return { success: false, error: 'Firebase কনফিগারেশন সেট করা নেই।' };
+  }
+  try {
+    const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+    return { success: true, email: cred.user?.email || null };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err?.message || 'Firebase Auth সাইন-ইন ব্যর্থ হয়েছে।',
+    };
+  }
+}
+
+export async function signOutFirebaseAdmin(): Promise<void> {
+  const auth = getFirebaseAuthInstance();
+  if (!auth) return;
+  try {
+    await fbSignOut(auth);
+  } catch {
+    // ignore
+  }
+}
+
+export function getFirebaseAuthUser(): { email: string | null; uid: string; emailVerified: boolean } | null {
+  const auth = getFirebaseAuthInstance();
+  const user = auth?.currentUser;
+  if (!user) return null;
+  return {
+    email: user.email,
+    uid: user.uid,
+    emailVerified: user.emailVerified,
+  };
+}
+
 export async function fetchHealthTipsFromFirestore(): Promise<HealthTipItem[] | null> {
   const db = getFirestoreInstance();
   if (!db) return null;
 
   try {
+    const authUser = getFirebaseAuthUser();
     const colRef = collection(db, 'health_tips');
-    const snapshot = await getDocs(colRef);
+    // Match firestore.rules: non-admin clients only list published tips
+    const q = authUser ? colRef : query(colRef, where('isPublished', '==', true));
+    const snapshot = await getDocs(q);
     if (snapshot.empty) return null;
 
     const tips: HealthTipItem[] = [];
@@ -546,8 +624,7 @@ export async function fetchHealthTipsFromFirestore(): Promise<HealthTipItem[] | 
     });
 
     if (tips.length > 0) {
-      // update local cache
-      saveStoredHealthTips(tips);
+      saveStoredHealthTips(tips, false);
       localStorage.setItem(STORAGE_KEYS.LAST_SYNC, Date.now().toString());
       return tips;
     }
@@ -563,8 +640,10 @@ export async function fetchHealthCategoriesFromFirestore(): Promise<HealthCatego
   if (!db) return null;
 
   try {
+    const authUser = getFirebaseAuthUser();
     const colRef = collection(db, 'health_categories');
-    const snapshot = await getDocs(colRef);
+    const q = authUser ? colRef : query(colRef, where('isActive', '==', true));
+    const snapshot = await getDocs(q);
     if (snapshot.empty) return null;
 
     const cats: HealthCategoryItem[] = [];
@@ -585,7 +664,7 @@ export async function fetchHealthCategoriesFromFirestore(): Promise<HealthCatego
 
 export async function saveCategoryToFirestore(cat: HealthCategoryItem): Promise<boolean> {
   const db = getFirestoreInstance();
-  if (!db) return false;
+  if (!db || !getFirebaseAuthUser()) return false;
 
   try {
     const docRef = doc(db, 'health_categories', cat.id);
@@ -599,7 +678,7 @@ export async function saveCategoryToFirestore(cat: HealthCategoryItem): Promise<
 
 export async function deleteCategoryFromFirestore(catId: string): Promise<boolean> {
   const db = getFirestoreInstance();
-  if (!db) return false;
+  if (!db || !getFirebaseAuthUser()) return false;
 
   try {
     const docRef = doc(db, 'health_categories', catId);
@@ -613,7 +692,7 @@ export async function deleteCategoryFromFirestore(catId: string): Promise<boolea
 
 export async function saveTipToFirestore(tip: HealthTipItem): Promise<boolean> {
   const db = getFirestoreInstance();
-  if (!db) return false;
+  if (!db || !getFirebaseAuthUser()) return false;
 
   try {
     const docRef1 = doc(db, 'health_tips', tip.id);
@@ -631,7 +710,7 @@ export async function saveTipToFirestore(tip: HealthTipItem): Promise<boolean> {
 
 export async function deleteTipFromFirestore(tipId: string): Promise<boolean> {
   const db = getFirestoreInstance();
-  if (!db) return false;
+  if (!db || !getFirebaseAuthUser()) return false;
 
   try {
     const docRef1 = doc(db, 'health_tips', tipId);
@@ -651,6 +730,14 @@ export async function syncAllLocalTipsToFirestore(): Promise<{ success: boolean;
   const db = getFirestoreInstance();
   if (!db) {
     return { success: false, count: 0, error: 'Firebase কনফিগারেশন সেট করা নেই।' };
+  }
+  const fbUser = getFirebaseAuthUser();
+  if (!fbUser) {
+    return {
+      success: false,
+      count: 0,
+      error: 'Firestore-এ সংরক্ষণ করতে প্রথমে সেটিংস থেকে Firebase Auth অ্যাডমিন লগইন করুন।',
+    };
   }
 
   const tips = getStoredHealthTips();
@@ -673,7 +760,15 @@ export async function syncAllLocalTipsToFirestore(): Promise<{ success: boolean;
     localStorage.setItem(STORAGE_KEYS.LAST_SYNC, Date.now().toString());
     return { success: true, count };
   } catch (err: any) {
-    return { success: false, count, error: err?.message || 'সিঙ্ক ব্যর্থ হয়েছে' };
+    const msg = String(err?.message || '');
+    if (msg.toLowerCase().includes('permission') || err?.code === 'permission-denied') {
+      return {
+        success: false,
+        count,
+        error: 'Firestore permission denied — নিশ্চিত করুন আপনার ইমেইল ভেরিফায়েড এবং firestore.rules ডিপ্লয় করা আছে।',
+      };
+    }
+    return { success: false, count, error: msg || 'সিঙ্ক ব্যর্থ হয়েছে' };
   }
 }
 
@@ -681,8 +776,10 @@ export function getFirebaseStatus(): {
   isConfigured: boolean;
   projectId?: string;
   lastSyncTime?: number;
+  authEmail?: string | null;
 } {
   const cfg = getActiveFirebaseConfig();
+  const fbUser = getFirebaseAuthUser();
   let lastSyncTime: number | undefined;
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.LAST_SYNC);
@@ -695,6 +792,7 @@ export function getFirebaseStatus(): {
     isConfigured: !!cfg,
     projectId: cfg?.projectId,
     lastSyncTime,
+    authEmail: fbUser?.email || null,
   };
 }
 

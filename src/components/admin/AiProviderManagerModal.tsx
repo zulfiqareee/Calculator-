@@ -22,6 +22,7 @@ import {
   resetProviderStats,
 } from '../../utils/aiProviderRegistry';
 import { GoogleGenAI } from '@google/genai';
+import { getAdminAuthHeaders } from '../../utils/adminAuth';
 
 interface Props {
   isOpen: boolean;
@@ -89,7 +90,10 @@ export const AiProviderManagerModal: React.FC<Props> = ({ isOpen, onClose, lang 
         } else {
           const res = await fetch('/api/ai/gemini', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              ...getAdminAuthHeaders(),
+            },
             body: JSON.stringify({ task: 'ping' }),
           });
           const data = await res.json().catch(() => null);

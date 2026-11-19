@@ -1,0 +1,110 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // Helper Functions
+    // =========================================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$');
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        (request.auth.token.email == 'zulfiqar1hasan@gmail.com' && request.auth.token.email_verified == true) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isValidOptionalString(data, field, maxLen) {
+      return !(field in data) || data[field] == null || (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    function isValidHealthTip(data) {
+      return data.keys().hasAll(['id', 'category', 'titleBn', 'titleEn'])
+        && isValidId(data.id)
+        && isValidString(data.category, 1, 64)
+        && isValidString(data.titleBn, 1, 300)
+        && isValidString(data.titleEn, 1, 300)
+        && isValidOptionalString(data, 'summaryBn', 1000)
+        && isValidOptionalString(data, 'summaryEn', 1000)
+        && isValidOptionalString(data, 'descBn', 20000)
+        && isValidOptionalString(data, 'descEn', 20000)
+        && (!('isPublished' in data) || data.isPublished is bool)
+        && (!('isFeatured' in data) || data.isFeatured is bool)
+        && (!('isPopular' in data) || data.isPopular is bool);
+    }
+
+    function isValidHealthCategory(data) {
+      return data.keys().hasAll(['id', 'nameBn', 'nameEn'])
+        && isValidId(data.id)
+        && isValidString(data.nameBn, 1, 150)
+        && isValidString(data.nameEn, 1, 150)
+        && isValidOptionalString(data, 'icon', 32)
+        && isValidOptionalString(data, 'descriptionBn', 500)
+        && isValidOptionalString(data, 'descriptionEn', 500)
+        && (!('order' in data) || (data.order is number && data.order >= 0 && data.order <= 1000))
+        && (!('isActive' in data) || data.isActive is bool);
+    }
+
+    // =========================================================================
+    // Health Tips & Articles CMS (Published tips readable; Admin-only writes)
+    // =========================================================================
+    match /health_tips/{tipId} {
+      allow get: if isValidId(tipId) && (resource == null || resource.data.isPublished == true || isAdmin());
+      allow list: if isAdmin() || resource.data.isPublished == true;
+      allow create, update: if isAdmin() && isValidId(tipId) && isValidHealthTip(request.resource.data) && request.resource.data.id == tipId;
+      allow delete: if isAdmin() && isValidId(tipId);
+    }
+
+    match /health_articles/{tipId} {
+      allow get: if isValidId(tipId) && (resource == null || resource.data.isPublished == true || isAdmin());
+      allow list: if isAdmin() || resource.data.isPublished == true;
+      allow create, update: if isAdmin() && isValidId(tipId) && isValidHealthTip(request.resource.data) && request.resource.data.id == tipId;
+      allow delete: if isAdmin() && isValidId(tipId);
+    }
+
+    match /health_categories/{catId} {
+      allow get: if isValidId(catId) && (resource == null || resource.data.isActive == true || isAdmin());
+      allow list: if isAdmin() || resource.data.isActive == true;
+      allow create, update: if isAdmin() && isValidId(catId) && isValidHealthCategory(request.resource.data) && request.resource.data.id == catId;
+      allow delete: if isAdmin() && isValidId(catId);
+    }
+
+    // =========================================================================
+    // Admin Allowlist (Read own entry only; managed via Console/Admin SDK)
+    // =========================================================================
+    match /admins/{uid} {
+      allow get: if isOwner(uid);
+      allow list, create, update, delete: if false;
+    }
+
+    // =========================================================================
+    // Per-User Isolated Tally Khata Backups (if synced to Firestore)
+    // =========================================================================
+    match /users/{userId}/tally_backups/{backupId} {
+      allow get, list: if isOwner(userId) && isValidId(backupId);
+      allow create, update: if isOwner(userId) && isValidId(backupId) && request.resource.data.ownerUid == request.auth.uid;
+      allow delete: if isOwner(userId) && isValidId(backupId);
+    }
+
+    // =========================================================================
+    // Default Deny Catch-All
+    // =========================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

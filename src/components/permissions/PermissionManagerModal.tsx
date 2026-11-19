@@ -308,8 +308,8 @@ export const PermissionManagerModal: React.FC<Props> = ({
           <Lock className="w-4 h-4 text-emerald-600 shrink-0" />
           <span>
             {isBn
-              ? 'গুগল প্লে-স্টোর পলিসি অনুযায়ী কোনো ব্যক্তিগত ফাইল বা অবস্থান অনলাইনে পাঠানো বা শেয়ার করা হয় না।'
-              : 'Per Google Play policies, location and files remain on-device and are never shared.'}
+              ? 'আপনার অডিও ফাইল ডিভাইসেই থাকে; জিপিএস লোকেশন কেবল আবহাওয়া (Open-Meteo) ও নামাজের সময় (Aladhan) দেখতে সংশ্লিষ্ট API-তে ব্যবহৃত হয়।'
+              : 'Audio files stay on-device; GPS coordinates are cached locally and sent only to Open-Meteo/Aladhan when you fetch weather or prayer times.'}
           </span>
         </div>
 
